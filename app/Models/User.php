@@ -47,6 +47,31 @@ class User extends Authenticatable
 
     public function images()
     {
-        return $this->hasMany(Image::class, 'id_user', 'id');
+        return $this->hasMany(Image::class, 'user_id', 'id');
+    }
+
+    public function curriculums()
+    {
+        return $this->hasOne(Curriculum::class, 'user_id', 'id');
+    }
+
+    public function workExperiences()
+    {
+        return $this->hasMany(WorkExperience::class, 'user_id', 'id');
+    }
+
+    public function academicInformations()
+    {
+        return $this->hasMany(AcademicInformation::class, 'user_id', 'id');
+    }
+
+    public function continuingEducations()
+    {
+        return $this->hasMany(ContinuingEducation::class, 'user_id', 'id');
+    }
+
+    public function technicalKnowledges()
+    {
+        return $this->hasMany(TechnicalKnowledge::class, 'user_id', 'id');
     }
 }

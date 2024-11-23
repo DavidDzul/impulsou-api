@@ -5,6 +5,8 @@ use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\API\UserController;
+use App\Http\Controllers\API\ImageController;
+use App\Http\Controllers\API\CurriculumController;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,4 +41,18 @@ Route::post('login', [AuthController::class, 'login']);
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('logout', [AuthController::class, 'logout']);
+
+    Route::post('createImage', [ImageController::class, 'uploadImage']);
+    Route::get('fetchCurriculum', [CurriculumController::class, 'index']);
+    Route::post('createPersonalData', [CurriculumController::class, 'store']);
+
+    // WORK EXPERIENCE TABLE
+    Route::post('createWork', [CurriculumController::class, 'storeWorkExperience']);
+    Route::post('UpdateWork', [CurriculumController::class, 'updateWorkExperience']);
+    Route::delete('deleteWork/{id}', [CurriculumController::class, 'destroyWorkExperience']);
+
+    // ACADEMIC INFORMATION TABLE
+    Route::post('createAcademic', [CurriculumController::class, 'storeAcademicInformation']);
+    Route::post('updateAcademic', [CurriculumController::class, 'updateAcademicInformation']);
+    Route::delete('deleteAcademic/{id}', [CurriculumController::class, 'destroyAcademicInformatio']);
 });

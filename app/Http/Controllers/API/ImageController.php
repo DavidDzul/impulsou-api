@@ -14,7 +14,6 @@ class ImageController extends Controller
 
         $image = new Image();
         $request->validate([
-            'id_asset' => 'required',
             'url' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
         ]);
 
@@ -23,7 +22,7 @@ class ImageController extends Controller
             $name = $request->file('url')->store('images', 'public');
         }
 
-        $image->id_asset = $request->id_asset;
+        $image->user_id = auth()->id();
         $image->url = $name;
         $image->save();
         return response()->json([
@@ -32,6 +31,7 @@ class ImageController extends Controller
             "image" => $image
         ], 200);
     }
+
 
     public function removeImage($id)
     {
