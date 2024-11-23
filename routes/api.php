@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\API\UserController;
 use App\Http\Controllers\API\ImageController;
 use App\Http\Controllers\API\CurriculumController;
-
+use App\Http\Controllers\API\PDFController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -45,6 +45,9 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('createImage', [ImageController::class, 'uploadImage']);
     Route::get('fetchCurriculum', [CurriculumController::class, 'index']);
     Route::post('createPersonalData', [CurriculumController::class, 'store']);
+
+    //GENERATE PDF
+    Route::get('fetchPDF', [PDFController::class, 'generatePDF']);
 
     // WORK EXPERIENCE TABLE
     Route::post('createWork', [CurriculumController::class, 'storeWorkExperience']);

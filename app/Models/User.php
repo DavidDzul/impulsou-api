@@ -47,7 +47,7 @@ class User extends Authenticatable
 
     public function images()
     {
-        return $this->hasMany(Image::class, 'user_id', 'id');
+        return $this->hasOne(Image::class, 'user_id', 'id');
     }
 
     public function curriculums()
