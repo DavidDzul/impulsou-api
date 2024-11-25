@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Currículum Vitae</title>
+
     <style>
     body {
         font-family: Arial, sans-serif;
@@ -13,39 +14,51 @@
         color: #333;
     }
 
-    .container {
+    .info-table {
         width: 100%;
-        padding: 20px;
+        border-spacing: 20px;
+        table-layout: fixed;
     }
 
-    .header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 20px;
-        border-bottom: 2px solid #333;
-        padding-bottom: 10px;
+    .photo-cell {
+        width: 30%;
+        vertical-align: middle;
+        text-align: center;
     }
 
     .photo {
-        width: 150px;
-        height: 150px;
+        width: 200px;
+        height: 200px;
         border-radius: 50%;
         object-fit: cover;
-        margin-right: 20px;
     }
 
-    .personal-info {
-        flex-grow: 1;
+    .personal-info-cell {
+        vertical-align: middle;
+        /* Centra verticalmente los datos */
+        color: #333;
     }
 
-    .personal-info h1 {
+    .personal-info-cell h1 {
         font-size: 24px;
         margin: 0;
+        color: #0056b3;
     }
 
-    .personal-info p {
+    .personal-info-cell p {
         margin: 5px 0;
         font-size: 14px;
+    }
+
+    .container {
+        width: 100%;
+        padding: 0px 10px 10px 10px
+    }
+
+    .header {
+        margin-bottom: 20px;
+        border-bottom: 2px;
+        padding-bottom: 10px;
     }
 
     .section {
@@ -54,8 +67,9 @@
 
     .section h2 {
         font-size: 20px;
-        border-bottom: 2px solid #333;
+        border-bottom: 2px solid #0056b3;
         margin-bottom: 10px;
+        color: #0056b3;
     }
 
     .list-item {
@@ -68,24 +82,75 @@
     .skills {
         padding-left: 15px;
     }
+
+    .name-title {
+        text-align: center;
+        /* Centra el nombre y título */
+        margin-bottom: 20px;
+    }
+
+    .aligned-table {
+        width: 100%;
+        /* La tabla ocupa todo el ancho */
+        border-spacing: 0;
+        /* Sin espacio entre celdas */
+        table-layout: fixed;
+        /* Ancho fijo para distribuir columnas equitativamente */
+    }
+
+    .left-cell {
+        text-align: left;
+        /* Alinea la primera columna a la izquierda */
+        padding: 5px;
+        width: 50%;
+        /* Ocupa el 50% del ancho */
+    }
+
+    .right-cell {
+        text-align: right;
+        /* Alinea la segunda columna a la derecha */
+        padding: 5px;
+        width: 50%;
+        /* Ocupa el 50% del ancho */
+    }
     </style>
 </head>
 
 <body>
+
     <div class="container">
         <!-- Header con foto y datos personales -->
         <div class="header">
-            <img src="storage/{{ $photo->url }}" alt="Foto" class="photo">
-            <div class="personal-info">
-                <h1>{{ $curriculum->first_name }} {{ $curriculum->last_name }}</h1>
-                <p><strong>Email:</strong> {{ $curriculum->email }}</p>
-                <p><strong>Teléfono:</strong> {{ $curriculum->phone_num ?? 'No registrado' }}</p>
-                <p><strong>Ubicación:</strong> {{ $curriculum->locality }}, {{ $curriculum->state }},
-                    {{ $curriculum->country }}
-                </p>
-                <p><strong>LinkedIn:</strong> {{ $curriculum->linkedin }}</p>
-            </div>
+            <table class="info-table">
+                <tr>
+                    <!-- Primera columna: Foto -->
+                    <td class="photo-cell">
+                        <img src="storage/{{ $photo->url }}" alt="Foto" class="photo">
+                    </td>
+                    <!-- Segunda columna: Datos personales -->
+                    <td class="personal-info-cell">
+                        <div class="name-title">
+                            <h1>{{ $curriculum->first_name }} {{ $curriculum->last_name }}</h1>
+                            <h2>{{ $curriculum->professional_title }}</h2>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         </div>
+
+        <table class="aligned-table">
+            <tr>
+                <td class="left-cell">{{ $curriculum->email }}</td>
+                <td class="right-cell">{{ $curriculum->locality }}, {{ $curriculum->state }}, {{ $curriculum->country }}
+                </td>
+
+            </tr>
+            <tr>
+                <td class="left-cell">{{ $curriculum->phone_num ?? 'No registrado' }}</td>
+                <td class="right-cell">{{ $curriculum->linkedin }}</td>
+            </tr>
+        </table>
+
 
         <!-- Resumen profesional -->
         <div class="section">
