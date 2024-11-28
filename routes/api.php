@@ -58,4 +58,14 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('createAcademic', [CurriculumController::class, 'storeAcademicInformation']);
     Route::post('updateAcademic', [CurriculumController::class, 'updateAcademicInformation']);
     Route::delete('deleteAcademic/{id}', [CurriculumController::class, 'destroyAcademicInformatio']);
+
+    // CONTINUING EDUCATION TABLE
+    Route::post('createEducation', [CurriculumController::class, 'storeContinuingEducation']);
+    Route::post('updateEducation', [CurriculumController::class, 'updateContinuingEducation']);
+    Route::delete('deleteEducation/{id}', [CurriculumController::class, 'destroyContinuingEducation']);
+
+    // CONTINUING EDUCATION TABLE
+    Route::post('createKnowledge', [CurriculumController::class, 'storeTechnicalKnowledge']);
+    Route::post('updateKnowledge', [CurriculumController::class, 'updateTechnicalKnowledge']);
+    Route::delete('deleteKnowledge/{id}', [CurriculumController::class, 'destroyTechnicalKnowledge']);
 });

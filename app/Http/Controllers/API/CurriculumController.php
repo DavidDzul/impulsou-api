@@ -15,6 +15,10 @@ use App\Models\ContinuingEducation;
 use App\Models\TechnicalKnowledge;
 use App\Http\Requests\SaveAcademicInformationRequest;
 use App\Http\Requests\UpdateAcademicInformationRequest;
+use App\Http\Requests\SaveContinuingEducationRequest;
+use App\Http\Requests\SaveTechnicalKnowledgeRequest;
+use App\Http\Requests\UpdateContinuingEducationRequest;
+use App\Http\Requests\UpdateTechnicalKnowledgeRequest;
 
 class CurriculumController extends Controller
 {
@@ -168,6 +172,111 @@ class CurriculumController extends Controller
         $academic = AcademicInformation::find($id);
         if ($academic) {
             $academic->delete();
+            return response()->json([
+                'res' => true,
+                "msg" => "Eliminado con  éxito",
+            ], 200);
+        } else {
+            return response()->json([
+                'res' => false,
+                "msg" => "Error al eliminar",
+            ], 404);
+        }
+    }
+
+    public function storeContinuingEducation(SaveContinuingEducationRequest $request)
+    {
+
+        $education = new ContinuingEducation();
+        $education->user_id = auth()->id();
+        $education->course_name = $request->course_name;
+        $education->course_institute = $request->course_institute;
+        $education->course_start_date = $request->course_start_date;
+        $education->course_end_date = $request->course_end_date;
+
+        $education->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Información agregada con éxito',
+            "createEducation" => $education
+        ], 200);
+    }
+
+
+    public function updateContinuingEducation(UpdateContinuingEducationRequest $request)
+    {
+        $education = ContinuingEducation::find($request->id);
+        $education->course_name = $request->course_name;
+        $education->course_institute = $request->course_institute;
+        $education->course_start_date = $request->course_start_date;
+        $education->course_end_date = $request->course_end_date;
+
+        $education->save();
+        return response()->json([
+            'res' => true,
+            "msg" => "Actualización con  éxito",
+            "updateEducation" => $education
+        ], 200);
+    }
+
+    public function destroyContinuingEducation($id)
+    {
+        $education = ContinuingEducation::find($id);
+        if ($education) {
+            $education->delete();
+            return response()->json([
+                'res' => true,
+                "msg" => "Eliminado con  éxito",
+            ], 200);
+        } else {
+            return response()->json([
+                'res' => false,
+                "msg" => "Error al eliminar",
+            ], 404);
+        }
+    }
+
+    public function storeTechnicalKnowledge(SaveTechnicalKnowledgeRequest $request)
+    {
+
+        $knowledge = new TechnicalKnowledge();
+        $knowledge->user_id = auth()->id();
+        $knowledge->type = $request->type;
+        $knowledge->other_knowledge = $request->other_knowledge;
+        $knowledge->description_knowledge = $request->description_knowledge;
+        $knowledge->level = $request->level;
+
+        $knowledge->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Información agregada con éxito',
+            "createKnowledge" => $knowledge
+        ], 200);
+    }
+
+    public function updateTechnicalKnowledge(UpdateTechnicalKnowledgeRequest $request)
+    {
+        $knowledge = TechnicalKnowledge::find($request->id);
+        $knowledge->type = $request->type;
+        $knowledge->other_knowledge = $request->other_knowledge;
+        $knowledge->description_knowledge = $request->description_knowledge;
+        $knowledge->level = $request->level;
+
+        $knowledge->save();
+        return response()->json([
+            'res' => true,
+            "msg" => "Actualización con  éxito",
+            "updateKnowledge" => $knowledge
+        ], 200);
+    }
+
+    public function destroyTechnicalKnowledge($id)
+    {
+        $knowledge = TechnicalKnowledge::find($id);
+        if ($knowledge) {
+            $knowledge->delete();
             return response()->json([
                 'res' => true,
                 "msg" => "Eliminado con  éxito",
