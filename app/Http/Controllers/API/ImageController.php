@@ -6,29 +6,45 @@ use App\Http\Controllers\Controller;
 use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 
 class ImageController extends Controller
 {
     public function uploadImage(Request $request)
     {
 
-        $image = new Image();
         $request->validate([
-            'url' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            'url' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
         ]);
+
+        $existingImage = Image::where('user_id', auth()->id())->first();
 
         $name = null;
         if ($request->hasFile('url')) {
             $name = $request->file('url')->store('images', 'public');
+
+            if ($existingImage && $existingImage->url) {
+                $destination = public_path("storage\\" . $existingImage->url);
+                if (File::exists($destination)) {
+                    File::delete($destination);
+                }
+            }
         }
 
-        $image->user_id = auth()->id();
-        $image->url = $name;
-        $image->save();
+        if ($existingImage) {
+            $existingImage->update(['url' => $name]);
+            $image = $existingImage;
+        } else {
+            $image = Image::create([
+                'user_id' => auth()->id(),
+                'url' => $name,
+            ]);
+        }
+
         return response()->json([
             'res' => true,
-            "msg" => "Agregado con éxito",
-            "image" => $image
+            'msg' => $existingImage ? "Imagen actualizada con éxito" : "Imagen agregada con éxito",
+            'image' => $image,
         ], 200);
     }
 

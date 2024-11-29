@@ -36,6 +36,7 @@ class SaveCurriculumRequest extends FormRequest
             "locality" => "required",
             "professional_title" => "required",
             "professional_summary" => "required",
+            "skill_1" => "nullable"
         ];
     }
 }

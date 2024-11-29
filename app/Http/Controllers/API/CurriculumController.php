@@ -44,33 +44,36 @@ class CurriculumController extends Controller
 
     public function store(SaveCurriculumRequest $request)
     {
-        $curriculum = new Curriculum;
-        $curriculum->user_id = auth()->id();
-        $curriculum->first_name = $request->first_name;
-        $curriculum->last_name = $request->last_name;
-        $curriculum->email = $request->email;
-        $curriculum->day_birth = $request->day_birth;
-        $curriculum->month_birth = $request->month_birth;
-        $curriculum->year_birth = $request->year_birth;
-        $curriculum->phone_num = $request->phone_num;
-        $curriculum->country = $request->country;
-        $curriculum->state = $request->state;
-        $curriculum->locality = $request->locality;
-        $curriculum->professional_title = $request->professional_title;
-        $curriculum->professional_summary = $request->professional_summary;
-        $curriculum->linkedin = $request->linkedin;
-        $curriculum->skill_1 = $request->skill_1;
-        $curriculum->skill_2 = $request->skill_2;
-        $curriculum->skill_3 = $request->skill_3;
-        $curriculum->skill_4 = $request->skill_4;
-        $curriculum->skill_5 = $request->skill_5;
-
-        $curriculum->save();
+        $curriculum = Curriculum::updateOrCreate(
+            ['user_id' => auth()->id()],
+            [
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'email' => $request->email,
+                'day_birth' => $request->day_birth,
+                'month_birth' => $request->month_birth,
+                'year_birth' => $request->year_birth,
+                'phone_num' => $request->phone_num,
+                'country' => $request->country,
+                'state' => $request->state,
+                'locality' => $request->locality,
+                'professional_title' => $request->professional_title,
+                'professional_summary' => $request->professional_summary,
+                'linkedin' => $request->linkedin,
+                'skill_1' => $request->skill_1,
+                'skill_2' => $request->skill_2,
+                'skill_3' => $request->skill_3,
+                'skill_4' => $request->skill_4,
+                'skill_5' => $request->skill_5,
+            ]
+        );
 
         return response()->json([
             'res' => true,
-            'msg' => 'Información personal agregada con éxito',
-            "curriculum" => $curriculum
+            'msg' => $curriculum->wasRecentlyCreated
+                ? 'Información personal creada con éxito'
+                : 'Información personal actualizada con éxito',
+            'curriculum' => $curriculum,
         ], 200);
     }
 
