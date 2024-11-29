@@ -68,4 +68,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('createKnowledge', [CurriculumController::class, 'storeTechnicalKnowledge']);
     Route::post('updateKnowledge', [CurriculumController::class, 'updateTechnicalKnowledge']);
     Route::delete('deleteKnowledge/{id}', [CurriculumController::class, 'destroyTechnicalKnowledge']);
+
+    // CURRICULUM STATUS
+    Route::post('updateStatusCV', [CurriculumController::class, 'updateCurriculumStatus']);
 });

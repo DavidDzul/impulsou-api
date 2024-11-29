@@ -25,6 +25,7 @@ class UserSeeder extends Seeder
             "phone" => "+529911071509",
             "campus" => "MERIDA",
             "user_type" => "BUSINESS",
+            "generation_id" => null,
             "active" => 1,
         ])->assignRole('DIAMOND');
 
@@ -36,6 +37,7 @@ class UserSeeder extends Seeder
             "phone" => "+529911071509",
             "campus" => "MERIDA",
             "user_type" => "BEC_ACTIVE",
+            "generation_id" => null,
             "active" => 1,
         ]);
     }

@@ -34,6 +34,7 @@ class CreateCurriculumTable extends Migration
             $table->string('skill_3')->nullable();
             $table->string('skill_4')->nullable();
             $table->string('skill_5')->nullable();
+            $table->boolean('public')->default(false);
             $table->timestamps();
         });
     }

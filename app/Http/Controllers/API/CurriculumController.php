@@ -65,6 +65,7 @@ class CurriculumController extends Controller
                 'skill_3' => $request->skill_3,
                 'skill_4' => $request->skill_4,
                 'skill_5' => $request->skill_5,
+                'public' => $request->public,
             ]
         );
 
@@ -290,5 +291,26 @@ class CurriculumController extends Controller
                 "msg" => "Error al eliminar",
             ], 404);
         }
+    }
+
+    public function updateCurriculumStatus()
+    {
+        $curriculum = Curriculum::where('user_id', auth()->id())->first();
+
+        if (!$curriculum) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Curriculum no encontrado para el usuario autenticado.'
+            ], 404);
+        }
+
+        $curriculum->public = !$curriculum->public;
+        $curriculum->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Estado actualizado con éxito',
+            'curriculum' => $curriculum
+        ], 200);
     }
 }
