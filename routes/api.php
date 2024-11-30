@@ -8,6 +8,7 @@ use App\Http\Controllers\API\UserController;
 use App\Http\Controllers\API\ImageController;
 use App\Http\Controllers\API\CurriculumController;
 use App\Http\Controllers\API\PDFController;
+use App\Http\Controllers\API\BusinessController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -71,4 +72,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     // CURRICULUM STATUS
     Route::post('updateStatusCV', [CurriculumController::class, 'updateCurriculumStatus']);
+
+    // BUSINESS
+    Route::get('fetchBusiness', [BusinessController::class, 'index']);
 });
