@@ -75,4 +75,5 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     // BUSINESS
     Route::get('fetchBusiness', [BusinessController::class, 'index']);
+    Route::post('updateBusiness', [BusinessController::class, 'updateBusinessInformation']);
 });

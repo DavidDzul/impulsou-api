@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Image;
 use App\Models\BusinessData;
+use App\Http\Requests\UpdateBusinessInformationRequest;
 
 class BusinessController extends Controller
 {
@@ -19,5 +20,29 @@ class BusinessController extends Controller
             'images' => $images,
             'businessData' => $businessData
         ]);
+    }
+
+    public function updateBusinessInformation(UpdateBusinessInformationRequest $request)
+    {
+        $business = BusinessData::find($request->id);
+        $business->bs_name = $request->bs_name;
+        $business->bs_director = $request->bs_director;
+        $business->bs_rfc = $request->bs_rfc;
+        $business->bs_country = $request->bs_country;
+        $business->bs_state = $request->bs_state;
+        $business->bs_locality = $request->bs_locality;
+        $business->bs_adrress = $request->bs_adrress;
+        $business->bs_telphone = $request->bs_telphone;
+        $business->bs_line = $request->bs_line;
+        $business->bs_description = $request->bs_description;
+        $business->bs_website = $request->bs_website;
+        $business->bs_other_line = $request->bs_other_line;
+
+        $business->save();
+        return response()->json([
+            'res' => true,
+            "msg" => "Actualización con  éxito",
+            "updateBusiness" => $business
+        ], 200);
     }
 }
