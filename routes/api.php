@@ -78,7 +78,9 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('fetchVacancies', [BusinessController::class, 'getAllvacancies']);
     Route::post('updateBusiness', [BusinessController::class, 'updateBusinessInformation']);
     Route::post('createVacant', [BusinessController::class, 'storeVacantPosition']);
+    Route::post('createPractice', [BusinessController::class, 'storePracticeVacant']);
     Route::post('updateVacant', [BusinessController::class, 'updateVacantPosition']);
+    Route::post('updatePractice', [BusinessController::class, 'updatePracticeVacant']);
     Route::delete('deleteVacant/{id}', [BusinessController::class, 'destroyVacantPosition']);
     Route::post('updateStatusVacant/{id}', [BusinessController::class, 'updateVacantPositionStatus']);
 });

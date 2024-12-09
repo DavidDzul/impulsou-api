@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SavePracticeVacantRequest;
 use App\Http\Requests\SaveVacantPositionRequest;
 use Illuminate\Http\Request;
 use App\Models\Image;
 use App\Models\BusinessData;
 use App\Http\Requests\UpdateBusinessInformationRequest;
+use App\Http\Requests\UpdatePracticeVacantRequest;
 use App\Http\Requests\UpdateVacantPositionRequest;
 use App\Models\VacantPosition;
 
@@ -68,9 +70,7 @@ class BusinessController extends Controller
         $vacant->category = $request->category;
         $vacant->activities = $request->activities;
         $vacant->study_profile = $request->study_profile;
-        $vacant->financial_support = $request->financial_support;
         $vacant->net_salary = $request->net_salary;
-        $vacant->support_amount = $request->support_amount;
         $vacant->start_day = $request->start_day;
         $vacant->end_day = $request->end_day;
         $vacant->start_hour = $request->start_hour;
@@ -85,7 +85,6 @@ class BusinessController extends Controller
         $vacant->software_description = $request->software_description;
         $vacant->skills = $request->skills;
         $vacant->observations = $request->observations;
-        $vacant->semester = $request->semester;
         $vacant->general_knowledge = $request->general_knowledge;
         $vacant->knowledge_description = $request->knowledge_description;
         $vacant->employment_contract = $request->employment_contract;
@@ -121,6 +120,46 @@ class BusinessController extends Controller
             "createVacant" => $vacant
         ], 200);
     }
+
+    public function storePracticeVacant(SavePracticeVacantRequest $request)
+    {
+
+        $vacant = new VacantPosition;
+        $vacant->user_id = auth()->id();
+        $vacant->vacant_name = $request->vacant_name;
+        $vacant->category = $request->category;
+        $vacant->activities = $request->activities;
+        $vacant->study_profile = $request->study_profile;
+        $vacant->financial_support = $request->financial_support;
+        $vacant->support_amount = $request->support_amount;
+
+        $vacant->start_day = $request->start_day;
+        $vacant->end_day = $request->end_day;
+        $vacant->start_hour = $request->start_hour;
+        $vacant->end_hour = $request->end_hour;
+        $vacant->semester = $request->semester;
+        $vacant->software_use = $request->software_use;
+        $vacant->software_description = $request->software_description;
+        $vacant->skills = $request->skills;
+        $vacant->general_knowledge = $request->general_knowledge;
+        $vacant->knowledge_description = $request->knowledge_description;
+
+        $vacant->contact_name = $request->contact_name;
+        $vacant->contact_position = $request->contact_position;
+        $vacant->contact_telphone = $request->contact_telphone;
+        $vacant->contact_email = $request->contact_email;
+        $vacant->status = true;
+
+        $vacant->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Información agregada con éxito',
+            "createPractice" => $vacant
+        ], 200);
+    }
+
+
 
     public function updateVacantPosition(UpdateVacantPositionRequest $request)
     {
@@ -180,6 +219,41 @@ class BusinessController extends Controller
             'res' => true,
             'msg' => 'Actualización con éxito',
             "updateVacant" => $vacant
+        ], 200);
+    }
+
+    public function updatePracticeVacant(UpdatePracticeVacantRequest $request)
+    {
+
+        $vacant = VacantPosition::find($request->id);
+        $vacant->vacant_name = $request->vacant_name;
+        $vacant->activities = $request->activities;
+        $vacant->study_profile = $request->study_profile;
+        $vacant->financial_support = $request->financial_support;
+        $vacant->support_amount = $request->support_amount;
+
+        $vacant->start_day = $request->start_day;
+        $vacant->end_day = $request->end_day;
+        $vacant->start_hour = $request->start_hour;
+        $vacant->end_hour = $request->end_hour;
+        $vacant->semester = $request->semester;
+        $vacant->software_use = $request->software_use;
+        $vacant->software_description = $request->software_description;
+        $vacant->skills = $request->skills;
+        $vacant->general_knowledge = $request->general_knowledge;
+        $vacant->knowledge_description = $request->knowledge_description;
+
+        $vacant->contact_name = $request->contact_name;
+        $vacant->contact_position = $request->contact_position;
+        $vacant->contact_telphone = $request->contact_telphone;
+        $vacant->contact_email = $request->contact_email;
+
+        $vacant->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Actualización con éxito',
+            "updatePractice" => $vacant
         ], 200);
     }
 
