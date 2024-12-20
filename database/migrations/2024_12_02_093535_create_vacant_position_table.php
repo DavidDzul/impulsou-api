@@ -26,10 +26,14 @@ class CreateVacantPositionTable extends Migration
             $table->string('start_day');
             $table->string('end_day');
             $table->string('start_hour');
+            $table->string('start_minute');
             $table->string('end_hour');
+            $table->string('end_minute');
             $table->boolean('saturday_hour')->nullable()->default(false);
-            $table->string('saturday_start_day')->nullable();
-            $table->string('saturday_end_day')->nullable();
+            $table->string('saturday_start_hour')->nullable();
+            $table->string('saturday_start_minute')->nullable();
+            $table->string('saturday_end_hour')->nullable();
+            $table->string('saturday_end_minute')->nullable();
             $table->text('additional_time_info')->nullable();
             $table->boolean('experience')->nullable()->default(false);
             $table->text('experience_description')->nullable();
