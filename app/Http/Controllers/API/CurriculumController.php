@@ -65,7 +65,7 @@ class CurriculumController extends Controller
                 'skill_3' => $request->skill_3,
                 'skill_4' => $request->skill_4,
                 'skill_5' => $request->skill_5,
-                'public' => $request->public,
+                'public' => $request->public || 0,
             ]
         );
 

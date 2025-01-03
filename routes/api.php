@@ -49,7 +49,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('createPersonalData', [CurriculumController::class, 'store']);
 
     //GENERATE PDF
-    Route::get('fetchPDF', [PDFController::class, 'generatePDF']);
+    Route::get('fetchPDF/{id}', [PDFController::class, 'generatePDF']);
 
     // WORK EXPERIENCE TABLE
     Route::post('createWork', [CurriculumController::class, 'storeWorkExperience']);
