@@ -70,6 +70,7 @@ class CreateVacantPositionTable extends Migration
             $table->string('contact_telphone');
             $table->string('contact_email');
             $table->boolean('status')->default(false);
+            $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->timestamps();
         });
     }

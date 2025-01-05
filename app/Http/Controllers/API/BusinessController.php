@@ -115,6 +115,7 @@ class BusinessController extends Controller
         $vacant->contact_telphone = $request->contact_telphone;
         $vacant->contact_email = $request->contact_email;
         $vacant->status = true;
+        $vacant->campus = auth()->user()->campus;
 
         $vacant->save();
 
