@@ -313,4 +313,12 @@ class CurriculumController extends Controller
             'curriculum' => $curriculum
         ], 200);
     }
+
+    public function getAllCandidates()
+    {
+        $candidates = Curriculum::where('public', true)->get();
+        return response()->json([
+            'candidates' => $candidates
+        ]);
+    }
 }

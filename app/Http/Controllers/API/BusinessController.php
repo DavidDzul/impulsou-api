@@ -12,6 +12,10 @@ use App\Http\Requests\UpdateBusinessInformationRequest;
 use App\Http\Requests\UpdatePracticeVacantRequest;
 use App\Http\Requests\UpdateVacantPositionRequest;
 use App\Models\VacantPosition;
+use App\Models\BusinessVisualization;
+use App\Models\Curriculum;
+use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Log;
 
 class BusinessController extends Controller
 {
@@ -63,9 +67,27 @@ class BusinessController extends Controller
 
     public function storeVacantPosition(SaveVacantPositionRequest $request)
     {
+        $user = auth()->user();
+        $role = $user->roles->first();
 
-        $vacant = new VacantPosition;
-        $vacant->user_id = auth()->id();
+        if (!$role) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'El usuario no tiene un rol asignado.'
+            ], 403);
+        }
+
+        $currentVacancies = VacantPosition::where('user_id', $user->id)->count();
+
+        if ($role->num_vacancies !== null && $currentVacancies >= $role->num_vacancies) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
+            ], 403);
+        }
+
+        $vacant = new VacantPosition();
+        $vacant->user_id = $user->id;
         $vacant->vacant_name = $request->vacant_name;
         $vacant->category = $request->category;
         $vacant->activities = $request->activities;
@@ -115,19 +137,38 @@ class BusinessController extends Controller
         $vacant->contact_telphone = $request->contact_telphone;
         $vacant->contact_email = $request->contact_email;
         $vacant->status = true;
-        $vacant->campus = auth()->user()->campus;
+        $vacant->campus = $user->campus;
 
         $vacant->save();
 
         return response()->json([
             'res' => true,
             'msg' => 'Información agregada con éxito',
-            "createVacant" => $vacant
+            'createVacant' => $vacant
         ], 200);
     }
 
     public function storePracticeVacant(SavePracticeVacantRequest $request)
     {
+
+        $user = auth()->user();
+        $role = $user->roles->first();
+
+        if (!$role) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'El usuario no tiene un rol asignado.'
+            ], 403);
+        }
+
+        $currentVacancies = VacantPosition::where('user_id', $user->id)->count();
+
+        if ($role->num_vacancies !== null && $currentVacancies >= $role->num_vacancies) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
+            ], 403);
+        }
 
         $vacant = new VacantPosition;
         $vacant->user_id = auth()->id();
@@ -306,5 +347,46 @@ class BusinessController extends Controller
             'msg' => 'Estado actualizado con éxito',
             'vacant' => $vacant
         ], 200);
+    }
+
+    public function visualizeCv($cvId)
+    {
+        $user = auth()->user();
+        $role = $user->roles->first();
+
+        if (!$role) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'El usuario no tiene un rol asignado.'
+            ], 403);
+        }
+
+        $cvExists = Curriculum::find($cvId);
+        if (!$cvExists) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'El CV no existe.',
+            ], 404);
+        }
+
+        $currentVisualizations = BusinessVisualization::where('user_id', $user->id)->count();
+
+        if ($currentVisualizations >= $role->num_visualizations) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Has alcanzado el límite máximo de visualizaciones permitido por tu rol.'
+            ], 403);
+        }
+
+        BusinessVisualization::create([
+            'user_id' => $user->id,
+            'cv_id' => $cvId,
+        ]);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Visualización registrada con éxito.',
+            'current_visualizations' => $currentVisualizations + 1,
+        ]);
     }
 }

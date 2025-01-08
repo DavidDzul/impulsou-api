@@ -78,4 +78,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(TechnicalKnowledge::class, 'user_id', 'id');
     }
+
+    public function vacantPositions()
+    {
+        return $this->hasMany(VacantPosition::class, 'user_id');
+    }
 }

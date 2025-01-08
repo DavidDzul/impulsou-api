@@ -15,13 +15,65 @@ use App\Models\WorkExperience;
 use App\Models\AcademicInformation;
 use App\Models\ContinuingEducation;
 use App\Models\TechnicalKnowledge;
+use App\Models\BusinessVisualization;
 
 class PDFController extends Controller
 {
+    public function validateAndGeneratePDF($id)
+    {
+        try {
+            $authUser = auth()->user();
+            $role = $authUser->roles->first();
+
+            $cvExists = Curriculum::find($id);
+            if (!$cvExists) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'El CV no existe.',
+                ], 404);
+            }
+
+            // Obtener el user_id del CV
+            $cvOwnerId = $cvExists->user_id;
+
+            if (!$role) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'No tienes un rol asignado para realizar esta acción.',
+                ], 403);
+            }
+
+            $currentVisualizations = BusinessVisualization::where('user_id', $authUser->id)->count();
+
+            if ($currentVisualizations >= $role->num_visualizations) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'Has alcanzado el límite máximo de visualizaciones permitido por tu rol.',
+                ], 403);
+            }
+
+            // Registrar la visualización
+            BusinessVisualization::create([
+                'user_id' => $authUser->id,
+                'cv_id' => $id,
+            ]);
+
+            // Si pasa la validación, llamar a la función generatePDF
+            return $this->generatePDF($cvOwnerId);
+        } catch (Exception $e) {
+            Log::error('Error al validar visualizaciones o generar el PDF: ' . $e->getMessage());
+
+            return response()->json([
+                'error' => 'Hubo un problema al validar las visualizaciones.',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
     public function generatePDF($id)
     {
         try {
-            // Asegúrate de que se envía este parámetro
 
             $curriculum = Curriculum::where('user_id', $id)->first();
             $photo = Image::where('user_id', $id)->first();
@@ -30,7 +82,6 @@ class PDFController extends Controller
             $education = ContinuingEducation::where('user_id', $id)->get();
             $skills = TechnicalKnowledge::where('user_id', $id)->get();
 
-            // Generar el PDF
             $pdf = Pdf::loadView('pdf.template', [
                 'photo' => $photo,
                 'curriculum' => $curriculum,
@@ -40,13 +91,9 @@ class PDFController extends Controller
                 'skills' => $skills,
             ]);
 
-            // Retornar el PDF como descarga
             return $pdf->download("User_{$id}_Curriculum.pdf");
         } catch (Exception $e) {
-            // Registrar el error
             Log::error('Error al generar el PDF: ' . $e->getMessage());
-
-            // Retornar un error 500
             return response()->json([
                 'error' => 'Hubo un problema al generar el PDF.',
                 'message' => $e->getMessage()

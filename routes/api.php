@@ -10,6 +10,8 @@ use App\Http\Controllers\API\CurriculumController;
 use App\Http\Controllers\API\PDFController;
 use App\Http\Controllers\API\BusinessController;
 use App\Http\Controllers\API\VacantController;
+use App\Models\Curriculum;
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -50,6 +52,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     //GENERATE PDF
     Route::get('fetchPDF/{id}', [PDFController::class, 'generatePDF']);
+    Route::get('fetchValidatePDF/{id}', [PDFController::class, 'validateAndGeneratePDF']);
 
     // WORK EXPERIENCE TABLE
     Route::post('createWork', [CurriculumController::class, 'storeWorkExperience']);
@@ -73,6 +76,8 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     // CURRICULUM STATUS
     Route::post('updateStatusCV', [CurriculumController::class, 'updateCurriculumStatus']);
+    // GET ALL CANDIDATES
+    Route::get('fetchCandidates', [CurriculumController::class, 'getAllCandidates']);
 
     // BUSINESS
     Route::get('fetchBusiness', [BusinessController::class, 'index']);
