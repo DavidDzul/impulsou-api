@@ -22,6 +22,7 @@ class CreateUsersTable extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->string('phone');
+            $table->string('workstation')->nullable();
             $table->enum("user_type", ["ADMIN", "BEC_ACTIVE", "BEC_INACTIVE", "BUSINESS"]);
             $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->foreignId('generation_id')->nullable()->constrained('generations')->default(null);
