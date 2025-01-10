@@ -55,10 +55,7 @@ class VacantPosition extends Model
         'loans',
         'other',
         'benefit_description',
-        'contact_name',
-        'contact_position',
-        'contact_telphone',
-        'contact_email'
+
     ];
 
     public function image()

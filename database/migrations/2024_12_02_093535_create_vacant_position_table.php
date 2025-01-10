@@ -65,10 +65,6 @@ class CreateVacantPositionTable extends Migration
             $table->boolean('other')->nullable()->default(false);
             $table->string('benefit_description')->nullable();
 
-            // $table->string('contact_name');
-            // $table->string('contact_position');
-            // $table->string('contact_telphone');
-            // $table->string('contact_email');
             $table->boolean('status')->default(false);
             $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->timestamps();

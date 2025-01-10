@@ -35,10 +35,6 @@ class UpdateVacantPositionRequest extends FormRequest
             "end_hour" => "required",
             "end_minute" => "required",
             "skills" => "required",
-            "contact_name" => "required",
-            "contact_position" => "required",
-            "contact_telphone" => "required",
-            "contact_email" => "required",
 
             "financial_support" => "nullable|boolean",
             "saturday_hour" => "nullable|boolean",

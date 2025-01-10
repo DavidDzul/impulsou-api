@@ -10,6 +10,7 @@ use App\Http\Controllers\API\CurriculumController;
 use App\Http\Controllers\API\PDFController;
 use App\Http\Controllers\API\BusinessController;
 use App\Http\Controllers\API\VacantController;
+use App\Http\Controllers\API\JobApplicationController;
 use App\Models\Curriculum;
 
 /*
@@ -89,6 +90,12 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('updatePractice', [BusinessController::class, 'updatePracticeVacant']);
     Route::delete('deleteVacant/{id}', [BusinessController::class, 'destroyVacantPosition']);
     Route::post('updateStatusVacant/{id}', [BusinessController::class, 'updateVacantPositionStatus']);
+
+    //JOB APPLICATIONS
+    Route::post('createApplication', [JobApplicationController::class, 'store']);
+    Route::get('fetchUserApplications', [JobApplicationController::class, 'getUserApplications']);
+    Route::get('fetchBusinessApplications', [JobApplicationController::class, 'getBusinessApplications']);
+    Route::delete('deleteApplication/{id}', [JobApplicationController::class, 'destroyApplication']);
 
     Route::get('fetchVacantList', [VacantController::class, 'getVacantList']);
     Route::get('getVacant/{id}', [VacantController::class, 'showVacant']);

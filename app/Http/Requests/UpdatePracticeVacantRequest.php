@@ -36,11 +36,6 @@ class UpdatePracticeVacantRequest extends FormRequest
             "end_hour" => "required",
             "semester" => "required",
             "skills" => "required",
-
-            "contact_name" => "required",
-            "contact_position" => "required",
-            "contact_telphone" => "required",
-            "contact_email" => "required",
         ];
     }
 }

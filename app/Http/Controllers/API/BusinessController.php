@@ -132,10 +132,7 @@ class BusinessController extends Controller
         $vacant->loans = $request->loans;
         $vacant->other = $request->other;
         $vacant->benefit_description = $request->benefit_description;
-        $vacant->contact_name = $request->contact_name;
-        $vacant->contact_position = $request->contact_position;
-        $vacant->contact_telphone = $request->contact_telphone;
-        $vacant->contact_email = $request->contact_email;
+
         $vacant->status = true;
         $vacant->campus = $user->campus;
 
@@ -192,10 +189,6 @@ class BusinessController extends Controller
         $vacant->general_knowledge = $request->general_knowledge;
         $vacant->knowledge_description = $request->knowledge_description;
 
-        $vacant->contact_name = $request->contact_name;
-        $vacant->contact_position = $request->contact_position;
-        $vacant->contact_telphone = $request->contact_telphone;
-        $vacant->contact_email = $request->contact_email;
         $vacant->status = true;
 
         $vacant->save();
@@ -259,10 +252,6 @@ class BusinessController extends Controller
         $vacant->loans = $request->loans;
         $vacant->other = $request->other;
         $vacant->benefit_description = $request->benefit_description;
-        $vacant->contact_name = $request->contact_name;
-        $vacant->contact_position = $request->contact_position;
-        $vacant->contact_telphone = $request->contact_telphone;
-        $vacant->contact_email = $request->contact_email;
         $vacant->status = true;
 
         $vacant->save();
@@ -296,11 +285,6 @@ class BusinessController extends Controller
         $vacant->skills = $request->skills;
         $vacant->general_knowledge = $request->general_knowledge;
         $vacant->knowledge_description = $request->knowledge_description;
-
-        $vacant->contact_name = $request->contact_name;
-        $vacant->contact_position = $request->contact_position;
-        $vacant->contact_telphone = $request->contact_telphone;
-        $vacant->contact_email = $request->contact_email;
 
         $vacant->save();
 
@@ -347,46 +331,5 @@ class BusinessController extends Controller
             'msg' => 'Estado actualizado con éxito',
             'vacant' => $vacant
         ], 200);
-    }
-
-    public function visualizeCv($cvId)
-    {
-        $user = auth()->user();
-        $role = $user->roles->first();
-
-        if (!$role) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'El usuario no tiene un rol asignado.'
-            ], 403);
-        }
-
-        $cvExists = Curriculum::find($cvId);
-        if (!$cvExists) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'El CV no existe.',
-            ], 404);
-        }
-
-        $currentVisualizations = BusinessVisualization::where('user_id', $user->id)->count();
-
-        if ($currentVisualizations >= $role->num_visualizations) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'Has alcanzado el límite máximo de visualizaciones permitido por tu rol.'
-            ], 403);
-        }
-
-        BusinessVisualization::create([
-            'user_id' => $user->id,
-            'cv_id' => $cvId,
-        ]);
-
-        return response()->json([
-            'res' => true,
-            'msg' => 'Visualización registrada con éxito.',
-            'current_visualizations' => $currentVisualizations + 1,
-        ]);
     }
 }
