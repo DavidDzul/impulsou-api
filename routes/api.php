@@ -46,6 +46,7 @@ Route::post('login', [AuthController::class, 'login']);
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('logout', [AuthController::class, 'logout']);
+    Route::post('updateUser', [AuthController::class, 'updateUser']);
 
     Route::post('createImage', [ImageController::class, 'uploadImage']);
     Route::get('fetchCurriculum', [CurriculumController::class, 'index']);

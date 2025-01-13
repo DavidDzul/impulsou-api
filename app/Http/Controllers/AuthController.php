@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
+use App\Http\Requests\UpdateUserRequest;
 
 class AuthController extends Controller
 {
@@ -35,6 +36,31 @@ class AuthController extends Controller
         return response()->json([
             "res" => true,
             "msg" => "Token eliminado con éxito"
+        ], 200);
+    }
+
+    public function updateUser(UpdateUserRequest $request)
+    {
+        $user = User::findOrFail($request->id);
+
+        // Actualizar los datos del usuario
+        $user->first_name = $request->first_name;
+        $user->last_name = $request->last_name;
+        $user->email = $request->email;
+
+        // Solo actualizar la contraseña si se envía
+        if ($request->filled('password')) {
+            $user->password = bcrypt($request->password);
+        }
+
+        $user->phone = $request->phone;
+
+        $user->save();
+
+        return response()->json([
+            'res' => true,
+            "msg" => "Actualización realizada con éxito",
+            "user" => $user
         ], 200);
     }
 }

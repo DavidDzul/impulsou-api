@@ -16,6 +16,7 @@ use App\Models\BusinessVisualization;
 use App\Models\Curriculum;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Log;
+use App\Models\JobApplication;
 
 class BusinessController extends Controller
 {
@@ -299,6 +300,7 @@ class BusinessController extends Controller
     {
         $vacant = VacantPosition::find($id);
         if ($vacant) {
+            JobApplication::where('vacant_id', $id)->delete();
             $vacant->delete();
             return response()->json([
                 'res' => true,
@@ -312,24 +314,37 @@ class BusinessController extends Controller
         }
     }
 
-    public function updateVacantPositionStatus($id)
+
+    public function updateVacantPositionStatus(Request $request, $id)
     {
-        $vacant = VacantPosition::where('id', $id)->first();
+        $vacant = VacantPosition::find($id);
 
         if (!$vacant) {
             return response()->json([
                 'res' => false,
-                'msg' => 'La vacante no ha sido encontrada.'
+                'msg' => 'La vacante no ha sido encontrada.',
             ], 404);
         }
 
+        // Validar el campo candidate_type solo si la vacante está siendo desactivada
+        $validatedData = [];
+        if ($vacant->status) { // Si está activa y va a desactivarse
+            $validatedData = $request->validate([
+                'candidate_type' => 'required|in:INTERNAL,EXTERNAL,NOT_COVERED',
+            ]);
+            $vacant->candidate_type = $validatedData['candidate_type'];
+        } else { // Si estaba inactiva y va a activarse
+            $vacant->candidate_type = null; // O "NOT_COVERED"
+        }
+
+        // Cambiar el estado de la vacante
         $vacant->status = !$vacant->status;
         $vacant->save();
 
         return response()->json([
             'res' => true,
-            'msg' => 'Estado actualizado con éxito',
-            'vacant' => $vacant
+            'msg' => 'Estado actualizado con éxito.',
+            'vacant' => $vacant,
         ], 200);
     }
 }

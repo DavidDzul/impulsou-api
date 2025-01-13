@@ -66,6 +66,7 @@ class CreateVacantPositionTable extends Migration
             $table->string('benefit_description')->nullable();
 
             $table->boolean('status')->default(false);
+            $table->enum("candidate_type", ["INTERNAL", "EXTERNAL", "NOT_COVERED"])->nullable(true);
             $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->timestamps();
         });

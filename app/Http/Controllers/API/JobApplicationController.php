@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\JobApplication;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\JobApplicationCreateMail;
+use App\Models\User;
+use App\Models\VacantPosition;
 
 class JobApplicationController extends Controller
 {
@@ -38,6 +42,16 @@ class JobApplicationController extends Controller
             ], 409);
         }
 
+        // Buscar el email del usuario relacionado al business_id
+        $userEmail = User::where('id', $request->business_id)->value('email');
+
+        if (!$userEmail) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'No se encontró un usuario con el business_id proporcionado.',
+            ], 404);
+        }
+
         // Crear una nueva solicitud de trabajo
         $application = JobApplication::create([
             'user_id' => $request->user_id,
@@ -45,12 +59,27 @@ class JobApplicationController extends Controller
             'vacant_id' => $request->vacant_id,
         ]);
 
+        // Enviar el correo electrónico
+        try {
+            $vacant = VacantPosition::where('id', $request->vacant_id)->value('vacant_name');
+            $mail = new JobApplicationCreateMail($vacant);
+            Mail::to($userEmail)->send($mail);
+        } catch (\Exception $e) {
+            return response()->json([
+                'res' => true,
+                'msg' => 'Solicitud creada, pero hubo un problema al enviar el correo de notificación.',
+                'data' => $application,
+                'error' => $e->getMessage(),
+            ], 201);
+        }
+
         return response()->json([
             'res' => true,
-            'msg' => 'Solicitud creada exitosamente.',
+            'msg' => 'Solicitud creada exitosamente y correo de notificación enviado.',
             'data' => $application,
         ], 201);
     }
+
 
     public function getUserApplications()
     {
