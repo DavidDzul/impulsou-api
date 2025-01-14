@@ -30,6 +30,7 @@ class UserSeeder extends Seeder
         ])->assignRole('DIAMOND');
 
         User::create([
+            "enrollment" => "MER170209",
             "first_name" => "David",
             "last_name" => "Fernando",
             "email" => "david@iu.org.mx",

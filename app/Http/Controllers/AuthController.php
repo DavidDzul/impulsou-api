@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UserAccess;
+use App\Http\Requests\UserEnrollmentRequest;
 use App\Http\Requests\RegistroRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
@@ -23,6 +24,24 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken($request->email)->plainTextToken;
+        return response()->json([
+            "res" => true,
+            "token" => $token,
+            'usuario' => $user
+        ], 200);
+    }
+
+    public function loginEnrollment(UserEnrollmentRequest $request)
+    {
+        $user = User::where('enrollment', $request->enrollment)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            throw ValidationException::withMessages([
+                'msg' => 'Las credenciales son incorrectas.',
+            ]);
+        }
+
+        $token = $user->createToken($request->enrollment)->plainTextToken;
         return response()->json([
             "res" => true,
             "token" => $token,

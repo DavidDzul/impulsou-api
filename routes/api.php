@@ -43,6 +43,7 @@ Route::get('storage-link', function () {
 });
 
 Route::post('login', [AuthController::class, 'login']);
+Route::post('enrollmentLogin', [AuthController::class, 'loginEnrollment']);
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('logout', [AuthController::class, 'logout']);
