@@ -59,6 +59,9 @@ class JobApplicationController extends Controller
             'vacant_id' => $request->vacant_id,
         ]);
 
+        // Cargar las relaciones 'business' y 'vacant' en la solicitud creada
+        $application->load(['business:id,bs_name', 'vacant:id,vacant_name']);
+
         // Enviar el correo electrónico
         try {
             $vacant = VacantPosition::where('id', $request->vacant_id)->value('vacant_name');
@@ -68,7 +71,7 @@ class JobApplicationController extends Controller
             return response()->json([
                 'res' => true,
                 'msg' => 'Solicitud creada, pero hubo un problema al enviar el correo de notificación.',
-                'data' => $application,
+                'application' => $application,
                 'error' => $e->getMessage(),
             ], 201);
         }
@@ -76,7 +79,7 @@ class JobApplicationController extends Controller
         return response()->json([
             'res' => true,
             'msg' => 'Solicitud creada exitosamente y correo de notificación enviado.',
-            'data' => $application,
+            'application' => $application,
         ], 201);
     }
 

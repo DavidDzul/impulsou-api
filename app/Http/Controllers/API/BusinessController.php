@@ -253,7 +253,7 @@ class BusinessController extends Controller
         $vacant->loans = $request->loans;
         $vacant->other = $request->other;
         $vacant->benefit_description = $request->benefit_description;
-        $vacant->status = true;
+        // $vacant->status = true;
 
         $vacant->save();
 
