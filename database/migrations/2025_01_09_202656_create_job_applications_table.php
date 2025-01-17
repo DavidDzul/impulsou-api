@@ -18,6 +18,7 @@ class CreateJobApplicationsTable extends Migration
             $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
             $table->foreignId('business_id')->constrained('users')->onDelete('restrict');
             $table->foreignId('vacant_id')->constrained('vacant_position')->onDelete('restrict');
+            $table->enum('status', ['PENDING', 'ACCEPTED', 'REJECTED'])->default('PENDING');
             $table->timestamps();
         });
     }

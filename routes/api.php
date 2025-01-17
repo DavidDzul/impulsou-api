@@ -98,6 +98,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('fetchUserApplications', [JobApplicationController::class, 'getUserApplications']);
     Route::get('fetchBusinessApplications', [JobApplicationController::class, 'getBusinessApplications']);
     Route::delete('deleteApplication/{id}', [JobApplicationController::class, 'destroyApplication']);
+    Route::post('updateStatusApplications/{id}/status', [JobApplicationController::class, 'updateApplicationStatus']);
 
     Route::get('fetchVacantList', [VacantController::class, 'getVacantList']);
     Route::get('getVacant/{id}', [VacantController::class, 'showVacant']);

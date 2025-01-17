@@ -8,112 +8,113 @@
 
 
     <style>
-    body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        color: #333;
-    }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
 
-    .info-table {
-        width: 100%;
-        border-spacing: 20px;
-        table-layout: fixed;
-    }
+        .info-table {
+            width: 100%;
+            border-spacing: 20px;
+            table-layout: fixed;
+        }
 
-    .photo-cell {
-        width: 30%;
-        vertical-align: middle;
-        text-align: center;
-    }
+        .photo-cell {
+            width: 30%;
+            vertical-align: middle;
+            text-align: center;
+        }
 
-    .photo {
-        width: 200px;
-        height: 200px;
-        border-radius: 50%;
-        object-fit: cover;
-    }
+        .photo {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
 
-    .personal-info-cell {
-        vertical-align: middle;
-        /* Centra verticalmente los datos */
-        color: #333;
-    }
+        .personal-info-cell {
+            vertical-align: middle;
+            /* Centra verticalmente los datos */
+            color: #333;
+        }
 
-    .personal-info-cell h1 {
-        font-size: 24px;
-        margin: 0;
-        color: #0056b3;
-    }
+        .personal-info-cell h1 {
+            font-size: 24px;
+            margin: 0;
+            color: #0056b3;
+        }
 
-    .personal-info-cell p {
-        margin: 5px 0;
-        font-size: 14px;
-    }
+        .personal-info-cell p {
+            margin: 5px 0;
+            font-size: 20px;
+            font-weight: 500;
+        }
 
-    .container {
-        width: 100%;
-        padding: 0px 10px 10px 10px
-    }
+        .container {
+            width: 100%;
+            padding: 0px 10px 10px 10px
+        }
 
-    .header {
-        margin-bottom: 20px;
-        border-bottom: 2px;
-        padding-bottom: 10px;
-    }
+        .header {
+            margin-bottom: 20px;
+            border-bottom: 2px;
+            padding-bottom: 10px;
+        }
 
-    .section {
-        margin-bottom: 20px;
-    }
+        .section {
+            margin-bottom: 20px;
+        }
 
-    .section h2 {
-        font-size: 20px;
-        border-bottom: 2px solid #0056b3;
-        margin-bottom: 10px;
-        color: #0056b3;
-    }
+        .section h2 {
+            font-size: 20px;
+            border-bottom: 2px solid #0056b3;
+            margin-bottom: 10px;
+            color: #0056b3;
+        }
 
-    .list-item {
-        margin: 5px 0;
-        font-size: 14px;
-    }
+        .list-item {
+            margin: 5px 0;
+            font-size: 14px;
+        }
 
-    .academic,
-    .experience,
-    .skills {
-        padding-left: 15px;
-    }
+        .academic,
+        .experience,
+        .skills {
+            padding-left: 15px;
+        }
 
-    .name-title {
-        text-align: center;
-        /* Centra el nombre y título */
-        margin-bottom: 20px;
-    }
+        .name-title {
+            text-align: center;
+            /* Centra el nombre y título */
+            margin-bottom: 20px;
+        }
 
-    .aligned-table {
-        width: 100%;
-        /* La tabla ocupa todo el ancho */
-        border-spacing: 0;
-        /* Sin espacio entre celdas */
-        table-layout: fixed;
-        /* Ancho fijo para distribuir columnas equitativamente */
-    }
+        .aligned-table {
+            width: 100%;
+            /* La tabla ocupa todo el ancho */
+            border-spacing: 0;
+            /* Sin espacio entre celdas */
+            table-layout: fixed;
+            /* Ancho fijo para distribuir columnas equitativamente */
+        }
 
-    .left-cell {
-        text-align: left;
-        /* Alinea la primera columna a la izquierda */
-        padding: 5px;
-        width: 50%;
-        /* Ocupa el 50% del ancho */
-    }
+        .left-cell {
+            text-align: left;
+            /* Alinea la primera columna a la izquierda */
+            padding: 5px;
+            width: 50%;
+            /* Ocupa el 50% del ancho */
+        }
 
-    .right-cell {
-        text-align: right;
-        /* Alinea la segunda columna a la derecha */
-        padding: 5px;
-        width: 50%;
-        /* Ocupa el 50% del ancho */
-    }
+        .right-cell {
+            text-align: right;
+            /* Alinea la segunda columna a la derecha */
+            padding: 5px;
+            width: 50%;
+            /* Ocupa el 50% del ancho */
+        }
     </style>
 </head>
 
@@ -125,16 +126,16 @@
             <table class="info-table">
                 <tr>
                     <!-- Primera columna: Foto -->
+                    @if($photo)
                     <td class="photo-cell">
-                        @if($photo)
                         <img src='{{ "storage/$photo->url" }}' alt="Foto" class="photo">
-                        @endif
                     </td>
+                    @endif
                     <!-- Segunda columna: Datos personales -->
                     <td class="personal-info-cell">
                         <div class="name-title">
                             <h1>{{ $curriculum->first_name }} {{ $curriculum->last_name }}</h1>
-                            <h2>{{ $curriculum->professional_title }}</h2>
+                            <p>{{ $curriculum->professional_title }}</p>
                         </div>
                     </td>
                 </tr>

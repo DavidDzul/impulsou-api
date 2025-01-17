@@ -8,6 +8,7 @@ use App\Models\JobApplication;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\JobApplicationCreateMail;
+use App\Models\Curriculum;
 use App\Models\User;
 use App\Models\VacantPosition;
 
@@ -28,6 +29,17 @@ class JobApplicationController extends Controller
                 'msg' => 'Datos inválidos.',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        // Verificar si el usuario tiene su CV
+        $userCV = Curriculum::where('user_id', $request->user_id)
+            ->first();
+
+        if (!$userCV) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Por favor, completa tu currículum vitae para que puedas postularte a la vacante.',
+            ], 409);
         }
 
         // Verificar si ya existe una relación entre el user_id y vacant_id
@@ -87,7 +99,7 @@ class JobApplicationController extends Controller
     public function getUserApplications()
     {
         $userId = auth()->id();
-        $result = JobApplication::where('user_id', $userId)->with(['business:id,bs_name', 'vacant:id,vacant_name'])->get();
+        $result = JobApplication::where('user_id', $userId)->with(['business:id,bs_name', 'vacant:id,vacant_name'])->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'applications' => $result,
@@ -97,7 +109,7 @@ class JobApplicationController extends Controller
     public function getBusinessApplications()
     {
         $businessId = auth()->id();
-        $result = JobApplication::where('business_id', $businessId)->with(['user:id,first_name,last_name', 'vacant:id,vacant_name'])->get();
+        $result = JobApplication::where('business_id', $businessId)->with(['user:id,first_name,last_name', 'vacant:id,vacant_name'])->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'applications' => $result,
@@ -119,5 +131,52 @@ class JobApplicationController extends Controller
                 "msg" => "Error al eliminar",
             ], 404);
         }
+    }
+
+    public function updateApplicationStatus(Request $request, $id)
+    {
+        // Validar los datos de entrada
+        $validator = Validator::make($request->all(), [
+            'status' => 'required|in:PENDING,ACCEPTED,REJECTED', // Validar que el status sea válido
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Datos inválidos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Buscar la postulación
+        $application = JobApplication::find($id);
+
+        if (!$application) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Postulación no encontrada.',
+            ], 404);
+        }
+
+        // Verificar si el estado actual es PENDING
+        if ($application->status !== 'PENDING') {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Solo se puede actualizar el estado si la postulación esta pendiente.',
+            ], 403);
+        }
+
+        // Actualizar el estado de la postulación
+        $application->status = $request->status;
+        $application->save();
+
+        // Cargar las relaciones
+        $application->load(['business:id,bs_name', 'vacant:id,vacant_name', 'user:id,first_name,last_name']);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Estado de la postulación actualizado exitosamente.',
+            'application' => $application,
+        ]);
     }
 }
