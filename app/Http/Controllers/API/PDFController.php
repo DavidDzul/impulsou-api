@@ -25,6 +25,7 @@ class PDFController extends Controller
             $authUser = auth()->user();
             $role = $authUser->roles->first();
 
+            // Verificar si el CV existe
             $cvExists = Curriculum::find($id);
             if (!$cvExists) {
                 return response()->json([
@@ -33,9 +34,10 @@ class PDFController extends Controller
                 ], 404);
             }
 
-            // Obtener el user_id del CV
+            // Obtener el user_id del propietario del CV
             $cvOwnerId = $cvExists->user_id;
 
+            // Verificar si el usuario tiene un rol asignado
             if (!$role) {
                 return response()->json([
                     'res' => false,
@@ -43,13 +45,16 @@ class PDFController extends Controller
                 ], 403);
             }
 
-            $currentVisualizations = BusinessVisualization::where('user_id', $authUser->id)->count();
+            // Validar límite de visualizaciones solo si no es PLATINUM o DIAMOND
+            if (!in_array($role->name, ['PLATINUM', 'DIAMOND'])) {
+                $currentVisualizations = BusinessVisualization::where('user_id', $authUser->id)->count();
 
-            if ($currentVisualizations >= $role->num_visualizations) {
-                return response()->json([
-                    'res' => false,
-                    'msg' => 'Has alcanzado el límite máximo de visualizaciones permitido por tu rol.',
-                ], 403);
+                if ($currentVisualizations >= $role->num_visualizations) {
+                    return response()->json([
+                        'res' => false,
+                        'msg' => 'Has alcanzado el límite máximo de visualizaciones permitido por tu rol.',
+                    ], 403);
+                }
             }
 
             // Registrar la visualización
@@ -58,7 +63,7 @@ class PDFController extends Controller
                 'cv_id' => $id,
             ]);
 
-            // Si pasa la validación, llamar a la función generatePDF
+            // Si pasa la validación, generar el PDF
             return $this->generatePDF($cvOwnerId);
         } catch (Exception $e) {
             Log::error('Error al validar visualizaciones o generar el PDF: ' . $e->getMessage());
@@ -69,6 +74,7 @@ class PDFController extends Controller
             ], 500);
         }
     }
+
 
 
     public function generatePDF($id)

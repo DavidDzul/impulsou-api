@@ -78,13 +78,16 @@ class BusinessController extends Controller
             ], 403);
         }
 
-        $currentVacancies = VacantPosition::where('user_id', $user->id)->count();
+        // Verificar límite de vacantes solo si no es PLATINUM o DIAMOND
+        if (!in_array($role->name, ['PLATINUM', 'DIAMOND'])) {
+            $currentVacancies = VacantPosition::where('user_id', $user->id)->count();
 
-        if ($role->num_vacancies !== null && $currentVacancies >= $role->num_vacancies) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
-            ], 403);
+            if ($role->num_vacancies !== null && $currentVacancies >= $role->num_vacancies) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
+                ], 403);
+            }
         }
 
         $vacant = new VacantPosition();
@@ -159,13 +162,16 @@ class BusinessController extends Controller
             ], 403);
         }
 
-        $currentVacancies = VacantPosition::where('user_id', $user->id)->count();
+        // Verificar límite de vacantes solo si no es PLATINUM o DIAMOND
+        if (!in_array($role->name, ['PLATINUM', 'DIAMOND'])) {
+            $currentVacancies = VacantPosition::where('user_id', $user->id)->count();
 
-        if ($role->num_vacancies !== null && $currentVacancies >= $role->num_vacancies) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
-            ], 403);
+            if ($role->num_vacancies !== null && $currentVacancies >= $role->num_vacancies) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
+                ], 403);
+            }
         }
 
         $vacant = new VacantPosition;
