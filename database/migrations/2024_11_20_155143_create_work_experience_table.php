@@ -21,7 +21,6 @@ class CreateWorkExperienceTable extends Migration
             $table->string('start_date');
             $table->string('end_date');
             $table->text('responsibility');
-            $table->text('achievement');
             $table->timestamps();
         });
     }

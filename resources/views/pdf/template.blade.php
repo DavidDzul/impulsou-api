@@ -6,115 +6,134 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Currículum Vitae</title>
 
-
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            color: #333;
-        }
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
-        .info-table {
-            width: 100%;
-            border-spacing: 20px;
-            table-layout: fixed;
-        }
+    body {
+        /* font-family: Arial, sans-serif; */
+        font-family: 'Poppins', sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #333;
+    }
 
-        .photo-cell {
-            width: 30%;
-            vertical-align: middle;
-            text-align: center;
-        }
+    .info-table {
+        width: 100%;
+        border-spacing: 20px;
+        table-layout: fixed;
+    }
 
-        .photo {
-            width: 200px;
-            height: 200px;
-            border-radius: 50%;
-            object-fit: cover;
-        }
+    .photo-cell {
+        width: 30%;
+        vertical-align: middle;
+        text-align: center;
+    }
 
-        .personal-info-cell {
-            vertical-align: middle;
-            /* Centra verticalmente los datos */
-            color: #333;
-        }
+    .photo {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
 
-        .personal-info-cell h1 {
-            font-size: 24px;
-            margin: 0;
-            color: #0056b3;
-        }
+    .personal-info-cell {
+        vertical-align: middle;
+        /* Centra verticalmente los datos */
+        color: #333;
+    }
 
-        .personal-info-cell p {
-            margin: 5px 0;
-            font-size: 20px;
-            font-weight: 500;
-        }
+    .personal-info-cell h1 {
+        font-size: 24px;
+        margin: 0;
+        color: #FF7900;
+    }
 
-        .container {
-            width: 100%;
-            padding: 0px 10px 10px 10px
-        }
+    .personal-info-cell p {
+        margin: 5px 0;
+        font-size: 20px;
+        font-weight: 500;
+    }
 
-        .header {
-            margin-bottom: 20px;
-            border-bottom: 2px;
-            padding-bottom: 10px;
-        }
+    .container {
+        font-family: 'Poppins', sans-serif;
+        width: 100%;
+        padding: 0px 10px 10px 10px
+    }
 
-        .section {
-            margin-bottom: 20px;
-        }
+    .header {
+        margin-bottom: 20px;
+        border-bottom: 2px;
+        padding-bottom: 10px;
+    }
 
-        .section h2 {
-            font-size: 20px;
-            border-bottom: 2px solid #0056b3;
-            margin-bottom: 10px;
-            color: #0056b3;
-        }
+    .section {
+        margin-bottom: 20px;
+    }
 
-        .list-item {
-            margin: 5px 0;
-            font-size: 14px;
-        }
+    .section h2 {
+        font-size: 18px;
+        border-bottom: 2px solid #275FFC;
+        margin-bottom: 10px;
+        color: #275FFC;
+    }
 
-        .academic,
-        .experience,
-        .skills {
-            padding-left: 15px;
-        }
+    .list-item {
+        margin: 5px 0;
+        font-size: 14px;
+    }
 
-        .name-title {
-            text-align: center;
-            /* Centra el nombre y título */
-            margin-bottom: 20px;
-        }
+    .academic,
+    .experience,
+    .skills {
+        padding-left: 15px;
+    }
 
-        .aligned-table {
-            width: 100%;
-            /* La tabla ocupa todo el ancho */
-            border-spacing: 0;
-            /* Sin espacio entre celdas */
-            table-layout: fixed;
-            /* Ancho fijo para distribuir columnas equitativamente */
-        }
+    .name-title {
+        font-family: 'Poppins', sans-serif;
+        text-align: center;
+        /* Centra el nombre y título */
+        margin-bottom: 20px;
+    }
 
-        .left-cell {
-            text-align: left;
-            /* Alinea la primera columna a la izquierda */
-            padding: 5px;
-            width: 50%;
-            /* Ocupa el 50% del ancho */
-        }
+    .name-title h1 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 26px;
+    }
 
-        .right-cell {
-            text-align: right;
-            /* Alinea la segunda columna a la derecha */
-            padding: 5px;
-            width: 50%;
-            /* Ocupa el 50% del ancho */
-        }
+    .name-title h2 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 20px;
+
+    }
+
+    .aligned-table {
+        width: 100%;
+        /* La tabla ocupa todo el ancho */
+        border-spacing: 0;
+        /* Sin espacio entre celdas */
+        table-layout: fixed;
+        /* Ancho fijo para distribuir columnas equitativamente */
+    }
+
+    .left-cell {
+        text-align: left;
+        /* Alinea la primera columna a la izquierda */
+        padding: 5px;
+        width: 50%;
+        /* Ocupa el 50% del ancho */
+    }
+
+    .right-cell {
+        text-align: right;
+        /* Alinea la segunda columna a la derecha */
+        padding: 5px;
+        width: 50%;
+        /* Ocupa el 50% del ancho */
+    }
+
+    .img-title {
+        margin-right: 5px;
+    }
     </style>
 </head>
 
@@ -134,8 +153,10 @@
                     <!-- Segunda columna: Datos personales -->
                     <td class="personal-info-cell">
                         <div class="name-title">
-                            <h1>{{ $curriculum->first_name }} {{ $curriculum->last_name }}</h1>
-                            <p>{{ $curriculum->professional_title }}</p>
+                            <h1>{{ $curriculum->first_name }}
+                                {{ $curriculum->last_name }}
+                            </h1>
+                            <h2>{{ $curriculum->professional_title }}</h2>
                         </div>
                     </td>
                 </tr>
@@ -144,13 +165,21 @@
 
         <table class="aligned-table">
             <tr>
-                <td class="left-cell">{{ $curriculum->email }}</td>
-                <td class="right-cell">{{ $curriculum->locality }}, {{ $curriculum->state }}, {{ $curriculum->country }}
+                <td class="left-cell">
+                    <img class="img-title" src="https://iu.org.mx/wp-content/uploads/2025/01/email-icon.png" width="15">
+                    {{ $curriculum->email }}
+                </td>
+                <td class="right-cell">
+                    <img src="https://iu.org.mx/wp-content/uploads/2025/01/location-icon.png" width="20">
+                    {{ $curriculum->locality }}, {{ $curriculum->state }}, {{ $curriculum->country }}
                 </td>
 
             </tr>
             <tr>
-                <td class="left-cell">{{ $curriculum->phone_num ?? 'No registrado' }}</td>
+                <td class="left-cell">
+                    <img class="img-title" src="https://iu.org.mx/wp-content/uploads/2025/01/phone.png" width="15">
+                    {{ $curriculum->phone_num }}
+                </td>
                 <td class="right-cell">{{ $curriculum->linkedin }}</td>
             </tr>
         </table>
@@ -164,13 +193,13 @@
 
         <!-- Educación -->
         <div class="section">
-            <h2>Educación</h2>
+            <h2>Formación académica</h2>
             <ul class="academic">
                 @foreach ($academic as $aca)
                 <li class="list-item">
                     <strong>{{ $aca['postgraduate_name'] }}</strong> - {{ $aca['institute_name'] }} <br>
                     <small>{{ $aca['postgraduate_start_date'] }} - {{ $aca['postgraduate_end_date'] }}</small>
-                    <p>- {{ $aca['highlight'] }}</p>
+
                 </li>
                 @endforeach
             </ul>
@@ -186,7 +215,6 @@
                     <small>{{ $job['start_date'] }} - {{ $job['end_date'] }}</small>
                     <ul>
                         <li> <b>Funciones:</b> {{ $job['responsibility'] }}</li>
-                        <li> <b>Logros:</b> {{ $job['achievement'] }}</li>
                     </ul>
 
                 </li>
@@ -207,9 +235,9 @@
             </ul>
         </div>
 
-        <!-- Habilidades y conocimientos -->
+        <!-- Conocimientos -->
         <div class="section">
-            <h2>Habilidades y Conocimientos</h2>
+            <h2>Conocimientos</h2>
             <ul class="skills">
                 @foreach ($skills as $skill)
                 <li class="list-item">
@@ -236,6 +264,53 @@
                 @endforeach
             </ul>
         </div>
+
+        <!-- Habilidades -->
+        <div class="section">
+            <h2>Habilidades</h2>
+            <ul class="skills">
+                @if($curriculum->skill_1)
+                <li class="list-item">
+                    <strong>
+                        {{ $curriculum->skill_1 }}
+                    </strong>
+                </li>
+                @endif
+
+                @if($curriculum->skill_2)
+                <li class="list-item">
+                    <strong>
+                        {{ $curriculum->skill_2 }}
+                    </strong>
+                </li>
+                @endif
+
+                @if($curriculum->skill_3)
+                <li class="list-item">
+                    <strong>
+                        {{ $curriculum->skill_3 }}
+                    </strong>
+                </li>
+                @endif
+
+                @if($curriculum->skill_4)
+                <li class="list-item">
+                    <strong>
+                        {{ $curriculum->skill_4 }}
+                    </strong>
+                </li>
+                @endif
+
+                @if($curriculum->skill_5)
+                <li class="list-item">
+                    <strong>
+                        {{ $curriculum->skill_5 }}
+                    </strong>
+                </li>
+                @endif
+            </ul>
+        </div>
+
     </div>
     @endif
 </body>

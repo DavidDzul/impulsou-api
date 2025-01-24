@@ -29,7 +29,6 @@ class UpdateAcademicInformationRequest extends FormRequest
             "institute_name" => "required",
             "postgraduate_start_date" => "required",
             "postgraduate_end_date" => "required",
-            "highlight" => "required",
         ];
     }
 }

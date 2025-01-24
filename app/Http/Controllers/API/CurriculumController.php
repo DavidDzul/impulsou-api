@@ -88,7 +88,6 @@ class CurriculumController extends Controller
         $work->start_date = $request->start_date;
         $work->end_date = $request->end_date;
         $work->responsibility = $request->responsibility;
-        $work->achievement = $request->achievement;
 
         $work->save();
 
@@ -107,7 +106,6 @@ class CurriculumController extends Controller
         $work->start_date = $request->start_date;
         $work->end_date = $request->end_date;
         $work->responsibility = $request->responsibility;
-        $work->achievement = $request->achievement;
 
         $work->save();
         return response()->json([
@@ -143,7 +141,6 @@ class CurriculumController extends Controller
         $academic->institute_name = $request->institute_name;
         $academic->postgraduate_start_date = $request->postgraduate_start_date;
         $academic->postgraduate_end_date = $request->postgraduate_end_date;
-        $academic->highlight = $request->highlight;
 
         $academic->save();
 
@@ -161,7 +158,6 @@ class CurriculumController extends Controller
         $academic->institute_name = $request->institute_name;
         $academic->postgraduate_start_date = $request->postgraduate_start_date;
         $academic->postgraduate_end_date = $request->postgraduate_end_date;
-        $academic->highlight = $request->highlight;
 
         $academic->save();
         return response()->json([

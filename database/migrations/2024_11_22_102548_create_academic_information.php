@@ -20,7 +20,6 @@ class CreateAcademicInformation extends Migration
             $table->string('institute_name');
             $table->string('postgraduate_start_date');
             $table->string('postgraduate_end_date');
-            $table->text('highlight');
             $table->timestamps();
         });
     }

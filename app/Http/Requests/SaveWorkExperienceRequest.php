@@ -29,7 +29,6 @@ class SaveWorkExperienceRequest extends FormRequest
             "start_date" => "required",
             "end_date" => "required",
             "responsibility" => "required",
-            "achievement" => "required",
         ];
     }
 }
