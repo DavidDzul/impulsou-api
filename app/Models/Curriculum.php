@@ -20,4 +20,9 @@ class Curriculum extends Model
 
     // Todos los campos esta habilitados para actualizarlo masivamente.
     protected $guarded = [];
+
+    public function academicInformation()
+    {
+        return $this->hasOne(AcademicInformation::class, 'user_id', 'user_id')->oldest('created_at');
+    }
 }

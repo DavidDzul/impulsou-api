@@ -57,7 +57,6 @@ class CurriculumController extends Controller
                 'country' => $request->country,
                 'state' => $request->state,
                 'locality' => $request->locality,
-                'professional_title' => $request->professional_title,
                 'professional_summary' => $request->professional_summary,
                 'linkedin' => $request->linkedin,
                 'skill_1' => $request->skill_1,
@@ -312,9 +311,20 @@ class CurriculumController extends Controller
 
     public function getAllCandidates()
     {
-        $candidates = Curriculum::where('public', true)->get();
+        // $candidates = Curriculum::where('public', true)->get();
+        // $firstAcademicInfo = AcademicInformation::first();
+
+        // return response()->json([
+        //     'candidates' => $candidates,
+        //     'academic' => $firstAcademicInfo
+        // ]);
+
+        $candidates = Curriculum::where('public', true)
+            ->with('academicInformation')
+            ->get();
+
         return response()->json([
-            'candidates' => $candidates
+            'candidates' => $candidates,
         ]);
     }
 }

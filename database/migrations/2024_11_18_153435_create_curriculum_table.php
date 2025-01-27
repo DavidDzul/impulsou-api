@@ -27,7 +27,6 @@ class CreateCurriculumTable extends Migration
             $table->string('state');
             $table->string('locality');
             $table->string('linkedin')->nullable();
-            $table->text('professional_title');
             $table->text('professional_summary');
             $table->string('skill_1')->nullable();
             $table->string('skill_2')->nullable();

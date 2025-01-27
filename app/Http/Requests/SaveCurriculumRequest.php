@@ -34,7 +34,6 @@ class SaveCurriculumRequest extends FormRequest
             "country" => "required",
             "state" => "required",
             "locality" => "required",
-            "professional_title" => "required",
             "professional_summary" => "required",
         ];
     }

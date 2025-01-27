@@ -30,8 +30,8 @@
     }
 
     .photo {
-        width: 200px;
-        height: 200px;
+        width: 180px;
+        height: 180px;
         border-radius: 50%;
         object-fit: cover;
     }
@@ -61,13 +61,14 @@
     }
 
     .header {
-        margin-bottom: 20px;
+        margin-bottom: 5px;
         border-bottom: 2px;
         padding-bottom: 10px;
     }
 
     .section {
         margin-bottom: 20px;
+        padding-top: 0px;
     }
 
     .section h2 {
@@ -103,7 +104,12 @@
     .name-title h2 {
         font-family: 'Poppins', sans-serif;
         font-size: 20px;
+    }
 
+    .name-title p {
+        font-family: 'Poppins', sans-serif;
+        font-size: 18px;
+        font-weight: 300;
     }
 
     .aligned-table {
@@ -156,14 +162,26 @@
                             <h1>{{ $curriculum->first_name }}
                                 {{ $curriculum->last_name }}
                             </h1>
-                            <h2>{{ $curriculum->professional_title }}</h2>
+                            <br>
+                            <!-- <h2>Datos de contacto</h2> -->
+                            <label>
+                                {{ $curriculum->email }}</label> <br>
+                            <label> {{ $curriculum->phone_num }} -
+                                {{ $curriculum->locality }}, {{ $curriculum->state }},
+                                {{ $curriculum->country }}
+                            </label>
+                            @if($curriculum->linkedin)
+                            <br>
+                            <label> {{ $curriculum->linkedin }}
+                            </label>
+                            @endif
                         </div>
                     </td>
                 </tr>
             </table>
         </div>
 
-        <table class="aligned-table">
+        <!-- <table class="aligned-table">
             <tr>
                 <td class="left-cell">
                     <img class="img-title" src="https://iu.org.mx/wp-content/uploads/2025/01/email-icon.png" width="15">
@@ -182,7 +200,7 @@
                 </td>
                 <td class="right-cell">{{ $curriculum->linkedin }}</td>
             </tr>
-        </table>
+        </table> -->
 
 
         <!-- Resumen profesional -->
@@ -192,6 +210,7 @@
         </div>
 
         <!-- Educación -->
+        @if(!empty($academic) && count($academic) > 0)
         <div class="section">
             <h2>Formación académica</h2>
             <ul class="academic">
@@ -204,8 +223,10 @@
                 @endforeach
             </ul>
         </div>
+        @endif
 
         <!-- Experiencia laboral -->
+        @if(!empty($workExperiences) && count($workExperiences) > 0)
         <div class="section">
             <h2>Experiencia Laboral</h2>
             <ul class="experience">
@@ -221,8 +242,10 @@
                 @endforeach
             </ul>
         </div>
+        @endif
 
         <!-- Educación continua -->
+        @if(!empty($education) && count($education) > 0)
         <div class="section">
             <h2>Educación continua</h2>
             <ul class="experience">
@@ -234,8 +257,10 @@
                 @endforeach
             </ul>
         </div>
+        @endif
 
         <!-- Conocimientos -->
+        @if(!empty($skills) && count($skills) > 0)
         <div class="section">
             <h2>Conocimientos</h2>
             <ul class="skills">
@@ -264,6 +289,7 @@
                 @endforeach
             </ul>
         </div>
+        @endif
 
         <!-- Habilidades -->
         <div class="section">
