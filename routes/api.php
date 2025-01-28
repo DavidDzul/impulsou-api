@@ -42,9 +42,6 @@ Route::get('storage-link', function () {
     return 'the public/storage directory has been linked';
 });
 
-// Rutas para usuarios ADMIN
-// Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
-// });
 
 Route::post('login', [AuthController::class, 'login']);
 Route::post('enrollmentLogin', [AuthController::class, 'loginEnrollment']);
