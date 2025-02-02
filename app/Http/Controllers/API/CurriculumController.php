@@ -64,7 +64,7 @@ class CurriculumController extends Controller
                 'skill_3' => $request->skill_3,
                 'skill_4' => $request->skill_4,
                 'skill_5' => $request->skill_5,
-                'public' => $request->public || 0,
+                'public' => $request->public ?? 0,
             ]
         );
 
@@ -73,6 +73,7 @@ class CurriculumController extends Controller
             'msg' => $curriculum->wasRecentlyCreated
                 ? 'Información personal creada con éxito'
                 : 'Información personal actualizada con éxito',
+            'created' => $curriculum->wasRecentlyCreated,
             'curriculum' => $curriculum,
         ], 200);
     }
@@ -288,7 +289,7 @@ class CurriculumController extends Controller
         }
     }
 
-    public function updateCurriculumStatus()
+    public function updateCurriculumStatus(Request $request)
     {
         $curriculum = Curriculum::where('user_id', auth()->id())->first();
 
@@ -300,6 +301,14 @@ class CurriculumController extends Controller
         }
 
         $curriculum->public = !$curriculum->public;
+
+        if ($request->has('available')) {
+            $validatedData = $request->validate([
+                'available' => 'in:FULL_TIME,PART_TIME'
+            ]);
+            $curriculum->available = $validatedData['available'];
+        }
+
         $curriculum->save();
 
         return response()->json([

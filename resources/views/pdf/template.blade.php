@@ -67,8 +67,10 @@
     }
 
     .section {
-        margin-bottom: 20px;
+        margin-top: 0px;
+        margin-bottom: 0px;
         padding-top: 0px;
+        padding-bottom: 0px;
     }
 
     .section h2 {
@@ -269,7 +271,7 @@
                     <strong>
                         {{
                 $skill['type'] === 'SOFTWARE' ? 'Software' :
-                ($skill['type'] === 'LANGUAGE' ? 'Lenguaje' :
+                ($skill['type'] === 'LANGUAGE' ? 'Idioma' :
                 ($skill['type'] === 'OTHER' ? $skill['other_knowledge'] : ""))
             }}
                     </strong> <br>
