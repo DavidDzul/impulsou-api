@@ -136,6 +136,7 @@ class BusinessController extends Controller
         $vacant->loans = $request->loans;
         $vacant->other = $request->other;
         $vacant->benefit_description = $request->benefit_description;
+        $vacant->mode = $request->mode;
 
         $vacant->status = true;
         $vacant->campus = $user->campus;
@@ -195,6 +196,7 @@ class BusinessController extends Controller
         $vacant->skills = $request->skills;
         $vacant->general_knowledge = $request->general_knowledge;
         $vacant->knowledge_description = $request->knowledge_description;
+        $vacant->mode = $request->mode;
 
         $vacant->status = true;
 
@@ -260,6 +262,7 @@ class BusinessController extends Controller
         $vacant->other = $request->other;
         $vacant->benefit_description = $request->benefit_description;
         // $vacant->status = true;
+        $vacant->mode = $request->mode;
 
         $vacant->save();
 
@@ -292,6 +295,7 @@ class BusinessController extends Controller
         $vacant->skills = $request->skills;
         $vacant->general_knowledge = $request->general_knowledge;
         $vacant->knowledge_description = $request->knowledge_description;
+        $vacant->mode = $request->mode;
 
         $vacant->save();
 

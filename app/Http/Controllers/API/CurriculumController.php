@@ -19,6 +19,7 @@ use App\Http\Requests\SaveContinuingEducationRequest;
 use App\Http\Requests\SaveTechnicalKnowledgeRequest;
 use App\Http\Requests\UpdateContinuingEducationRequest;
 use App\Http\Requests\UpdateTechnicalKnowledgeRequest;
+use App\Models\BusinessVisualization;
 
 class CurriculumController extends Controller
 {
@@ -327,13 +328,17 @@ class CurriculumController extends Controller
         //     'candidates' => $candidates,
         //     'academic' => $firstAcademicInfo
         // ]);
+        $authUser = auth()->user();
 
         $candidates = Curriculum::where('public', true)
             ->with('academicInformation')
             ->get();
 
+        $visualizations = BusinessVisualization::where('user_id', $authUser->id)->count();
+
         return response()->json([
             'candidates' => $candidates,
+            'visualizations' => $visualizations,
         ]);
     }
 }

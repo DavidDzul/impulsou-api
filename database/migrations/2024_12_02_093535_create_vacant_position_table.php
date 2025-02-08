@@ -17,6 +17,7 @@ class CreateVacantPositionTable extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
             $table->string('vacant_name');
+            $table->enum("mode", ["IN_PERSON", "REMOTE", "HYBRID"]);
             $table->enum("category", ["JOB_POSITION", "PROFESSIONAL_PRACTICE"]);
             $table->text('activities');
             $table->string('study_profile');

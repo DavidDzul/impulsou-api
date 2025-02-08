@@ -26,6 +26,7 @@ class SavePracticeVacantRequest extends FormRequest
         return [
             "vacant_name" => "required",
             "category" => "required",
+            "mode" => "required",
             "activities" => "required",
             "study_profile" => "required",
             "financial_support" => "required",

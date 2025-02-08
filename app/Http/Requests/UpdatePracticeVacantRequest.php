@@ -29,6 +29,7 @@ class UpdatePracticeVacantRequest extends FormRequest
             "activities" => "required",
             "study_profile" => "required",
             "financial_support" => "required",
+            "mode" => "required",
 
             "start_day" => "required",
             "end_day" => "required",

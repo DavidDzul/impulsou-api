@@ -25,7 +25,23 @@ use App\Models\Curriculum;
 */
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+    $user = $request->user();
+
+    $role = $user->roles()->first();
+
+    return response()->json([
+        "id" => $user->id,
+        "first_name" => $user->first_name,
+        "last_name" => $user->last_name,
+        "email" => $user->email,
+        "user_type" => $user->user_type,
+        "phone" => $user->phone,
+        "role" => $role ? [
+            "name" => $role->name,
+            "num_visualizations" => $role->num_visualizations ?? 0,
+            "num_vacancies" => $role->num_vacancies ?? 0
+        ] : null
+    ]);
 });
 
 Route::middleware('auth:sanctum')->get('/user/permissions', [UserController::class, 'getPermissions']);
