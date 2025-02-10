@@ -16,12 +16,13 @@ class RoleSeeder extends Seeder
     public function run()
     {
         //
+        $basicRole = Role::create(['name' => 'BASIC']);
         $bronzeRole = Role::create(['name' => 'BRONZE']);
         $silverRole = Role::create(['name' => 'SILVER']);
         $goldRole = Role::create(['name' => 'GOLD']);
         $platinumRole = Role::create(['name' => 'PLATINUM']);
         $diamondRole = Role::create(['name' => 'DIAMOND']);
 
-        Permission::create(['name' => 'BUSINESS_MENU'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
+        Permission::create(['name' => 'CANDIDATES_VIEW'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
     }
 }
