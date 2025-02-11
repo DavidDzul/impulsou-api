@@ -15,12 +15,24 @@ class AuthController extends Controller
 {
     public function login(UserAccess $request)
     {
-        $user = User::where('email', $request->email)->with('roles')->first();
+        $user = User::where('email', $request->email)->with('roles', 'agreement')->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'msg' => 'Las credenciales son incorrectas.',
             ]);
+        }
+
+        // Verificar si el usuario es una empresa y tiene un convenio activo
+        if ($user->user_type === 'BUSINESS') {
+            $agreement = $user->agreement; // Relación con la tabla de convenios
+
+            if (!$agreement || now()->gt($agreement->end_date)) {
+                return response()->json([
+                    "res" => false,
+                    "msg" => "El convenio de la empresa ha expirado. Contacta a soporte para renovarlo.",
+                ], 403);
+            }
         }
 
         $token = $user->createToken($request->email)->plainTextToken;
@@ -53,10 +65,14 @@ class AuthController extends Controller
                     "num_visualizations" => $numVisualizations,
                     "num_vacancies" => $numVacancies,
                 ],
-
+                // "agreement" => [
+                //     "start_date" => optional($agreement)->start_date,
+                //     "end_date" => optional($agreement)->end_date,
+                // ]
             ]
         ], 200);
     }
+
 
     public function loginEnrollment(UserEnrollmentRequest $request)
     {

@@ -48,39 +48,8 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
     ];
 
-
-    public function images()
+    public function agreement()
     {
-        return $this->hasOne(Image::class, 'user_id', 'id');
-    }
-
-    public function curriculums()
-    {
-        return $this->hasOne(Curriculum::class, 'user_id', 'id');
-    }
-
-    public function workExperiences()
-    {
-        return $this->hasMany(WorkExperience::class, 'user_id', 'id');
-    }
-
-    public function academicInformations()
-    {
-        return $this->hasMany(AcademicInformation::class, 'user_id', 'id');
-    }
-
-    public function continuingEducations()
-    {
-        return $this->hasMany(ContinuingEducation::class, 'user_id', 'id');
-    }
-
-    public function technicalKnowledges()
-    {
-        return $this->hasMany(TechnicalKnowledge::class, 'user_id', 'id');
-    }
-
-    public function vacantPositions()
-    {
-        return $this->hasMany(VacantPosition::class, 'user_id');
+        return $this->hasOne(BusinessAgreement::class, 'user_id');
     }
 }

@@ -15,7 +15,7 @@ class VacantController extends Controller
         }])
             ->where('status', true)
             ->orderBy('created_at', 'desc')
-            ->select('id', 'vacant_name', 'category', 'activities', 'created_at', 'status', 'user_id')
+            ->select('id', 'vacant_name', 'mode', 'category', 'activities', 'created_at', 'status', 'user_id')
             ->get();
 
         return response()->json([
