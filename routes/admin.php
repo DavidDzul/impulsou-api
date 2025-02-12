@@ -1,13 +1,19 @@
 <?php
 
+use Illuminate\Http\Request;
 use App\Http\Controllers\Admin\AuthController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\GenerationController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
 });
 
-// Rutas para usuarios ADMIN
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
+
 Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
-    Route::post('test', [AuthController::class, 'test']);
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::apiResource('generations', GenerationController::class);
 });
