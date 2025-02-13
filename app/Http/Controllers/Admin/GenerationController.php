@@ -42,24 +42,17 @@ class GenerationController extends Controller
      * Store a newly created resource in storage.
      */
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request)
     {
-        // $data = $request->validate(Terrain::$createRules);
+        $data = $request->validate(Generation::$createRules);
+        $data['generation_active'] = $data['generation_active'] ?? false;
 
-        // $terrain = Terrain::create([
-        //     'owner_id' => $data['owner_id'],
-        //     'name' => $data['name'],
-        //     'description' => $data['description'],
-        //     'geometry' => $data['geometry'],
-        //     'color' => $data['color'] ?? null,
-        //     'dimensions' => $data['dimensions'] ?? null,
-        //     'active' => true,
-        //     'verified' => false
-        // ]);
+        $generation = Generation::create($data);
 
         return response()->json([
-            'message' => 'Terreno creado correctamente',
-            // 'terrain' => $terrain
+            'res' => true,
+            'msg' => 'Generación creada con éxito',
+            'createGeneration' => $generation,
         ], 201);
     }
 
