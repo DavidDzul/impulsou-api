@@ -15,7 +15,7 @@ class CreateUsersTable extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('enrollment')->nullable();
+            $table->string('enrollment')->nullable()->unique();
             $table->string('first_name');
             $table->string('last_name');
             $table->string('email')->unique();
@@ -26,7 +26,7 @@ class CreateUsersTable extends Migration
             $table->enum("user_type", ["ADMIN", "BEC_ACTIVE", "BEC_INACTIVE", "BUSINESS"]);
             $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->foreignId('generation_id')->nullable()->constrained('generations')->default(null);
-            $table->boolean('active');
+            $table->boolean('active')->default(true);
             $table->rememberToken();
             $table->timestamps();
         });

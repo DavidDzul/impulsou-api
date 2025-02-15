@@ -20,10 +20,18 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
-        'name',
+        'enrollment',
+        'first_name',
+        'last_name',
         'email',
+        'phone',
+        'workstation',
+        'user_type',
+        'campus',
+        'generation_id',
         'password',
-        'campus'
+        'campus',
+        'active',
     ];
 
     protected $attributes = [
@@ -48,8 +56,49 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
     ];
 
+    public static $createRulesUser = [
+        'enrollment' => 'required|string|min:9|max:9|unique:users,enrollment',
+        'first_name' => 'required|string|max:255',
+        'last_name' => 'required|string|max:255',
+        'email' => 'required|string|email|max:255|unique:users,email',
+        'phone' => 'nullable|string|max:15',
+        'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+        'generation_id' => 'required|exists:generations,id',
+        'password' => 'required|string|min:8',
+    ];
+
+    public static function updateRulesUser($userId)
+    {
+        return [
+            'first_name' => 'sometimes|string|max:255',
+            'last_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|string|email|unique:users,email,' . $userId,
+            'phone' => 'nullable|string|max:15',
+            'enrollment' => 'sometimes|string|min:9|max:9|unique:users,enrollment,' . $userId,
+            'password' => 'nullable|string|min:6',
+            'active' => 'nullable|boolean',
+        ];
+    }
+
+    public static $createRulesBusiness = [
+        'first_name' => 'required|string|max:255',
+        'last_name' => 'required|string|max:255',
+        'email' => 'required|string|email|max:255|unique:users,email',
+        'phone' => 'nullable|string|max:15',
+        'workstation' => 'nullable|string|max:255',
+        'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+        'password' => 'required|string|min:8',
+    ];
+
     public function agreement()
     {
         return $this->hasOne(BusinessAgreement::class, 'user_id');
+    }
+
+    public function listCompanyAgreements()
+    {
+        $agreements = BusinessAgreement::with('user:id,first_name,last_name,email')->get();
+
+        return response()->json($agreements);
     }
 }
