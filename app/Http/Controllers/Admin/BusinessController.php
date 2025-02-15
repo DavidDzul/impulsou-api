@@ -4,9 +4,38 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 class BusinessController extends Controller
 {
+
+    public function index(): JsonResponse
+    {
+        $user = auth()->user();
+
+        if (!$user) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Usuario no autenticado.'
+            ], 401);
+        }
+
+        // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
+        if ($user->campus === 'MERIDA') {
+            $data = User::where('user_type', 'BUSINESS')->get();
+        } else {
+            // Si no, solo obtiene los registros de su campus
+            $data = User::where('campus', $user->campus,)->where('user_type', 'BUSINESS')->get();
+        }
+
+        return response()->json([
+            'res' => true,
+            'business' => $data
+        ]);
+    }
+
     // $company = User::create([
     //     "first_name" => $request->first_name,
     //     "last_name" => $request->last_name,
