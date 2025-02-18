@@ -16,22 +16,9 @@ class JobApplicationController extends Controller
 {
     public function store(Request $request)
     {
-        // Validar los datos de entrada
-        $validator = Validator::make($request->all(), [
-            'user_id' => 'required|exists:users,id',
-            'business_id' => 'required|exists:business_data,id',
-            'vacant_id' => 'required|exists:vacant_position,id',
-        ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'Datos inválidos.',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
+        $request->validate(JobApplication::createRules());
 
-        // Verificar si el usuario tiene su CV
         $userCV = Curriculum::where('user_id', $request->user_id)
             ->first();
 
@@ -135,20 +122,8 @@ class JobApplicationController extends Controller
 
     public function updateApplicationStatus(Request $request, $id)
     {
-        // Validar los datos de entrada
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|in:PENDING,ACCEPTED,REJECTED', // Validar que el status sea válido
-        ]);
+        $request->validate(JobApplication::rejectedRules());
 
-        if ($validator->fails()) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'Datos inválidos.',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        // Buscar la postulación
         $application = JobApplication::find($id);
 
         if (!$application) {
@@ -158,19 +133,26 @@ class JobApplicationController extends Controller
             ], 404);
         }
 
-        // Verificar si el estado actual es PENDING
+        // Verificar si la postulación está en estado PENDING
         if ($application->status !== 'PENDING') {
             return response()->json([
                 'res' => false,
-                'msg' => 'Solo se puede actualizar el estado si la postulación esta pendiente.',
+                'msg' => 'Solo se puede actualizar el estado si la postulación está pendiente.',
             ], 403);
         }
 
-        // Actualizar el estado de la postulación
+        $user = auth()->user();
+        $userType = $user->user_type;
+
+        if ($request->status === 'REJECTED') {
+            $application->rejected_by = $userType;
+            $application->rejected_reason = $request->rejected_reason;
+            $application->rejected_other = $request->rejected_other ?? "";
+        }
+
         $application->status = $request->status;
         $application->save();
 
-        // Cargar las relaciones
         $application->load(['business:id,bs_name', 'vacant:id,vacant_name', 'user:id,first_name,last_name']);
 
         return response()->json([
