@@ -56,16 +56,21 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
     ];
 
-    public static $createRulesUser = [
-        'enrollment' => 'required|string|min:9|max:9|unique:users,enrollment',
-        'first_name' => 'required|string|max:255',
-        'last_name' => 'required|string|max:255',
-        'email' => 'required|string|email|max:255|unique:users,email',
-        'phone' => 'nullable|string|max:15',
-        'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
-        'generation_id' => 'required|exists:generations,id',
-        'password' => 'required|string|min:8',
-    ];
+    public static function createRulesUser()
+    {
+        return [
+            'enrollment' => 'required|string|min:9|max:9|unique:users,enrollment',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'phone' => 'nullable|string|max:15',
+            'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+            'generation_id' => 'required|exists:generations,id',
+            'password' => 'required|string|min:8',
+            'role' => 'required|string|exists:roles,name',
+        ];
+    }
+
 
     public static function updateRulesUser($userId)
     {
@@ -77,18 +82,22 @@ class User extends Authenticatable
             'enrollment' => 'sometimes|string|min:9|max:9|unique:users,enrollment,' . $userId,
             'password' => 'nullable|string|min:6',
             'active' => 'nullable|boolean',
+            'role' => 'sometimes|string|exists:roles,name',
         ];
     }
 
-    public static $createRulesBusiness = [
-        'first_name' => 'required|string|max:255',
-        'last_name' => 'required|string|max:255',
-        'email' => 'required|string|email|max:255|unique:users,email',
-        'phone' => 'nullable|string|max:15',
-        'workstation' => 'nullable|string|max:255',
-        'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
-        'password' => 'required|string|min:8',
-    ];
+    public static function createRulesBusiness()
+    {
+        return [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'phone' => 'nullable|string|max:15',
+            'workstation' => 'nullable|string|max:255',
+            'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+            'password' => 'required|string|min:8',
+        ];
+    }
 
     public function agreement()
     {
@@ -100,5 +109,15 @@ class User extends Authenticatable
         $agreements = BusinessAgreement::with('user:id,first_name,last_name,email')->get();
 
         return response()->json($agreements);
+    }
+
+    public function businessData()
+    {
+        return $this->hasOne(BusinessData::class, 'user_id');
+    }
+
+    public function businessAgreement()
+    {
+        return $this->hasOne(BusinessAgreement::class, 'user_id');
     }
 }

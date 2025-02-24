@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\GenerationController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BusinessController;
+use App\Http\Controllers\Admin\RoleController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
@@ -20,4 +21,5 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('generations', GenerationController::class);
     Route::apiResource('users', UserController::class);
     Route::apiResource('business', BusinessController::class);
+    Route::apiResource('roles', RoleController::class);
 });

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\User;
+use App\Models\BusinessData;
+use App\Models\BusinessAgreement;
 use Illuminate\Support\Facades\Hash;
 
 class BusinessController extends Controller
@@ -22,13 +24,14 @@ class BusinessController extends Controller
             ], 401);
         }
 
-        // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->campus === 'MERIDA') {
-            $data = User::where('user_type', 'BUSINESS')->get();
-        } else {
-            // Si no, solo obtiene los registros de su campus
-            $data = User::where('campus', $user->campus,)->where('user_type', 'BUSINESS')->get();
+        $query = User::with(['businessData:id,user_id,bs_name'])
+            ->where('user_type', 'BUSINESS');
+
+        if ($user->campus !== 'MERIDA') {
+            $query->where('campus', $user->campus);
         }
+
+        $data = $query->get();
 
         return response()->json([
             'res' => true,
@@ -36,13 +39,36 @@ class BusinessController extends Controller
         ]);
     }
 
-    // $company = User::create([
-    //     "first_name" => $request->first_name,
-    //     "last_name" => $request->last_name,
-    //     "email" => $request->email,
-    //     "password" => Hash::make($request->password),
-    //     "role" => "BUSINESS",
-    // ]);
+
+    public function store(Request $request)
+    {
+        $user = $request->validate(User::createRulesBusiness());
+        $user['password'] = Hash::make($user['password']);
+        $user['user_type'] = 'BUSINESS';
+        $user['active'] = true;
+
+        $createData = User::create($user);
+
+        $business = $request->validate(BusinessData::createRules());
+        $business['user_id'] = $createData->id;
+        BusinessData::create($business);
+
+        $agreement = $request->validate(BusinessAgreement::createRules());
+        $agreement['user_id'] = $createData->id;
+        BusinessAgreement::create($agreement);
+
+        // Asignar el rol al usuario
+        $createData->assignRole($request->role);
+
+        // Cargar relaciones
+        $createData->load(['businessData', 'businessAgreement']);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Empresa registrada correctamente.',
+            'createBusiness' => $createData
+        ], 201);
+    }
 
     // // Crear convenio con duración de 1 año
     // CompanyAgreement::create([

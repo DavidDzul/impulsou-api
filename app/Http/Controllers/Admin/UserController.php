@@ -43,7 +43,7 @@ class UserController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $data = $request->validate(User::$createRulesUser);
+        $data = $request->validate(User::createRulesUser());
         $existingUser = User::where('enrollment', $data['enrollment'])->first();
 
         if (!$existingUser) {
