@@ -39,7 +39,8 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
         "role" => $role ? [
             "name" => $role->name,
             "num_visualizations" => $role->num_visualizations ?? 0,
-            "num_vacancies" => $role->num_vacancies ?? 0
+            "num_vacancies" => $role->num_vacancies ?? 0,
+            "unlimited" => $role->unlimited,
         ] : null
     ]);
 });
@@ -70,54 +71,54 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('fetchCurriculum', [CurriculumController::class, 'index']);
     Route::post('createPersonalData', [CurriculumController::class, 'store']);
 
-    //GENERATE PDF
+    /*** GENERATE PDF */
     Route::get('fetchPDF/{id}', [PDFController::class, 'generatePDF']);
     Route::get('fetchValidatePDF/{id}', [PDFController::class, 'validateAndGeneratePDF']);
 
-    // WORK EXPERIENCE TABLE
+    /*** WORK EXPERIENCE TABLE */
     Route::post('createWork', [CurriculumController::class, 'storeWorkExperience']);
     Route::post('UpdateWork', [CurriculumController::class, 'updateWorkExperience']);
     Route::delete('deleteWork/{id}', [CurriculumController::class, 'destroyWorkExperience']);
 
-    // ACADEMIC INFORMATION TABLE
+    /*** ACADEMIC INFORMATION TABLE */
     Route::post('createAcademic', [CurriculumController::class, 'storeAcademicInformation']);
     Route::post('updateAcademic', [CurriculumController::class, 'updateAcademicInformation']);
     Route::delete('deleteAcademic/{id}', [CurriculumController::class, 'destroyAcademicInformatio']);
 
-    // CONTINUING EDUCATION TABLE
+    /*** CONTINUING EDUCATION TABLE */
     Route::post('createEducation', [CurriculumController::class, 'storeContinuingEducation']);
     Route::post('updateEducation', [CurriculumController::class, 'updateContinuingEducation']);
     Route::delete('deleteEducation/{id}', [CurriculumController::class, 'destroyContinuingEducation']);
 
-    // CONTINUING EDUCATION TABLE
+    /*** CONTINUING EDUCATION TABLE */
     Route::post('createKnowledge', [CurriculumController::class, 'storeTechnicalKnowledge']);
     Route::post('updateKnowledge', [CurriculumController::class, 'updateTechnicalKnowledge']);
     Route::delete('deleteKnowledge/{id}', [CurriculumController::class, 'destroyTechnicalKnowledge']);
 
-    // CURRICULUM STATUS
+    /*** CURRICULUM STATUS */
     Route::post('updateStatusCV', [CurriculumController::class, 'updateCurriculumStatus']);
-    // GET ALL CANDIDATES
+
+    /*** GET ALL CANDIDATES */
     Route::get('fetchCandidates', [CurriculumController::class, 'getAllCandidates']);
 
-    // BUSINESS
+    /*** BUSINESS */
     Route::get('fetchBusiness', [BusinessController::class, 'index']);
-    Route::get('fetchVacancies', [BusinessController::class, 'getAllvacancies']);
+    Route::get('fetchVacancies', [BusinessController::class, 'getBusinessVacancies']);
     Route::post('updateBusiness', [BusinessController::class, 'updateBusinessInformation']);
-    Route::post('createVacant', [BusinessController::class, 'storeVacantPosition']);
-    Route::post('createPractice', [BusinessController::class, 'storePracticeVacant']);
-    Route::post('updateVacant', [BusinessController::class, 'updateVacantPosition']);
-    Route::post('updatePractice', [BusinessController::class, 'updatePracticeVacant']);
-    Route::delete('deleteVacant/{id}', [BusinessController::class, 'destroyVacantPosition']);
-    Route::post('updateStatusVacant/{id}', [BusinessController::class, 'updateVacantPositionStatus']);
 
-    //JOB APPLICATIONS
+    /*** JOB APPLICATIONS */
     Route::post('createApplication', [JobApplicationController::class, 'store']);
     Route::get('fetchUserApplications', [JobApplicationController::class, 'getUserApplications']);
     Route::get('fetchBusinessApplications', [JobApplicationController::class, 'getBusinessApplications']);
     Route::delete('deleteApplication/{id}', [JobApplicationController::class, 'destroyApplication']);
-    // Route::post('updateStatusApplications/{id}/status', [JobApplicationController::class, 'updateApplicationStatus']);
     Route::patch('updateStatusApplications/{id}', [JobApplicationController::class, 'updateApplicationStatus']);
 
-    Route::get('fetchVacantList', [VacantController::class, 'getVacantList']);
-    Route::get('getVacant/{id}', [VacantController::class, 'showVacant']);
+    /*** VACANT POSITIONS */
+    Route::get('fetchVacantList', [VacantController::class, 'index']);
+    Route::get('getVacant/{id}', [VacantController::class, 'show']);
+    Route::post('createVacant', [VacantController::class, 'storeVacant']);
+    Route::put('updateVacant/{id}', [VacantController::class, 'updateVacant']);
+    Route::post('createPractice', [VacantController::class, 'storePractice']);
+    Route::put('updatePractice/{id}', [VacantController::class, 'updatePractice']);
+    Route::put('updateVacantStatus/{id}', [VacantController::class, 'updateVacantStatus']);
 });

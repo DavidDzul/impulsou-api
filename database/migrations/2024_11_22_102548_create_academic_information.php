@@ -15,7 +15,7 @@ class CreateAcademicInformation extends Migration
     {
         Schema::create('academic_information', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->string('postgraduate_name');
             $table->string('institute_name');
             $table->string('postgraduate_start_date');

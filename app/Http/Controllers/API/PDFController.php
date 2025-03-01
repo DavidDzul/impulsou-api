@@ -46,7 +46,7 @@ class PDFController extends Controller
             }
 
             // Validar límite de visualizaciones solo si no es PLATINUM o DIAMOND
-            if (!in_array($role->name, ['PLATINUM', 'DIAMOND'])) {
+            if (!$role->unlimited) {
                 $currentVisualizations = BusinessVisualization::where('user_id', $authUser->id)->count();
 
                 if ($currentVisualizations >= $role->num_visualizations) {

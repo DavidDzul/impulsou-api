@@ -15,7 +15,7 @@ class CreateCurriculumTable extends Migration
     {
         Schema::create('curriculum', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade')->unique();;
             $table->string('first_name');
             $table->string('last_name');
             $table->string('email')->unique();

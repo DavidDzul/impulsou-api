@@ -15,7 +15,7 @@ class CreateTechnicalKnowledge extends Migration
     {
         Schema::create('technical_knowledge', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->enum("type", ["SOFTWARE", "LANGUAGE", "OTHER"]);
             $table->string('other_knowledge')->nullable();
             $table->text('description_knowledge');

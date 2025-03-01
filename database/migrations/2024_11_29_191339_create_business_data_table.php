@@ -15,7 +15,7 @@ class CreateBusinessDataTable extends Migration
     {
         Schema::create('business_data', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('restrict')->unique();
             $table->string('bs_name');
             $table->string('bs_director');
             $table->string('bs_rfc');

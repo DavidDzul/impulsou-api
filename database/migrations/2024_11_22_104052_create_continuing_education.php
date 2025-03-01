@@ -15,7 +15,7 @@ class CreateContinuingEducation extends Migration
     {
         Schema::create('continuing_education', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->string('course_name');
             $table->string('course_institute');
             $table->string('course_start_date');

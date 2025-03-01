@@ -49,6 +49,7 @@ class AuthController extends Controller
 
         $numVisualizations = $role->num_visualizations ?? null;
         $numVacancies = $role->num_vacancies ?? null;
+        $unlimited = $role->unlimited;
 
         return response()->json([
             "res" => true,
@@ -64,6 +65,7 @@ class AuthController extends Controller
                     "name" => $role->name,
                     "num_visualizations" => $numVisualizations,
                     "num_vacancies" => $numVacancies,
+                    "unlimited" => $unlimited
                 ],
                 // "agreement" => [
                 //     "start_date" => optional($agreement)->start_date,

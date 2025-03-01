@@ -15,7 +15,7 @@ class CreateBusinessAgreementsTable extends Migration
     {
         Schema::create('business_agreements', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
             $table->date('start_date'); // Fecha de inicio del convenio
             $table->date('end_date'); // Fecha de vencimiento del convenio
             $table->timestamps();

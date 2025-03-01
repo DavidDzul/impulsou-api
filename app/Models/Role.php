@@ -15,5 +15,6 @@ class Role extends Model
         'name',
         'num_visualizations',
         'num_vacancies',
+        'unlimited'
     ];
 }

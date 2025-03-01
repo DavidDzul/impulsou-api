@@ -15,7 +15,7 @@ class CreateWorkExperienceTable extends Migration
     {
         Schema::create('work_experience', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->string('job_position');
             $table->string('business_name');
             $table->string('start_date');
