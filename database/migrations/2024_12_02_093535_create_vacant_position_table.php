@@ -18,7 +18,7 @@ class CreateVacantPositionTable extends Migration
             $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
             $table->string('vacant_name');
             $table->enum("mode", ["IN_PERSON", "REMOTE", "HYBRID"]);
-            $table->enum("category", ["JOB_POSITION", "PROFESSIONAL_PRACTICE"]);
+            $table->enum("category", ["JOB_POSITION", "PROFESSIONAL_PRACTICE", "JR_POSITION"]);
             $table->text('activities');
             $table->string('study_profile');
             $table->boolean('financial_support')->nullable()->default(false);
@@ -61,6 +61,7 @@ class CreateVacantPositionTable extends Migration
             $table->boolean('life_insurance')->nullable()->default(false);
             $table->boolean('other')->nullable()->default(false);
             $table->string('benefit_description')->nullable();
+            $table->text('compensations')->nullable();
 
             $table->boolean('status')->default(true);
             $table->enum("candidate_type", ["INTERNAL", "EXTERNAL", "NOT_COVERED"])->nullable(true);

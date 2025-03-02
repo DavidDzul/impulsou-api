@@ -67,13 +67,17 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('updateUser', [AuthController::class, 'updateUser']);
 
+    /*** IMAGE */
     Route::post('createImage', [ImageController::class, 'uploadImage']);
-    Route::get('fetchCurriculum', [CurriculumController::class, 'index']);
-    Route::post('createPersonalData', [CurriculumController::class, 'store']);
+    Route::delete('removeImage/{id}', [ImageController::class, 'destroy']);
 
     /*** GENERATE PDF */
     Route::get('fetchPDF/{id}', [PDFController::class, 'generatePDF']);
     Route::get('fetchValidatePDF/{id}', [PDFController::class, 'validateAndGeneratePDF']);
+
+    /*** CURRICULUM */
+    Route::get('fetchCurriculum', [CurriculumController::class, 'index']);
+    Route::post('createPersonalData', [CurriculumController::class, 'store']);
 
     /*** WORK EXPERIENCE TABLE */
     Route::post('createWork', [CurriculumController::class, 'storeWorkExperience']);
@@ -111,7 +115,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('fetchUserApplications', [JobApplicationController::class, 'getUserApplications']);
     Route::get('fetchBusinessApplications', [JobApplicationController::class, 'getBusinessApplications']);
     Route::delete('deleteApplication/{id}', [JobApplicationController::class, 'destroyApplication']);
-    Route::patch('updateStatusApplications/{id}', [JobApplicationController::class, 'updateApplicationStatus']);
+    Route::put('updateStatusApplications/{id}', [JobApplicationController::class, 'updateApplicationStatus']);
 
     /*** VACANT POSITIONS */
     Route::get('fetchVacantList', [VacantController::class, 'index']);

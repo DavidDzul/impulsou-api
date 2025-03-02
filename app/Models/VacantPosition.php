@@ -185,6 +185,7 @@ class VacantPosition extends Model
             "skills" => "required|string|max:255",
             "general_knowledge" => "nullable|boolean",
             "knowledge_description" => "nullable|string|max:500",
+            "observations" => "nullable|string|max:500",
 
             "mode" => "required|string|max:255",
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
@@ -214,6 +215,8 @@ class VacantPosition extends Model
             "skills" => "sometimes|string|max:255",
             "general_knowledge" => "nullable|boolean",
             "knowledge_description" => "nullable|string|max:500",
+            "observations" => "nullable|string|max:500",
+
         ];
     }
 

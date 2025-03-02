@@ -49,7 +49,7 @@ class ImageController extends Controller
     }
 
 
-    public function removeImage($id)
+    public function destroy($id)
     {
         $image = Image::findOrFail($id);
         $destination = public_path("storage\\" . $image->url);
