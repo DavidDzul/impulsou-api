@@ -16,7 +16,7 @@ class RoleSeeder extends Seeder
     public function run()
     {
         //
-        $basicRole = Role::create(['name' => 'BASIC']);
+        Role::create(['name' => 'BASIC']);
         $bronzeRole = Role::create(['name' => 'BRONZE']);
         $silverRole = Role::create(['name' => 'SILVER']);
         $goldRole = Role::create(['name' => 'GOLD']);
@@ -24,5 +24,6 @@ class RoleSeeder extends Seeder
         $diamondRole = Role::create(['name' => 'DIAMOND']);
 
         Permission::create(['name' => 'CANDIDATES_VIEW'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
+        Permission::create(['name' => 'CREATE_VACANT_JR'])->syncRoles([$diamondRole]);
     }
 }
