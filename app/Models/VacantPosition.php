@@ -60,7 +60,8 @@ class VacantPosition extends Model
         'campus',
         'status',
 
-        'candidate_type'
+        'candidate_type',
+        'compensations'
     ];
 
     public static function createVacantRules()
@@ -217,6 +218,70 @@ class VacantPosition extends Model
             "knowledge_description" => "nullable|string|max:500",
             "observations" => "nullable|string|max:500",
 
+        ];
+    }
+
+    public static function createJrRules()
+    {
+        return [
+            "user_id" => "required|exists:users,id",
+            "vacant_name" => "required|string|max:255",
+            "category" => "required|string|max:255",
+            "activities" => "required|string|max:500",
+            "study_profile" => "required|string|max:255",
+            "net_salary" => "required|string|max:255",
+
+            "compensations" => "nullable|string|max:500",
+
+            "start_day" => "required|string|max:255",
+            "end_day" => "required|string|max:255",
+            "start_hour" => "required|string|max:255",
+            "start_minute" => "required|string|max:255",
+            "end_hour" => "required|string|max:255",
+            "end_minute" => "required|string|max:255",
+            "saturday_hour" => "nullable|boolean",
+            "semester" => "required|string|max:255",
+            "software_use" => "nullable|boolean",
+            "software_description" => "nullable|string|max:255",
+            "skills" => "required|string|max:255",
+            "general_knowledge" => "nullable|boolean",
+            "knowledge_description" => "nullable|string|max:500",
+            "observations" => "nullable|string|max:500",
+
+            "mode" => "required|string|max:255",
+            'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+        ];
+    }
+
+    public static function updateJrRules()
+    {
+        return [
+            "user_id" => "sometimes|exists:users,id",
+            "vacant_name" => "sometimes|string|max:255",
+            "category" => "sometimes|string|max:255",
+            "activities" => "sometimes|string|max:500",
+            "study_profile" => "sometimes|string|max:255",
+            "net_salary" => "sometimes|string|max:255",
+
+            "compensations" => "nullable|string|max:500",
+
+            "start_day" => "sometimes|string|max:255",
+            "end_day" => "sometimes|string|max:255",
+            "start_hour" => "sometimes|string|max:255",
+            "start_minute" => "sometimes|string|max:255",
+            "end_hour" => "sometimes|string|max:255",
+            "end_minute" => "sometimes|string|max:255",
+            "saturday_hour" => "nullable|boolean",
+            "semester" => "sometimes|string|max:255",
+            "software_use" => "nullable|boolean",
+            "software_description" => "nullable|string|max:255",
+            "skills" => "sometimes|string|max:255",
+            "general_knowledge" => "nullable|boolean",
+            "knowledge_description" => "nullable|string|max:500",
+            "observations" => "nullable|string|max:500",
+
+            "mode" => "sometimes|string|max:255",
+            'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
         ];
     }
 

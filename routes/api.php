@@ -124,5 +124,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::put('updateVacant/{id}', [VacantController::class, 'updateVacant']);
     Route::post('createPractice', [VacantController::class, 'storePractice']);
     Route::put('updatePractice/{id}', [VacantController::class, 'updatePractice']);
+    Route::post('createVacanteJr', [VacantController::class, 'storeVacantJr']);
+    Route::put('updateVacantJr/{id}', [VacantController::class, 'updateVacantJr']);
     Route::put('updateVacantStatus/{id}', [VacantController::class, 'updateVacantStatus']);
 });
