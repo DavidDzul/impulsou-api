@@ -101,7 +101,7 @@ class User extends Authenticatable
 
     public function agreement()
     {
-        return $this->hasOne(BusinessAgreement::class, 'user_id');
+        return $this->hasOne(BusinessAgreement::class, 'user_id')->latestOfMany();
     }
 
     public function listCompanyAgreements()

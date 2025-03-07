@@ -15,7 +15,7 @@ class AuthController extends Controller
 {
     public function login(UserAccess $request)
     {
-        $user = User::where('email', $request->email)->with('roles', 'agreement')->first();
+        $user = User::where('email', $request->email)->where('active', true)->with('roles', 'agreement')->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
@@ -78,7 +78,7 @@ class AuthController extends Controller
 
     public function loginEnrollment(UserEnrollmentRequest $request)
     {
-        $user = User::where('enrollment', $request->enrollment)->first();
+        $user = User::where('enrollment', $request->enrollment)->where('active', true)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([

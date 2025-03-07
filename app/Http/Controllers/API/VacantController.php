@@ -10,13 +10,22 @@ class VacantController extends Controller
 {
     public function index()
     {
-        $result = VacantPosition::with(['business' => function ($query) {
+        $user = auth()->user();
+        $userType = $user->user_type;
+
+        // Construir la consulta base con relaciones y filtros iniciales
+        $query = VacantPosition::with(['business' => function ($query) {
             $query->select('user_id', 'bs_name', 'bs_locality', 'bs_country', 'bs_state');
         }])
             ->where('status', true)
-            ->orderBy('created_at', 'desc')
-            ->select('id', 'vacant_name', 'mode', 'category', 'activities', 'created_at', 'status', 'user_id')
-            ->get();
+            ->select('id', 'vacant_name', 'mode', 'category', 'activities', 'created_at', 'status', 'user_id');
+
+        // Filtrar si el usuario es BEC_INACTIVE
+        if ($userType === 'BEC_INACTIVE') {
+            $query->where('category', 'JOB_POSITION');
+        }
+
+        $result = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'vacancies' => $result
