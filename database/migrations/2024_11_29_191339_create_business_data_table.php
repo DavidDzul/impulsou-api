@@ -27,7 +27,7 @@ class CreateBusinessDataTable extends Migration
             $table->string('bs_line');
             $table->string('bs_other_line')->nullable();
             $table->text('bs_description');
-            $table->string('bs_website');
+            $table->string('bs_website')->nullable();
             $table->timestamps();
         });
     }

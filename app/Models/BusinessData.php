@@ -44,4 +44,22 @@ class BusinessData extends Model
             'bs_website' => 'nullable|string|max:255',
         ];
     }
+
+    public static function updateRules()
+    {
+        return [
+            'bs_name' => 'sometimes|string|max:255',
+            'bs_director' => 'sometimes|string|max:255',
+            'bs_rfc' => 'sometimes|string|max:13',
+            'bs_country' => 'sometimes|string|max:100',
+            'bs_state' => 'sometimes|string|max:100',
+            'bs_locality' => 'sometimes|string|max:255',
+            'bs_adrress' => 'sometimes|string|max:255',
+            'bs_telphone' => 'sometimes|string|max:15',
+            'bs_line' => 'sometimes|string|max:255',
+            'bs_other_line' => 'nullable|string|max:255',
+            'bs_description' => 'sometimes|string',
+            'bs_website' => 'nullable|string|max:255',
+        ];
+    }
 }

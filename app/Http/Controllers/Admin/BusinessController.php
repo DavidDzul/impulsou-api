@@ -43,21 +43,20 @@ class BusinessController extends Controller
     public function store(Request $request)
     {
         $user = $request->validate(User::createRulesBusiness());
+        $business = $request->validate(BusinessData::createRules());
+        $agreement = $request->validate(BusinessAgreement::createRules());
+
         $user['password'] = Hash::make($user['password']);
         $user['user_type'] = 'BUSINESS';
         $user['active'] = true;
 
         $createData = User::create($user);
-
-        $business = $request->validate(BusinessData::createRules());
         $business['user_id'] = $createData->id;
-        BusinessData::create($business);
-
-        $agreement = $request->validate(BusinessAgreement::createRules());
         $agreement['user_id'] = $createData->id;
+
+        BusinessData::create($business);
         BusinessAgreement::create($agreement);
 
-        // Asignar el rol al usuario
         $createData->assignRole($request->role);
 
         // Cargar relaciones
@@ -70,12 +69,30 @@ class BusinessController extends Controller
         ], 201);
     }
 
-    // // Crear convenio con duración de 1 año
-    // CompanyAgreement::create([
-    //     "company_id" => $company->id,
-    //     "start_date" => Carbon::now(),
-    //     "end_date" => Carbon::now()->addYear(),
-    // ]);
+    public function show(string $id): JsonResponse
+    {
+        $business = User::findOrFail($id);
 
-    // return response()->json(["msg" => "Empresa registrada con éxito"]);
+        return response()->json([
+            'business' => $business
+        ]);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+        $data = $request->validate(User::updateRulesBusiness($user->id));
+
+        if ($request->has('active')) {
+            $data['active'] = (bool) $request->active;
+        }
+
+        $user->fill($data)->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Usuario actualizado correctamente',
+            'updateBusiness' => $user
+        ], 200);
+    }
 }

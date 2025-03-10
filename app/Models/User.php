@@ -67,7 +67,6 @@ class User extends Authenticatable
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
             'generation_id' => 'required|exists:generations,id',
             'password' => 'required|string|min:8',
-            'role' => 'required|string|exists:roles,name',
         ];
     }
 
@@ -82,7 +81,7 @@ class User extends Authenticatable
             'enrollment' => 'sometimes|string|min:9|max:9|unique:users,enrollment,' . $userId,
             'password' => 'nullable|string|min:6',
             'active' => 'nullable|boolean',
-            'role' => 'sometimes|string|exists:roles,name',
+            'user_type' => 'sometimes|string|in:BEC_ACTIVE,BEC_INACTIVE',
         ];
     }
 
@@ -96,6 +95,20 @@ class User extends Authenticatable
             'workstation' => 'nullable|string|max:255',
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
             'password' => 'required|string|min:8',
+        ];
+    }
+
+    public static function updateRulesBusiness($userId)
+    {
+        return [
+            'first_name' => 'sometimes|string|max:255',
+            'last_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|string|email|unique:users,email,' . $userId,
+            'phone' => 'nullable|string|max:15',
+            'workstation' => 'nullable|string|max:255',
+            'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+            'password' => 'sometimes|string|min:8',
+            'active' => 'nullable|boolean',
         ];
     }
 

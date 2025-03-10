@@ -35,7 +35,7 @@ class UpdateBusinessInformationRequest extends FormRequest
             "bs_telphone" => "required",
             "bs_line" => "required",
             "bs_description" => "required",
-            "bs_website" => "required",
+            "bs_website" => "nullable",
         ];
     }
 }

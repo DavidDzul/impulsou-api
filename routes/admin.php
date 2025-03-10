@@ -2,10 +2,12 @@
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Admin\AuthController;
+use App\Http\Controllers\Admin\BusinessAgreementController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\GenerationController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BusinessController;
+use App\Http\Controllers\Admin\BusinessDataController;
 use App\Http\Controllers\Admin\RoleController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -21,5 +23,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('generations', GenerationController::class);
     Route::apiResource('users', UserController::class);
     Route::apiResource('business', BusinessController::class);
+    Route::apiResource('businessData', BusinessDataController::class);
+    Route::apiResource('businessAgreement', BusinessAgreementController::class);
     Route::apiResource('roles', RoleController::class);
 });
