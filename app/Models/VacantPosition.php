@@ -203,7 +203,19 @@ class VacantPosition extends Model
             "start_minute" => "required|string|max:255",
             "end_hour" => "required|string|max:255",
             "end_minute" => "required|string|max:255",
+
             "saturday_hour" => "nullable|boolean",
+            "saturday_start_hour" => "nullable|string|max:255",
+            "saturday_start_minute" => "nullable|string|max:255",
+            "saturday_end_hour" => "nullable|string|max:255",
+            "saturday_end_minute" => "nullable|string|max:255",
+
+            "sunday_hour" => "nullable|boolean",
+            "sunday_start_hour" => "nullable|string|max:255",
+            "sunday_start_minute" => "nullable|string|max:255",
+            "sunday_end_hour" => "nullable|string|max:255",
+            "sunday_end_minute" => "nullable|string|max:255",
+
             "semester" => "required|string|max:255",
             "software_use" => "nullable|boolean",
             "software_description" => "nullable|string|max:255",
@@ -211,6 +223,8 @@ class VacantPosition extends Model
             "general_knowledge" => "nullable|boolean",
             "knowledge_description" => "nullable|string|max:500",
             "observations" => "nullable|string|max:500",
+
+            "compensations" => "nullable|string|max:500",
 
             "mode" => "required|string|max:255",
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
@@ -233,7 +247,19 @@ class VacantPosition extends Model
             "start_minute" => "sometimes|string|max:255",
             "end_hour" => "sometimes|string|max:255",
             "end_minute" => "sometimes|string|max:255",
+
             "saturday_hour" => "nullable|boolean",
+            "saturday_start_hour" => "nullable|string|max:255",
+            "saturday_start_minute" => "nullable|string|max:255",
+            "saturday_end_hour" => "nullable|string|max:255",
+            "saturday_end_minute" => "nullable|string|max:255",
+
+            "sunday_hour" => "nullable|boolean",
+            "sunday_start_hour" => "nullable|string|max:255",
+            "sunday_start_minute" => "nullable|string|max:255",
+            "sunday_end_hour" => "nullable|string|max:255",
+            "sunday_end_minute" => "nullable|string|max:255",
+
             "semester" => "sometimes|string|max:255",
             "software_use" => "nullable|boolean",
             "software_description" => "nullable|string|max:255",
@@ -242,6 +268,7 @@ class VacantPosition extends Model
             "knowledge_description" => "nullable|string|max:500",
             "observations" => "nullable|string|max:500",
 
+            "compensations" => "nullable|string|max:500",
         ];
     }
 
@@ -263,7 +290,19 @@ class VacantPosition extends Model
             "start_minute" => "required|string|max:255",
             "end_hour" => "required|string|max:255",
             "end_minute" => "required|string|max:255",
+
             "saturday_hour" => "nullable|boolean",
+            "saturday_start_hour" => "nullable|string|max:255",
+            "saturday_start_minute" => "nullable|string|max:255",
+            "saturday_end_hour" => "nullable|string|max:255",
+            "saturday_end_minute" => "nullable|string|max:255",
+
+            "sunday_hour" => "nullable|boolean",
+            "sunday_start_hour" => "nullable|string|max:255",
+            "sunday_start_minute" => "nullable|string|max:255",
+            "sunday_end_hour" => "nullable|string|max:255",
+            "sunday_end_minute" => "nullable|string|max:255",
+
             "semester" => "required|string|max:255",
             "software_use" => "nullable|boolean",
             "software_description" => "nullable|string|max:255",
@@ -295,7 +334,19 @@ class VacantPosition extends Model
             "start_minute" => "sometimes|string|max:255",
             "end_hour" => "sometimes|string|max:255",
             "end_minute" => "sometimes|string|max:255",
+
             "saturday_hour" => "nullable|boolean",
+            "saturday_start_hour" => "nullable|string|max:255",
+            "saturday_start_minute" => "nullable|string|max:255",
+            "saturday_end_hour" => "nullable|string|max:255",
+            "saturday_end_minute" => "nullable|string|max:255",
+
+            "sunday_hour" => "nullable|boolean",
+            "sunday_start_hour" => "nullable|string|max:255",
+            "sunday_start_minute" => "nullable|string|max:255",
+            "sunday_end_hour" => "nullable|string|max:255",
+            "sunday_end_minute" => "nullable|string|max:255",
+
             "semester" => "sometimes|string|max:255",
             "software_use" => "nullable|boolean",
             "software_description" => "nullable|string|max:255",
