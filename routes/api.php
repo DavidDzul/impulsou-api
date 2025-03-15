@@ -27,7 +27,8 @@ use App\Models\Curriculum;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     $user = $request->user();
 
-    $role = $user->roles()->first();
+    // Obtener el primer rol con su configuración
+    $role = $user->roles()->with('configuration')->first();
 
     return response()->json([
         "id" => $user->id,
@@ -36,14 +37,16 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
         "email" => $user->email,
         "user_type" => $user->user_type,
         "phone" => $user->phone,
+        "workstation" => $user->workstation,
         "role" => $role ? [
             "name" => $role->name,
-            "num_visualizations" => $role->num_visualizations ?? 0,
-            "num_vacancies" => $role->num_vacancies ?? 0,
-            "unlimited" => $role->unlimited,
+            "num_visualizations" => $role->configuration->num_visualizations ?? 0,
+            "num_vacancies" => $role->configuration->num_vacancies ?? 0,
+            "unlimited" => $role->configuration->unlimited ?? false,
         ] : null
     ]);
 });
+
 
 Route::middleware('auth:sanctum')->get('/user/permissions', [UserController::class, 'getPermissions']);
 
@@ -65,7 +68,7 @@ Route::post('enrollmentLogin', [AuthController::class, 'loginEnrollment']);
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('logout', [AuthController::class, 'logout']);
-    Route::post('updateUser', [AuthController::class, 'updateUser']);
+    Route::post('updateUser', [UserController::class, 'updateUser']);
 
     /*** IMAGE */
     Route::post('createImage', [ImageController::class, 'uploadImage']);

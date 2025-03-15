@@ -23,4 +23,18 @@ class UserController extends Controller
             'permissions' => $permissions->pluck('name')
         ]);
     }
+
+    public function updateUser(Request $request)
+    {
+        $user = User::findOrFail($request->id);
+        $data = $request->validate(User::updateRulesProfile($user->id));
+
+        $user->fill($data)->save();
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Usuario actualizado correctamente',
+            'user' => $user
+        ], 200);
+    }
 }

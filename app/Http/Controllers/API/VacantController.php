@@ -58,29 +58,30 @@ class VacantController extends Controller
 
     public function storeVacant(Request $request)
     {
-        $user = auth()->user();
-        $role = $user->roles->first();
+        $user = $request->user();
+        $role = $user->roles()->with('configuration')->first();
 
         $request->merge([
             'user_id' => $user->id,
             'campus' => $user->campus
         ]);
 
-
         $data = $request->validate(VacantPosition::createVacantRules());
         $data['status'] = true;
 
-        if (!$role) {
+        if (!$role && !$role->configuration) {
             return response()->json([
                 'res' => false,
-                'msg' => 'El usuario no tiene un rol asignado.'
+                'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
             ], 403);
         }
 
-        if (!$role->unlimited) {
+        $roleConfig = $role->configuration;
+
+        if (!$roleConfig->unlimited) {
             $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
 
-            if ($role->num_vacancies !== null && $count >= $role->num_vacancies) {
+            if ($roleConfig->num_vacancies !== null && $count >= $roleConfig->num_vacancies) {
                 return response()->json([
                     'res' => false,
                     'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
@@ -115,8 +116,8 @@ class VacantController extends Controller
     public function storePractice(Request $request)
     {
 
-        $user = auth()->user();
-        $role = $user->roles->first();
+        $user = $request->user();
+        $role = $user->roles()->with('configuration')->first();
 
         $request->merge([
             'user_id' => $user->id,
@@ -126,17 +127,19 @@ class VacantController extends Controller
         $data = $request->validate(VacantPosition::createPracticeRules());
         $data['status'] = true;
 
-        if (!$role) {
+        if (!$role && !$role->configuration) {
             return response()->json([
                 'res' => false,
-                'msg' => 'El usuario no tiene un rol asignado.'
+                'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
             ], 403);
         }
 
-        if (!$role->unlimited) {
+        $roleConfig = $role->configuration;
+
+        if (!$roleConfig->unlimited) {
             $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
 
-            if ($role->num_vacancies !== null && $count >= $role->num_vacancies) {
+            if ($roleConfig->num_vacancies !== null && $count >= $roleConfig->num_vacancies) {
                 return response()->json([
                     'res' => false,
                     'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
@@ -168,33 +171,10 @@ class VacantController extends Controller
         ], 200);
     }
 
-    public function updateVacantStatus(Request $request, $id)
-    {
-        $vacant = VacantPosition::find($id);
-        $data = $request->validate(VacantPosition::updateStatusRules());
-        $data['status'] = false;
-
-        if (!$vacant) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'La vacante no ha sido encontrada.',
-            ], 404);
-        }
-
-        $vacant->update($data);
-
-        return response()->json([
-            'res' => true,
-            'msg' => 'Estado actualizado con éxito.',
-            'vacant' => $vacant,
-        ], 200);
-    }
-
     public function storeVacantJr(Request $request)
     {
-
-        $user = auth()->user();
-        $role = $user->roles->first();
+        $user = $request->user();
+        $role = $user->roles()->with('configuration')->first();
 
         $request->merge([
             'user_id' => $user->id,
@@ -205,17 +185,19 @@ class VacantController extends Controller
         $data = $request->validate(VacantPosition::createJrRules());
         $data['status'] = true;
 
-        if (!$role) {
+        if (!$role && !$role->configuration) {
             return response()->json([
                 'res' => false,
-                'msg' => 'El usuario no tiene un rol asignado.'
+                'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
             ], 403);
         }
 
-        if (!$role->unlimited) {
+        $roleConfig = $role->configuration;
+
+        if (!$roleConfig->unlimited) {
             $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
 
-            if ($role->num_vacancies !== null && $count >= $role->num_vacancies) {
+            if ($roleConfig->num_vacancies !== null && $count >= $roleConfig->num_vacancies) {
                 return response()->json([
                     'res' => false,
                     'msg' => 'Has alcanzado el límite máximo de vacantes permitido por tu plan.'
@@ -244,6 +226,28 @@ class VacantController extends Controller
             'res' => true,
             'msg' => 'Actualización con éxito',
             "updateVacantJr" => $vacant
+        ], 200);
+    }
+
+    public function updateVacantStatus(Request $request, $id)
+    {
+        $vacant = VacantPosition::find($id);
+        $data = $request->validate(VacantPosition::updateStatusRules());
+        $data['status'] = false;
+
+        if (!$vacant) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'La vacante no ha sido encontrada.',
+            ], 404);
+        }
+
+        $vacant->update($data);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Estado actualizado con éxito.',
+            'vacant' => $vacant,
         ], 200);
     }
 }

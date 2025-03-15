@@ -53,7 +53,16 @@ class BusinessDataController extends Controller
      */
     public function update(Request $request, $id)
     {
-        //
+        $info = BusinessData::findOrFail($id);
+        $data = $request->validate(BusinessData::updateRules());
+
+        $info->update($data);
+
+        return response()->json([
+            "res" => true,
+            'message' => 'Terreno actualizado correctamente',
+            'updateData' => $info,
+        ]);
     }
 
     /**

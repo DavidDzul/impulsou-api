@@ -65,7 +65,6 @@ class UserController extends Controller
         ], 409);
     }
 
-
     /**
      * Display the specified resource.
      */

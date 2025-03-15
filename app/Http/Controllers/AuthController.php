@@ -15,7 +15,10 @@ class AuthController extends Controller
 {
     public function login(UserAccess $request)
     {
-        $user = User::where('email', $request->email)->where('active', true)->with('roles', 'agreement')->first();
+        $user = User::where('email', $request->email)
+            ->where('active', true)
+            ->with(['roles.configuration', 'agreement'])
+            ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
@@ -23,23 +26,17 @@ class AuthController extends Controller
             ]);
         }
 
-        // Verificar si el usuario es una empresa y tiene un convenio activo
-        if ($user->user_type === 'BUSINESS') {
-            $agreement = $user->agreement; // Relación con la tabla de convenios
-
-            if (!$agreement || now()->gt($agreement->end_date)) {
-                return response()->json([
-                    "res" => false,
-                    "msg" => "El convenio de la empresa ha expirado. Contacta a soporte para renovarlo.",
-                ], 403);
-            }
+        // Verificar si el usuario tiene un convenio activo
+        $agreement = $user->agreement;
+        if (!$agreement || now()->gt($agreement->end_date)) {
+            return response()->json([
+                "res" => false,
+                "msg" => "El convenio de la empresa ha expirado. Contacta a soporte para renovarlo.",
+            ], 403);
         }
 
-        $token = $user->createToken($request->email)->plainTextToken;
-
-        // Validar si el usuario tiene un rol asignado
+        // Obtener el primer rol asignado al usuario
         $role = $user->roles->first();
-
         if (!$role) {
             return response()->json([
                 "res" => false,
@@ -47,9 +44,16 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $numVisualizations = $role->num_visualizations ?? null;
-        $numVacancies = $role->num_vacancies ?? null;
-        $unlimited = $role->unlimited;
+        // Obtener configuración del rol
+        $config = $role->configuration;
+        if (!$config) {
+            return response()->json([
+                "res" => false,
+                "msg" => "El rol asignado no tiene configuración válida. Contacta a soporte.",
+            ], 403);
+        }
+
+        $token = $user->createToken($request->email)->plainTextToken;
 
         return response()->json([
             "res" => true,
@@ -59,22 +63,18 @@ class AuthController extends Controller
                 "first_name" => $user->first_name,
                 "last_name" => $user->last_name,
                 "email" => $user->email,
-                "user_type" => $user->user_type,
                 "phone" => $user->phone,
+                "user_type" => $user->user_type,
+                "workstation" => $user->workstation,
                 "role" => [
                     "name" => $role->name,
-                    "num_visualizations" => $numVisualizations,
-                    "num_vacancies" => $numVacancies,
-                    "unlimited" => $unlimited
+                    "num_visualizations" => $config->num_visualizations,
+                    "num_vacancies" => $config->num_vacancies,
+                    "unlimited" => $config->unlimited,
                 ],
-                // "agreement" => [
-                //     "start_date" => optional($agreement)->start_date,
-                //     "end_date" => optional($agreement)->end_date,
-                // ]
             ]
         ], 200);
     }
-
 
     public function loginEnrollment(UserEnrollmentRequest $request)
     {
@@ -100,31 +100,6 @@ class AuthController extends Controller
         return response()->json([
             "res" => true,
             "msg" => "Token eliminado con éxito"
-        ], 200);
-    }
-
-    public function updateUser(UpdateUserRequest $request)
-    {
-        $user = User::findOrFail($request->id);
-
-        // Actualizar los datos del usuario
-        $user->first_name = $request->first_name;
-        $user->last_name = $request->last_name;
-        $user->email = $request->email;
-
-        // Solo actualizar la contraseña si se envía
-        if ($request->filled('password')) {
-            $user->password = bcrypt($request->password);
-        }
-
-        $user->phone = $request->phone;
-
-        $user->save();
-
-        return response()->json([
-            'res' => true,
-            "msg" => "Actualización realizada con éxito",
-            "user" => $user
         ], 200);
     }
 }

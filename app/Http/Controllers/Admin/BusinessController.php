@@ -95,4 +95,19 @@ class BusinessController extends Controller
             'updateBusiness' => $user
         ], 200);
     }
+
+    public function storeBusinessAgreement(Request $request, $id)
+    {
+        $business = User::findOrFail($id);
+        $agreement = $request->validate(BusinessAgreement::createRules());
+        $agreement['user_id'] = $business->id;
+
+        $data = BusinessAgreement::create($agreement);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Convenio registrado correctamente.',
+            'agreement' => $data
+        ], 201);
+    }
 }

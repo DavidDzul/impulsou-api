@@ -56,6 +56,18 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
     ];
 
+    public static function updateRulesProfile($userId)
+    {
+        return [
+            'first_name' => 'sometimes|string|max:255',
+            'last_name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|string|email|unique:users,email,' . $userId,
+            'phone' => 'sometimes|string|max:15',
+            'password' => 'sometimes|string|min:3',
+            'workstation' => 'sometimes|string|max:255',
+        ];
+    }
+
     public static function createRulesUser()
     {
         return [
@@ -69,7 +81,6 @@ class User extends Authenticatable
             'password' => 'required|string|min:8',
         ];
     }
-
 
     public static function updateRulesUser($userId)
     {

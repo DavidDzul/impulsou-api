@@ -19,13 +19,12 @@ use App\Models\BusinessVisualization;
 
 class PDFController extends Controller
 {
-    public function validateAndGeneratePDF($id)
+    public function validateAndGeneratePDF(Request $request, $id)
     {
         try {
-            $authUser = auth()->user();
-            $role = $authUser->roles->first();
+            $user = $request->user();
+            $role = $user->roles()->with('configuration')->first();
 
-            // Verificar si el CV existe
             $cvExists = Curriculum::find($id);
             if (!$cvExists) {
                 return response()->json([
@@ -34,22 +33,21 @@ class PDFController extends Controller
                 ], 404);
             }
 
-            // Obtener el user_id del propietario del CV
             $cvOwnerId = $cvExists->user_id;
 
-            // Verificar si el usuario tiene un rol asignado
-            if (!$role) {
+            if (!$role && !$role->configuration) {
                 return response()->json([
                     'res' => false,
-                    'msg' => 'No tienes un rol asignado para realizar esta acción.',
+                    'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
                 ], 403);
             }
 
-            // Validar límite de visualizaciones solo si no es PLATINUM o DIAMOND
-            if (!$role->unlimited) {
-                $currentVisualizations = BusinessVisualization::where('user_id', $authUser->id)->count();
+            $roleConfig = $role->configuration;
 
-                if ($currentVisualizations >= $role->num_visualizations) {
+            if (!$roleConfig->unlimited) {
+                $currentVisualizations = BusinessVisualization::where('user_id', $user->id)->count();
+
+                if ($currentVisualizations >= $roleConfig->num_visualizations) {
                     return response()->json([
                         'res' => false,
                         'msg' => 'Has alcanzado el límite máximo de visualizaciones permitido por tu rol.',
@@ -57,13 +55,11 @@ class PDFController extends Controller
                 }
             }
 
-            // Registrar la visualización
             BusinessVisualization::create([
-                'user_id' => $authUser->id,
+                'user_id' => $user->id,
                 'cv_id' => $id,
             ]);
 
-            // Si pasa la validación, generar el PDF
             return $this->generatePDF($cvOwnerId);
         } catch (Exception $e) {
             Log::error('Error al validar visualizaciones o generar el PDF: ' . $e->getMessage());
@@ -74,8 +70,6 @@ class PDFController extends Controller
             ], 500);
         }
     }
-
-
 
     public function generatePDF($id)
     {

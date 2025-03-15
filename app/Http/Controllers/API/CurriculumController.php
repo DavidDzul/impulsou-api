@@ -321,13 +321,6 @@ class CurriculumController extends Controller
 
     public function getAllCandidates()
     {
-        // $candidates = Curriculum::where('public', true)->get();
-        // $firstAcademicInfo = AcademicInformation::first();
-
-        // return response()->json([
-        //     'candidates' => $candidates,
-        //     'academic' => $firstAcademicInfo
-        // ]);
         $authUser = auth()->user();
 
         $candidates = Curriculum::where('public', true)

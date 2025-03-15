@@ -26,11 +26,19 @@ class VacantPosition extends Model
         'start_minute',
         'end_hour',
         'end_minute',
+
         'saturday_hour',
         'saturday_start_hour',
         'saturday_start_minute',
         'saturday_end_hour',
         'saturday_end_minute',
+
+        'sunday_hour',
+        'sunday_start_hour',
+        'sunday_start_minute',
+        'sunday_end_hour',
+        'sunday_end_minute',
+
         'additional_time_info',
         'experience',
         'experience_description',
@@ -79,11 +87,19 @@ class VacantPosition extends Model
             "start_minute" => "required|string|max:255",
             "end_hour" => "required|string|max:255",
             "end_minute" => "required|string|max:255",
+
             "saturday_hour" => "nullable|boolean",
             "saturday_start_hour" => "nullable|string|max:255",
             "saturday_start_minute" => "nullable|string|max:255",
             "saturday_end_hour" => "nullable|string|max:255",
             "saturday_end_minute" => "nullable|string|max:255",
+
+            "sunday_hour" => "nullable|boolean",
+            "sunday_start_hour" => "nullable|string|max:255",
+            "sunday_start_minute" => "nullable|string|max:255",
+            "sunday_end_hour" => "nullable|string|max:255",
+            "sunday_end_minute" => "nullable|string|max:255",
+
             "additional_time_info" => "nullable|string|max:255",
             "experience" => "nullable|boolean",
             "experience_description" => "nullable|string|max:255",
@@ -130,11 +146,19 @@ class VacantPosition extends Model
             "start_minute" => "sometimes|string|max:255",
             "end_hour" => "sometimes|string|max:255",
             "end_minute" => "sometimes|string|max:255",
+
             "saturday_hour" => "nullable|boolean",
             "saturday_start_hour" => "nullable|string|max:255",
             "saturday_start_minute" => "nullable|string|max:255",
             "saturday_end_hour" => "nullable|string|max:255",
             "saturday_end_minute" => "nullable|string|max:255",
+
+            "sunday_hour" => "nullable|boolean",
+            "sunday_start_hour" => "nullable|string|max:255",
+            "sunday_start_minute" => "nullable|string|max:255",
+            "sunday_end_hour" => "nullable|string|max:255",
+            "sunday_end_minute" => "nullable|string|max:255",
+
             "additional_time_info" => "nullable|string|max:255",
             "experience" => "nullable|boolean",
             "experience_description" => "nullable|string|max:255",
