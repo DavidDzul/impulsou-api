@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\GenerationController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BusinessController;
 use App\Http\Controllers\Admin\BusinessDataController;
+use App\Http\Controllers\Admin\GraduateController;
 use App\Http\Controllers\Admin\RoleController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -22,6 +23,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::apiResource('generations', GenerationController::class);
     Route::apiResource('users', UserController::class);
+    Route::apiResource('graduates', GraduateController::class);
 
     Route::apiResource('business', BusinessController::class);
     Route::prefix('business')->group(function () {

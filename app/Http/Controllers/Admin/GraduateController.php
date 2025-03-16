@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 
-class UserController extends Controller
+class GraduateController extends Controller
 {
-    //
-    public function index(): JsonResponse
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function index()
     {
         $user = auth()->user();
 
@@ -24,7 +27,7 @@ class UserController extends Controller
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
         if ($user->campus === 'MERIDA') {
-            $data = User::where('user_type', 'BEC_ACTIVE')->get();
+            $data = User::where('user_type', 'BEC_INACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus
             $data = User::where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
@@ -32,23 +35,24 @@ class UserController extends Controller
 
         return response()->json([
             'res' => true,
-            'users' => $data
+            'graduates' => $data
         ]);
     }
 
-
     /**
      * Store a newly created resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
      */
-
-    public function store(Request $request): JsonResponse
+    public function store(Request $request)
     {
         $data = $request->validate(User::createRulesUser());
         $existingUser = User::where('enrollment', $data['enrollment'])->first();
 
         if (!$existingUser) {
             $data['active'] = true;
-            $data['user_type'] = 'BEC_ACTIVE';
+            $data['user_type'] = 'BEC_INACTIVE';
             $data['password'] = Hash::make($data['password']);
 
             $user = User::create($data);
@@ -56,7 +60,7 @@ class UserController extends Controller
             return response()->json([
                 'res' => true,
                 'msg' => 'Usuario creado con éxito',
-                'createUser' => $user,
+                'createGraduate' => $user,
             ], 201);
         }
 
@@ -68,8 +72,11 @@ class UserController extends Controller
 
     /**
      * Display the specified resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
      */
-    public function show(string $id)
+    public function show($id)
     {
         $user = User::findOrFail($id);
 
@@ -80,6 +87,10 @@ class UserController extends Controller
 
     /**
      * Update the specified resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
      */
     public function update(Request $request, $id)
     {
@@ -95,12 +106,18 @@ class UserController extends Controller
         return response()->json([
             'res' => true,
             'msg' => 'Usuario actualizado correctamente',
-            'updateUser' => $user
+            'updateGraduate' => $user
         ], 200);
     }
 
     /**
      * Remove the specified resource from storage.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
      */
-    public function destroy(string $id) {}
+    public function destroy($id)
+    {
+        //
+    }
 }
