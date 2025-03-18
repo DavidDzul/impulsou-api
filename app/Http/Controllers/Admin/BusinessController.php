@@ -31,7 +31,12 @@ class BusinessController extends Controller
             $query->where('campus', $user->campus);
         }
 
-        $data = $query->get();
+        $data = $query->get()->map(function ($user) {
+            $user->role = $user->roles->first();
+            $user->makeHidden('roles');
+
+            return $user;
+        });
 
         return response()->json([
             'res' => true,
@@ -71,12 +76,16 @@ class BusinessController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $business = User::findOrFail($id);
+        $business = User::with(['roles'])->findOrFail($id);
+
+        $business->role = $business->roles->first();
+        $business->makeHidden('roles');
 
         return response()->json([
             'business' => $business
         ]);
     }
+
 
     public function update(Request $request, $id)
     {
@@ -89,12 +98,26 @@ class BusinessController extends Controller
 
         $user->fill($data)->save();
 
+        if ($request->filled('role')) {
+            $user->syncRoles([$request->input('role')]);
+        }
+
+        $user->load('roles');
+        $role = $user->roles->first();
+
+        $userArray = $user->toArray();
+        unset($userArray['roles']);
+
+        $userArray['role'] = $role;
+
         return response()->json([
             'res' => true,
             'msg' => 'Usuario actualizado correctamente',
-            'updateBusiness' => $user
+            'updateBusiness' => $userArray
         ], 200);
     }
+
+
 
     public function storeBusinessAgreement(Request $request, $id)
     {

@@ -120,6 +120,7 @@ class User extends Authenticatable
             'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
             'password' => 'sometimes|string|min:8',
             'active' => 'nullable|boolean',
+            'role' => 'sometimes|string|exists:roles,name',
         ];
     }
 

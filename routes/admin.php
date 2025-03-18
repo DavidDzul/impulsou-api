@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\VacantPositionController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BusinessAgreementController;
@@ -33,4 +34,5 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('businessData', BusinessDataController::class);
     Route::apiResource('businessAgreement', BusinessAgreementController::class);
     Route::apiResource('roles', RoleController::class);
+    Route::apiResource('vacantPositions', VacantPositionController::class);
 });

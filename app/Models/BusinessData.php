@@ -62,4 +62,9 @@ class BusinessData extends Model
             'bs_website' => 'nullable|string|max:255',
         ];
     }
+
+    public function vacantPositions()
+    {
+        return $this->hasMany(VacantPosition::class, 'user_id', 'user_id');
+    }
 }

@@ -374,6 +374,6 @@ class VacantPosition extends Model
 
     public function business()
     {
-        return $this->hasOne(BusinessData::class, 'user_id', 'user_id');
+        return $this->belongsTo(BusinessData::class, 'user_id', 'user_id');
     }
 }
