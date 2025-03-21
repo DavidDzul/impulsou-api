@@ -34,5 +34,11 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('businessData', BusinessDataController::class);
     Route::apiResource('businessAgreement', BusinessAgreementController::class);
     Route::apiResource('roles', RoleController::class);
+
     Route::apiResource('vacantPositions', VacantPositionController::class);
+    Route::prefix('vacantPositions')->group(function () {
+        Route::put('{id}/updateVacant', [VacantPositionController::class, 'updateVacant']);
+        Route::put('{id}/updatePractice', [VacantPositionController::class, 'updatePractice']);
+        Route::put('{id}/updateVacantJr', [VacantPositionController::class, 'updateVacantJr']);
+    });
 });

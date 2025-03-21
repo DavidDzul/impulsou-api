@@ -87,4 +87,49 @@ class VacantPositionController extends Controller
     {
         //
     }
+
+    public function updateVacant(Request $request, $id)
+    {
+
+        $vacant = VacantPosition::findOrFail($id);
+        $data = $request->validate(VacantPosition::updateVacantRules());
+
+        $vacant->update($data);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Actualización con éxito',
+            "updateVacant" => $vacant
+        ], 200);
+    }
+
+    public function updatePractice(Request $request, $id)
+    {
+
+        $practice = VacantPosition::findOrFail($id);
+        $data = $request->validate(VacantPosition::updatePracticeRules());
+
+        $practice->update($data);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Actualización con éxito',
+            "updatePractice" => $practice
+        ], 200);
+    }
+
+    public function updateVacantJr(Request $request, $id)
+    {
+
+        $vacant = VacantPosition::findOrFail($id);
+        $data = $request->validate(VacantPosition::updateJrRules());
+
+        $vacant->update($data);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Actualización con éxito',
+            "updateVacantJr" => $vacant
+        ], 200);
+    }
 }
