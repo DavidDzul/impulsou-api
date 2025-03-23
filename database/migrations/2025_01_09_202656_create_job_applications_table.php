@@ -19,7 +19,7 @@ class CreateJobApplicationsTable extends Migration
             $table->foreignId('business_id')->constrained('users')->onDelete('restrict');
             $table->foreignId('vacant_id')->constrained('vacant_position')->onDelete('restrict');
             $table->enum('status', ['PENDING', 'ACCEPTED', 'REJECTED'])->default('PENDING');
-            $table->enum('rejected_by', ['USER', 'BUSINESS'])->nullable();
+            $table->enum('rejected_by', ['ADMIN', 'USER', 'BUSINESS'])->nullable();
             $table->enum('rejected_reason', ['BS_UNSOLICITED', 'BS_WAS_COVERED', 'BS_NOT_REQUIRED', 'BS_USER_NOT_CONTINUE', 'US_FIND_JOB', 'US_NOT_EXPECTATIONS', 'US_PERSONAL_PROBLEMS', 'US_CONFUSION', 'OTHER'])->nullable();
             $table->string('rejected_other')->nullable();
             $table->timestamps();

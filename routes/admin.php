@@ -24,7 +24,12 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::apiResource('generations', GenerationController::class);
+
     Route::apiResource('users', UserController::class);
+    Route::prefix('users')->group(function () {
+        Route::put('{id}/fetchPDF', [UserController::class, 'showUserPDF']);
+    });
+
     Route::apiResource('graduates', GraduateController::class);
 
     Route::apiResource('business', BusinessController::class);

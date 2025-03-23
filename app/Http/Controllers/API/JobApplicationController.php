@@ -142,7 +142,7 @@ class JobApplicationController extends Controller
         }
 
         $user = auth()->user();
-        $userType = $user->user_type;
+        $userType = in_array($user->user_type, ['BUSINESS', 'ADMIN']) ? $user->user_type : 'USER';
 
         if ($request->status === 'REJECTED') {
             $application->rejected_by = $userType;

@@ -41,16 +41,6 @@ class JobApplicationController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
      * Store a newly created resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
@@ -71,18 +61,6 @@ class JobApplicationController extends Controller
     {
         //
     }
-
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
-    {
-        //
-    }
-
     /**
      * Update the specified resource in storage.
      *
@@ -92,7 +70,35 @@ class JobApplicationController extends Controller
      */
     public function update(Request $request, $id)
     {
-        //
+        $user = auth()->user();
+        $userType = in_array($user->user_type, ['BUSINESS', 'ADMIN']) ? $user->user_type : 'USER';
+
+        $data = $request->validate(JobApplication::rejectedRules());
+        $application = JobApplication::findOrFail($id);
+
+        if ($application->status !== 'PENDING') {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Solo se puede actualizar el estado si la postulación está pendiente.',
+            ], 403);
+        }
+
+        if ($data['status'] === 'REJECTED') {
+            $application->rejected_reason = $data['rejected_reason'];
+            $application->rejected_other = $data['rejected_other'] ?? "";
+        }
+
+        $application->rejected_by = $userType;
+        $application->status = $data['status'];
+        $application->save();
+
+        $application->load(['business:id,bs_name', 'vacant:id,vacant_name', 'user:id,first_name,last_name']);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Estado de la postulación actualizado exitosamente.',
+            'application' => $application,
+        ]);
     }
 
     /**

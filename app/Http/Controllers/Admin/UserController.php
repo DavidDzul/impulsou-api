@@ -8,6 +8,16 @@ use Illuminate\Http\JsonResponse;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 
+use Barryvdh\DomPDF\Facade\Pdf;
+use App\Models\Curriculum;
+use App\Models\Image;
+use App\Models\WorkExperience;
+use App\Models\AcademicInformation;
+use App\Models\ContinuingEducation;
+use App\Models\TechnicalKnowledge;
+use Illuminate\Support\Facades\Log;
+use Exception;
+
 class UserController extends Controller
 {
     //
@@ -103,4 +113,34 @@ class UserController extends Controller
      * Remove the specified resource from storage.
      */
     public function destroy(string $id) {}
+
+    public function showUserPDF($id)
+    {
+        try {
+
+            $curriculum = Curriculum::where('user_id', $id)->first();
+            $photo = Image::where('user_id', $id)->first();
+            $workExperiences = WorkExperience::where('user_id', $id)->get();
+            $academic = AcademicInformation::where('user_id', $id)->get();
+            $education = ContinuingEducation::where('user_id', $id)->get();
+            $skills = TechnicalKnowledge::where('user_id', $id)->get();
+
+            $pdf = Pdf::loadView('pdf.template', [
+                'photo' => $photo,
+                'curriculum' => $curriculum,
+                'education' => $education,
+                'academic' => $academic,
+                'workExperiences' => $workExperiences,
+                'skills' => $skills,
+            ]);
+
+            return $pdf->download("User_{$id}_Curriculum.pdf");
+        } catch (Exception $e) {
+            Log::error('Error al generar el PDF: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Hubo un problema al generar el PDF.',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
