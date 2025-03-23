@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BusinessController;
 use App\Http\Controllers\Admin\BusinessDataController;
 use App\Http\Controllers\Admin\GraduateController;
+use App\Http\Controllers\Admin\JobApplicationController;
 use App\Http\Controllers\Admin\RoleController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -41,4 +42,6 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::put('{id}/updatePractice', [VacantPositionController::class, 'updatePractice']);
         Route::put('{id}/updateVacantJr', [VacantPositionController::class, 'updateVacantJr']);
     });
+
+    Route::apiResource('applications', JobApplicationController::class);
 });

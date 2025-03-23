@@ -69,6 +69,7 @@ class VacantPosition extends Model
         'status',
 
         'candidate_type',
+        'candidate_other',
         'compensations'
     ];
 
@@ -363,7 +364,8 @@ class VacantPosition extends Model
     public static function updateStatusRules()
     {
         return [
-            'candidate_type' => 'required|in:INTERNAL,EXTERNAL,NOT_COVERED'
+            'candidate_type' => 'required|in:INTERNAL,EXTERNAL,NOT_COVERED,OTHER',
+            'candidate_other' => 'sometimes|string|max:255'
         ];
     }
 

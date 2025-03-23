@@ -32,7 +32,9 @@ class BusinessController extends Controller
     public function getBusinessVacancies()
     {
         $userId = auth()->id();
-        $result = VacantPosition::where('user_id', $userId)->where('status', true)->get();
+        $result = VacantPosition::where('user_id', $userId)
+            // ->where('status', true)
+            ->get();
 
         return response()->json([
             'vacancies' => $result

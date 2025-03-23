@@ -72,7 +72,8 @@ class CreateVacantPositionTable extends Migration
             $table->text('compensations')->nullable();
 
             $table->boolean('status')->default(true);
-            $table->enum("candidate_type", ["INTERNAL", "EXTERNAL", "NOT_COVERED"])->nullable(true);
+            $table->enum("candidate_type", ["INTERNAL", "EXTERNAL", "NOT_COVERED", "OTHER"])->nullable(true);
+            $table->string('candidate_other')->nullable();
             $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->timestamps();
         });
