@@ -132,4 +132,55 @@ class VacantPositionController extends Controller
             "updateVacantJr" => $vacant
         ], 200);
     }
+
+    public function updateStatus(Request $request, $id)
+    {
+        $vacant = VacantPosition::find($id);
+        $data = $request->validate(VacantPosition::updateStatusRules());
+        $data['status'] = false;
+
+        if (!$vacant) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'La vacante no ha sido encontrada.',
+            ], 404);
+        }
+
+        $vacant->update($data);
+
+        // Cargar relación business con solo los campos id, user_id y bs_name
+        $vacant->load(['business:id,user_id,bs_name']);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Estado actualizado con éxito.',
+            'vacant' => $vacant,
+        ], 200);
+    }
+
+    public function resetStatus(Request $request, $id)
+    {
+        $vacant = VacantPosition::find($id);
+
+        if (!$vacant) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'La vacante no ha sido encontrada.',
+            ], 404);
+        }
+
+        $vacant->update([
+            'status' => true,
+            'candidate_type' => null,
+            'candidate_other' => null,
+        ]);
+
+        $vacant->load(['business:id,user_id,bs_name']);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Estado de la vacante restablecido con éxito.',
+            'vacant' => $vacant,
+        ], 200);
+    }
 }

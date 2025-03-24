@@ -46,6 +46,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::put('{id}/updateVacant', [VacantPositionController::class, 'updateVacant']);
         Route::put('{id}/updatePractice', [VacantPositionController::class, 'updatePractice']);
         Route::put('{id}/updateVacantJr', [VacantPositionController::class, 'updateVacantJr']);
+        Route::put('{id}/status', [VacantPositionController::class, 'updateStatus']);
+        Route::put('{id}/reset', [VacantPositionController::class, 'resetStatus']);
     });
 
     Route::apiResource('applications', JobApplicationController::class);

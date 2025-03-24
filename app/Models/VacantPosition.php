@@ -365,7 +365,7 @@ class VacantPosition extends Model
     {
         return [
             'candidate_type' => 'required|in:INTERNAL,EXTERNAL,NOT_COVERED,OTHER',
-            'candidate_other' => 'sometimes|string|max:255'
+            'candidate_other' => 'nullable|string|max:255'
         ];
     }
 
