@@ -45,4 +45,14 @@ class AuthController extends Controller
             "msg" => "Token eliminado con éxito"
         ], 200);
     }
+
+    public function getPermissions(Request $request)
+    {
+        $user = $request->user();
+        $permissions = $user->getAllPermissions();
+
+        return response()->json([
+            'permissions' => $permissions->pluck('name')
+        ]);
+    }
 }

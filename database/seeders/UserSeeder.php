@@ -22,7 +22,7 @@ class UserSeeder extends Seeder
             "last_name" => "Universitario A.C.",
             "email" => "vinculacion.laboral@iu.org.mx",
             "password" => Hash::make("abc123"),
-            "phone" => "+529911071509",
+            "phone" => "9911071509",
             "campus" => "MERIDA",
             "user_type" => "BUSINESS",
             "generation_id" => null,
@@ -35,7 +35,7 @@ class UserSeeder extends Seeder
             "last_name" => "Fernando",
             "email" => "david.dzul@iu.org.mx",
             "password" => Hash::make("abc123"),
-            "phone" => "+529911071509",
+            "phone" => "9911071509",
             "campus" => "MERIDA",
             "user_type" => "BEC_ACTIVE",
             "generation_id" => null,
@@ -67,5 +67,41 @@ class UserSeeder extends Seeder
             "generation_id" => null,
             "active" => 1,
         ]);
+
+        User::create([
+            "first_name" => "Impulso",
+            "last_name" => "Universitario A.C.",
+            "email" => "root@iu.org.mx",
+            "password" => Hash::make("abc123"),
+            "phone" => "9911071509",
+            "campus" => "MERIDA",
+            "user_type" => "ADMIN",
+            "generation_id" => null,
+            "active" => 1,
+        ])->assignRole('ADMIN_ROOT');
+
+        User::create([
+            "first_name" => "Impulso",
+            "last_name" => "Universitario A.C.",
+            "email" => "campus@iu.org.mx",
+            "password" => Hash::make("abc123"),
+            "phone" => "9911071509",
+            "campus" => "VALLADOLID",
+            "user_type" => "ADMIN",
+            "generation_id" => null,
+            "active" => 1,
+        ])->assignRole('ADMIN_CAMPUS');
+
+        User::create([
+            "first_name" => "Impulso",
+            "last_name" => "Universitario A.C.",
+            "email" => "yucatan@iu.org.mx",
+            "password" => Hash::make("abc123"),
+            "phone" => "9911071509",
+            "campus" => "MERIDA",
+            "user_type" => "ADMIN",
+            "generation_id" => null,
+            "active" => 1,
+        ])->assignRole('ADMIN_YUCATAN');
     }
 }

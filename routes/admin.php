@@ -17,9 +17,11 @@ Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
 });
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+Route::middleware('auth:sanctum')->get('/admin', function (Request $request) {
     return $request->user();
 });
+
+Route::middleware('auth:sanctum')->get('/permissions', [AuthController::class, 'getPermissions']);
 
 Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);

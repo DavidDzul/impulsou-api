@@ -95,6 +95,7 @@ class VacantPositionController extends Controller
         $data = $request->validate(VacantPosition::updateVacantRules());
 
         $vacant->update($data);
+        $vacant->load(['business:id,user_id,bs_name']);
 
         return response()->json([
             'res' => true,
@@ -110,6 +111,7 @@ class VacantPositionController extends Controller
         $data = $request->validate(VacantPosition::updatePracticeRules());
 
         $practice->update($data);
+        $practice->load(['business:id,user_id,bs_name']);
 
         return response()->json([
             'res' => true,
@@ -125,6 +127,7 @@ class VacantPositionController extends Controller
         $data = $request->validate(VacantPosition::updateJrRules());
 
         $vacant->update($data);
+        $vacant->load(['business:id,user_id,bs_name']);
 
         return response()->json([
             'res' => true,
