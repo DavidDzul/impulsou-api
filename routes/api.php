@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\API\CandidateDataController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
@@ -130,4 +131,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('createVacanteJr', [VacantController::class, 'storeVacantJr']);
     Route::put('updateVacantJr/{id}', [VacantController::class, 'updateVacantJr']);
     Route::put('updateVacantStatus/{id}', [VacantController::class, 'updateVacantStatus']);
+
+    /** CANDIDATE DATA */
+    Route::apiResource('candidateData', CandidateDataController::class);
 });
