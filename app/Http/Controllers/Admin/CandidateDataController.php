@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CandidateData;
 use Illuminate\Http\Request;
 
 class CandidateDataController extends Controller
@@ -14,18 +15,13 @@ class CandidateDataController extends Controller
      */
     public function index()
     {
-        //
+        $candidates = CandidateData::all();
+        return response()->json([
+            'res' => true,
+            'candidates' => $candidates
+        ], 200);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
-        //
-    }
 
     /**
      * Store a newly created resource in storage.
@@ -45,17 +41,6 @@ class CandidateDataController extends Controller
      * @return \Illuminate\Http\Response
      */
     public function show($id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
     {
         //
     }

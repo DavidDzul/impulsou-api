@@ -14,4 +14,18 @@ class Area extends Model
     protected $fillable = [
         'name',
     ];
+
+    public static function createRules()
+    {
+        return [
+            'name' => 'required|string|max:255',
+        ];
+    }
+
+    public static function updateRules()
+    {
+        return [
+            'name' => 'required|string|max:255',
+        ];
+    }
 }
