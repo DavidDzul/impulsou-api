@@ -31,7 +31,6 @@ class AreaController extends Controller
      */
     public function store(Request $request)
     {
-
         $data = $request->validate(Area::createRules());
         $area = Area::create($data);
 
@@ -68,6 +67,7 @@ class AreaController extends Controller
         $area->update($data);
 
         return response()->json([
+            "res" => true,
             'message' => 'Área actualizada correctamente',
             'updateArea' => $area
         ]);

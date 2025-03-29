@@ -78,7 +78,7 @@ class UserSeeder extends Seeder
             "user_type" => "ADMIN",
             "generation_id" => null,
             "active" => 1,
-        ])->assignRole('ADMIN_ROOT');
+        ])->assignRole('ROOT');
 
         User::create([
             "first_name" => "Impulso",
@@ -90,7 +90,7 @@ class UserSeeder extends Seeder
             "user_type" => "ADMIN",
             "generation_id" => null,
             "active" => 1,
-        ])->assignRole('ADMIN_CAMPUS');
+        ])->assignRole('CAMPUS');
 
         User::create([
             "first_name" => "Impulso",
@@ -102,6 +102,6 @@ class UserSeeder extends Seeder
             "user_type" => "ADMIN",
             "generation_id" => null,
             "active" => 1,
-        ])->assignRole('ADMIN_YUCATAN');
+        ])->assignRole('YUCATAN');
     }
 }

@@ -17,7 +17,7 @@ class CreateCandidateDataTable extends Migration
             $table->id();
             $table->enum('user_type', ['BEC_ACTIVE', 'BEC_INACTIVE']);
             $table->enum('campus', ['MERIDA', 'TIZIMIN', 'OXKUTZCAB', 'VALLADOLID']);
-            $table->enum('job_type', ['INTERNSHIP', 'PART_TIME', 'FULL_TIME']);
+            $table->enum('job_type', ['PROFESSIONAL_PRACTICE', 'PART_TIME', 'FULL_TIME']);
             $table->foreignId('area_id')->constrained('areas')->onDelete('cascade');
             $table->integer('count');
             $table->timestamps();

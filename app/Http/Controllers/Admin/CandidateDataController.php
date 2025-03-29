@@ -31,7 +31,14 @@ class CandidateDataController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $data = $request->validate(CandidateData::createRules());
+        $area = CandidateData::create($data);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Área creada con éxito',
+            'createData' => $area,
+        ], 201);
     }
 
     /**
@@ -54,7 +61,16 @@ class CandidateDataController extends Controller
      */
     public function update(Request $request, $id)
     {
-        //
+        $candidate = CandidateData::findOrFail($id);
+        $data = $request->validate(CandidateData::updateRules());
+
+        $candidate->update($data);
+
+        return response()->json([
+            "res" => true,
+            'message' => 'Información actualizada correctamente',
+            'updateData' => $candidate
+        ]);
     }
 
     /**
@@ -65,6 +81,9 @@ class CandidateDataController extends Controller
      */
     public function destroy($id)
     {
-        //
+        $area = CandidateData::findOrFail($id);
+        $area->delete();
+
+        return response()->json(['message' => 'Información eliminada correctamente', 200]);
     }
 }
