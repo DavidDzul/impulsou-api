@@ -9,10 +9,10 @@ use App\Models\User;
 use App\Models\BusinessData;
 use App\Models\BusinessAgreement;
 use Illuminate\Support\Facades\Hash;
+use App\Models\UserBusinessMap;
 
 class BusinessController extends Controller
 {
-
     public function index(): JsonResponse
     {
         $user = auth()->user();
@@ -27,7 +27,16 @@ class BusinessController extends Controller
         $query = User::with(['businessData:id,user_id,bs_name'])
             ->where('user_type', 'BUSINESS');
 
-        if ($user->campus !== 'MERIDA') {
+        // Obtener el primer rol del usuario
+        $role = $user->roles->first();
+
+        // Si el rol es "YUCATAN", filtrar por los business_id asignados al usuario
+        if ($role && $role->name === 'YUCATAN') {
+            $businessIds = UserBusinessMap::where('user_id', $user->id)
+                ->pluck('business_id');
+
+            $query->whereIn('id', $businessIds);
+        } else if ($user->campus !== 'MERIDA') {
             $query->where('campus', $user->campus);
         }
 

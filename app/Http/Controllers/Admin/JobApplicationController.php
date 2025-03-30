@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\JobApplication;
 use Illuminate\Http\Request;
+use App\Models\UserBusinessMap;
 
 class JobApplicationController extends Controller
 {
@@ -24,21 +25,40 @@ class JobApplicationController extends Controller
             ], 401);
         }
 
-        $data = JobApplication::with([
-            'business:id,bs_name',
+        // Obtener el primer rol del usuario
+        $role = $user->roles->first();
+
+        // Construcción de la consulta base con las relaciones necesarias
+        $query = JobApplication::with([
+            'business:id,user_id,bs_name',
             'vacant:id,vacant_name,campus',
-            'user:id,first_name,last_name'
-        ])
-            ->whereHas('vacant', function ($query) use ($user) {
+            'user:id,first_name,last_name,campus'
+        ]);
+
+        // Si el usuario tiene el rol "YUCATAN", filtrar por business_id en JobApplication
+        if ($role && $role->name === 'YUCATAN') {
+            $businessIds = UserBusinessMap::where('user_id', $user->id)
+                ->pluck('business_id'); // Obtener todos los business_id asignados al usuario
+
+            $query->whereIn('business_id', $businessIds);
+        }
+        // Si el usuario no tiene el rol "YUCATAN" y su campus no es "MERIDA", filtrar por campus del usuario postulante
+        else if ($user->campus !== 'MERIDA') {
+            $query->whereHas('user', function ($query) use ($user) {
                 $query->where('campus', $user->campus);
-            })
-            ->get();
+            });
+        }
+
+        // Obtener los datos finales
+        $data = $query->get();
 
         return response()->json([
             'res' => true,
             'applications' => $data
         ]);
     }
+
+
 
     /**
      * Store a newly created resource in storage.

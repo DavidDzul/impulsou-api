@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\VacantPosition;
+use App\Models\UserBusinessMap;
 
 class VacantPositionController extends Controller
 {
@@ -24,20 +25,30 @@ class VacantPositionController extends Controller
             ], 401);
         }
 
-        $data = VacantPosition::select('id', 'user_id', 'vacant_name', 'status', 'category', 'created_at')
+        $role = $user->roles->first();
+
+        $query = VacantPosition::select('id', 'user_id', 'vacant_name', 'status', 'category', 'created_at')
             ->with(['business' => function ($query) {
                 $query->select('id', 'user_id', 'bs_name');
-            }])
-            ->when($user->campus !== 'MERIDA', function ($query) use ($user) {
-                return $query->where('campus', $user->campus);
-            })
-            ->get();
+            }]);
+
+        if ($role && $role->name === 'YUCATAN') {
+            $userIds = UserBusinessMap::where('user_id', $user->id)
+                ->pluck('business_id');
+
+            $query->whereIn('user_id', $userIds);
+        } else if ($user->campus !== 'MERIDA') {
+            $query->where('campus', $user->campus);
+        }
+
+        $data = $query->get();
 
         return response()->json([
             'res' => true,
             'positions' => $data
         ]);
     }
+
 
     /**
      * Store a newly created resource in storage.
