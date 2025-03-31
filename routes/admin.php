@@ -27,6 +27,8 @@ Route::middleware('auth:sanctum')->get('/permissions', [AuthController::class, '
 
 Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
+    Route::post('updateProfile', [AuthController::class, 'updateProfile']);
+
     Route::apiResource('generations', GenerationController::class);
 
     Route::apiResource('users', UserController::class);
@@ -49,8 +51,11 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
 
     Route::apiResource('vacantPositions', VacantPositionController::class);
     Route::prefix('vacantPositions')->group(function () {
+        Route::post('{id}/storeVacant', [VacantPositionController::class, 'storeVacant']);
         Route::put('{id}/updateVacant', [VacantPositionController::class, 'updateVacant']);
+        Route::post('{id}/storePractice', [VacantPositionController::class, 'storePractice']);
         Route::put('{id}/updatePractice', [VacantPositionController::class, 'updatePractice']);
+        Route::post('{id}/storeVacantJr', [VacantPositionController::class, 'storeVacantJr']);
         Route::put('{id}/updateVacantJr', [VacantPositionController::class, 'updateVacantJr']);
         Route::put('{id}/status', [VacantPositionController::class, 'updateStatus']);
         Route::put('{id}/reset', [VacantPositionController::class, 'resetStatus']);

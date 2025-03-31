@@ -55,4 +55,22 @@ class AuthController extends Controller
             'permissions' => $permissions->pluck('name')
         ]);
     }
+
+    public function updateProfile(Request $request)
+    {
+        $user = User::findOrFail($request->id);
+        $data = $request->validate(User::updateRulesProfile($user->id));
+
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($data['password']);
+        }
+
+        $user->update($data);
+
+        return response()->json([
+            'res' => true,
+            'msg' => 'Usuario actualizado correctamente',
+            'user' => $user
+        ], 200);
+    }
 }

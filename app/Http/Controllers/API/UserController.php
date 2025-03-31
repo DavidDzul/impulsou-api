@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
@@ -26,10 +27,15 @@ class UserController extends Controller
 
     public function updateUser(Request $request)
     {
+
         $user = User::findOrFail($request->id);
         $data = $request->validate(User::updateRulesProfile($user->id));
 
-        $user->fill($data)->save();
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($data['password']);
+        }
+
+        $user->update($data);
 
         return response()->json([
             'res' => true,
