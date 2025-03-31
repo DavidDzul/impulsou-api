@@ -79,7 +79,8 @@ class VacantController extends Controller
         $roleConfig = $role->configuration;
 
         if (!$roleConfig->unlimited) {
-            $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
+            // $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
+            $count = VacantPosition::where('user_id', $user->id)->count();
 
             if ($roleConfig->num_vacancies !== null && $count >= $roleConfig->num_vacancies) {
                 return response()->json([
@@ -137,7 +138,7 @@ class VacantController extends Controller
         $roleConfig = $role->configuration;
 
         if (!$roleConfig->unlimited) {
-            $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
+            $count = VacantPosition::where('user_id', $user->id)->count();
 
             if ($roleConfig->num_vacancies !== null && $count >= $roleConfig->num_vacancies) {
                 return response()->json([
@@ -195,7 +196,7 @@ class VacantController extends Controller
         $roleConfig = $role->configuration;
 
         if (!$roleConfig->unlimited) {
-            $count = VacantPosition::where('user_id', $user->id)->where('status', true)->count();
+            $count = VacantPosition::where('user_id', $user->id)->count();
 
             if ($roleConfig->num_vacancies !== null && $count >= $roleConfig->num_vacancies) {
                 return response()->json([

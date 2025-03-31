@@ -73,13 +73,18 @@ class BusinessController extends Controller
 
         $createData->assignRole($request->role);
 
-        // Cargar relaciones
-        $createData->load(['businessData', 'businessAgreement']);
+        $createData->load(['roles', 'businessData', 'businessAgreement']);
+        $role = $createData->roles->first();
+
+        $userArray = $createData->toArray();
+        unset($userArray['roles']);
+
+        $userArray['role'] = $role;
 
         return response()->json([
             'res' => true,
             'msg' => 'Empresa registrada correctamente.',
-            'createBusiness' => $createData
+            'createBusiness' => $userArray
         ], 201);
     }
 
@@ -126,8 +131,6 @@ class BusinessController extends Controller
         ], 200);
     }
 
-
-
     public function storeBusinessAgreement(Request $request, $id)
     {
         $business = User::findOrFail($id);
@@ -141,5 +144,15 @@ class BusinessController extends Controller
             'msg' => 'Convenio registrado correctamente.',
             'agreement' => $data
         ], 201);
+    }
+
+    public function searchBusinesses(Request $request)
+    {
+        $search = $request->input('search');
+        $businesses = BusinessData::where('bs_name', 'LIKE', "%{$search}%")
+            ->select('id', 'bs_name', 'user_id')
+            ->limit(10)
+            ->get();
+        return response()->json(['businesses' => $businesses]);
     }
 }

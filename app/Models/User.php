@@ -93,6 +93,8 @@ class User extends Authenticatable
             'password' => 'nullable|string|min:6',
             'active' => 'nullable|boolean',
             'user_type' => 'sometimes|string|in:BEC_ACTIVE,BEC_INACTIVE',
+            'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+            'generation_id' => 'sometimes|exists:generations,id',
         ];
     }
 

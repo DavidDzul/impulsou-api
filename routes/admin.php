@@ -41,6 +41,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement']);
     });
 
+    Route::get('search', [BusinessController::class, 'searchBusinesses']);
+
     Route::apiResource('businessData', BusinessDataController::class);
     Route::apiResource('businessAgreement', BusinessAgreementController::class);
     Route::apiResource('roles', RoleController::class);
