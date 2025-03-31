@@ -7,141 +7,142 @@
     <title>Currículum Vitae</title>
 
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
-    body {
-        /* font-family: Arial, sans-serif; */
-        font-family: 'Poppins', sans-serif;
-        margin: 0;
-        padding: 0;
-        color: #333;
-    }
+        body {
+            /* font-family: Arial, sans-serif; */
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
 
-    .info-table {
-        width: 100%;
-        border-spacing: 20px;
-        table-layout: fixed;
-    }
+        .info-table {
+            width: 100%;
+            border-spacing: 0px;
+            table-layout: fixed;
+        }
 
-    .photo-cell {
-        width: 30%;
-        vertical-align: middle;
-        text-align: center;
-    }
+        .photo-cell {
+            width: 30%;
+            vertical-align: middle;
+            text-align: center;
+            padding-bottom: 10px;
+        }
 
-    .photo {
-        width: 180px;
-        height: 180px;
-        border-radius: 50%;
-        object-fit: cover;
-    }
+        .photo {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
 
-    .personal-info-cell {
-        vertical-align: middle;
-        /* Centra verticalmente los datos */
-        color: #333;
-    }
+        .personal-info-cell {
+            vertical-align: middle;
+            /* Centra verticalmente los datos */
+            color: #333;
+        }
 
-    .personal-info-cell h1 {
-        font-size: 24px;
-        margin: 0;
-        color: #FF7900;
-    }
+        .personal-info-cell h1 {
+            font-size: 24px;
+            margin: 0;
+            color: #FF7900;
+        }
 
-    .personal-info-cell p {
-        margin: 5px 0;
-        font-size: 20px;
-        font-weight: 500;
-    }
+        .personal-info-cell p {
+            margin: 5px 0;
+            font-size: 20px;
+            font-weight: 500;
+        }
 
-    .container {
-        font-family: 'Poppins', sans-serif;
-        width: 100%;
-        padding: 0px 10px 10px 10px
-    }
+        .container {
+            font-family: 'Poppins', sans-serif;
+            width: 100%;
+            padding: 0px 10px 10px 10px
+        }
 
-    .header {
-        margin-bottom: 5px;
-        border-bottom: 2px;
-        padding-bottom: 10px;
-    }
+        .header {
+            margin-bottom: 5px;
+            border-bottom: 2px;
+            padding-bottom: 10px;
+        }
 
-    .section {
-        margin-top: 0px;
-        margin-bottom: 0px;
-        padding-top: 0px;
-        padding-bottom: 0px;
-    }
+        .section {
+            margin-top: -15px;
+            margin-bottom: 0px;
+            padding-top: 0px;
+            padding-bottom: 0px;
+        }
 
-    .section h2 {
-        font-size: 18px;
-        border-bottom: 2px solid #275FFC;
-        margin-bottom: 10px;
-        color: #275FFC;
-    }
+        .section h2 {
+            font-size: 18px;
+            border-bottom: 2px solid #275FFC;
+            margin-bottom: 10px;
+            color: #275FFC;
+        }
 
-    .list-item {
-        margin: 5px 0;
-        font-size: 14px;
-    }
+        .list-item {
+            margin: 5px 0;
+            font-size: 14px;
+        }
 
-    .academic,
-    .experience,
-    .skills {
-        padding-left: 15px;
-    }
+        .academic,
+        .experience,
+        .skills {
+            padding-left: 15px;
+        }
 
-    .name-title {
-        font-family: 'Poppins', sans-serif;
-        text-align: center;
-        /* Centra el nombre y título */
-        margin-bottom: 20px;
-    }
+        .name-title {
+            font-family: 'Poppins', sans-serif;
+            text-align: center;
+            /* Centra el nombre y título */
+            margin-bottom: 20px;
+        }
 
-    .name-title h1 {
-        font-family: 'Poppins', sans-serif;
-        font-size: 26px;
-    }
+        .name-title h1 {
+            font-family: 'Poppins', sans-serif;
+            font-size: 26px;
+        }
 
-    .name-title h2 {
-        font-family: 'Poppins', sans-serif;
-        font-size: 20px;
-    }
+        .name-title h2 {
+            font-family: 'Poppins', sans-serif;
+            font-size: 20px;
+        }
 
-    .name-title p {
-        font-family: 'Poppins', sans-serif;
-        font-size: 18px;
-        font-weight: 300;
-    }
+        .name-title p {
+            font-family: 'Poppins', sans-serif;
+            font-size: 18px;
+            font-weight: 300;
+        }
 
-    .aligned-table {
-        width: 100%;
-        /* La tabla ocupa todo el ancho */
-        border-spacing: 0;
-        /* Sin espacio entre celdas */
-        table-layout: fixed;
-        /* Ancho fijo para distribuir columnas equitativamente */
-    }
+        .aligned-table {
+            width: 100%;
+            /* La tabla ocupa todo el ancho */
+            border-spacing: 0;
+            /* Sin espacio entre celdas */
+            table-layout: fixed;
+            /* Ancho fijo para distribuir columnas equitativamente */
+        }
 
-    .left-cell {
-        text-align: left;
-        /* Alinea la primera columna a la izquierda */
-        padding: 5px;
-        width: 50%;
-        /* Ocupa el 50% del ancho */
-    }
+        .left-cell {
+            text-align: left;
+            /* Alinea la primera columna a la izquierda */
+            padding: 5px;
+            width: 50%;
+            /* Ocupa el 50% del ancho */
+        }
 
-    .right-cell {
-        text-align: right;
-        /* Alinea la segunda columna a la derecha */
-        padding: 5px;
-        width: 50%;
-        /* Ocupa el 50% del ancho */
-    }
+        .right-cell {
+            text-align: right;
+            /* Alinea la segunda columna a la derecha */
+            padding: 5px;
+            width: 50%;
+            /* Ocupa el 50% del ancho */
+        }
 
-    .img-title {
-        margin-right: 5px;
-    }
+        .img-title {
+            margin-right: 5px;
+        }
     </style>
 </head>
 
@@ -166,9 +167,11 @@
                             </h1>
                             <br>
                             <!-- <h2>Datos de contacto</h2> -->
+                            <label> {{ $curriculum->email }}</label>
+                            <br>
+                            <label> {{ $curriculum->phone_num }} </label>
+                            <br>
                             <label>
-                                {{ $curriculum->email }}</label> <br>
-                            <label> {{ $curriculum->phone_num }} -
                                 {{ $curriculum->locality }}, {{ $curriculum->state }},
                                 {{ $curriculum->country }}
                             </label>
