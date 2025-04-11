@@ -132,9 +132,7 @@
                 <table class="wrapper">
                     <tr>
                         <td align="center">
-                            <div class="preheader">
-                                Available on GitHub and CodePen. Highly compatible. Designer friendly.
-                            </div>
+
                             <img src="https://iu.org.mx/wp-content/uploads/2024/11/Impulso_Universitario_Logotipo_Alternativo_RGB_Positivo.png"
                                 alt="Logo" title="Logo" width="50%" />
                         </td>
@@ -144,25 +142,27 @@
                 <table class="container">
                     <tr>
                         <td class="header">
-                            Haz recibido una nueva postulación
+                            ¡Has recibido una nueva postulación para tu vacante!
                         </td>
                     </tr>
 
                     <tr>
                         <td class="subheader">
-                            {{ $data }}
+                            Un candidato ha aplicado para la vacante <strong>{{ $data }}</strong>.
+                            ¡Es el momento de revisar su perfil!
                         </td>
                     </tr>
 
                     <tr>
                         <td class="paragraph">
-                            Para visualizar, ingresa a la plataforma haciendo clic en el siguiente botón
+                            Para ver los detalles de la postulación, ingresa a la plataforma y revisa el perfil del
+                            candidato. Haz clic en el botón a continuación para acceder.
                         </td>
                     </tr>
 
                     <tr>
                         <td class="button-container">
-                            <a class="button" style="color: white;"
+                            <a class="button" style="color: #ff7900;"
                                 href="https://develop.iu.org.mx/login?redirect=/inicio">
                                 Ver postulación
                             </a>
@@ -177,8 +177,11 @@
 
                     <tr>
                         <td class="paragraph">
-                            ¿Tienes alguna pregunta? Escríbenos al correo <span
-                                style="text-decoration: underline;">vinculacion.laboral@iu.org.mx</span>
+                            Si tienes alguna pregunta o necesitas ayuda, contáctanos en
+                            <a href="mailto:vinculacion.laboral@iu.org.mx"
+                                style="text-decoration: underline; color: inherit;">
+                                vinculacion.laboral@iu.org.mx
+                            </a>.
                         </td>
                     </tr>
                 </table>

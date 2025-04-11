@@ -10,6 +10,8 @@ use App\Models\BusinessData;
 use App\Models\BusinessAgreement;
 use Illuminate\Support\Facades\Hash;
 use App\Models\UserBusinessMap;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\WelcomeMail;
 
 class BusinessController extends Controller
 {
@@ -80,6 +82,9 @@ class BusinessController extends Controller
         unset($userArray['roles']);
 
         $userArray['role'] = $role;
+
+        $mail = new WelcomeMail($createData);
+        Mail::to($createData->email)->send($mail);
 
         return response()->json([
             'res' => true,

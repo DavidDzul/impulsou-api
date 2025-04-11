@@ -43,35 +43,9 @@ class UserSeeder extends Seeder
         ]);
 
         User::create([
-            "enrollment" => "MER240001",
-            "first_name" => "Nallely",
-            "last_name" => "Garrido",
-            "email" => "nallely.garrido@iu.org.mx",
-            "password" => Hash::make("abc123"),
-            "phone" => "9911011122",
-            "campus" => "MERIDA",
-            "user_type" => "BEC_ACTIVE",
-            "generation_id" => null,
-            "active" => 1,
-        ]);
-
-        User::create([
-            "enrollment" => "MER240002",
-            "first_name" => "María",
-            "last_name" => "May",
-            "email" => "maria.may@iu.org.mx",
-            "password" => Hash::make("abc123"),
-            "phone" => "9911011122",
-            "campus" => "MERIDA",
-            "user_type" => "BEC_ACTIVE",
-            "generation_id" => null,
-            "active" => 1,
-        ]);
-
-        User::create([
             "first_name" => "Impulso",
             "last_name" => "Universitario A.C.",
-            "email" => "root@iu.org.mx",
+            "email" => "admin@iu.org.mx",
             "password" => Hash::make("abc123"),
             "phone" => "9911071509",
             "campus" => "MERIDA",

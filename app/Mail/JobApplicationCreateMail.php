@@ -29,6 +29,6 @@ class JobApplicationCreateMail extends Mailable
      */
     public function build()
     {
-        return $this->view('email.application')->with(['data' => $this->data]);
+        return $this->from('vinculacion.laboral@iu.org.mx', 'Plataforma de Vinculación Laboral')->subject('¡Tienes una nueva postulación! Revisa el perfil del candidato.')->view('email.application')->with(['data' => $this->data]);
     }
 }

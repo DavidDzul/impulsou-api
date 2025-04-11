@@ -18,6 +18,9 @@ use App\Models\TechnicalKnowledge;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
+use Illuminate\Support\Facades\Mail;
+use App\Mail\WelcomeMail;
+
 class UserController extends Controller
 {
     //
@@ -39,6 +42,7 @@ class UserController extends Controller
             // Si no, solo obtiene los registros de su campus
             $data = User::where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
         }
+
 
         return response()->json([
             'res' => true,
@@ -63,12 +67,17 @@ class UserController extends Controller
 
             $user = User::create($data);
 
+
+            $mail = new WelcomeMail($user);
+            Mail::to($user->email)->send($mail);
+
             return response()->json([
                 'res' => true,
                 'msg' => 'Usuario creado con éxito',
                 'createUser' => $user,
             ], 201);
         }
+
 
         return response()->json([
             'res' => false,

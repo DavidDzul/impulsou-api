@@ -44,13 +44,6 @@ class JobApplicationController extends Controller
         // Buscar el email del usuario relacionado al business_id
         $userEmail = User::where('id', $request->business_id)->value('email');
 
-        if (!$userEmail) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'No se encontró un usuario con el business_id proporcionado.',
-            ], 404);
-        }
-
         // Crear una nueva solicitud de trabajo
         $application = JobApplication::create([
             'user_id' => $request->user_id,
