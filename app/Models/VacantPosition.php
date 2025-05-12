@@ -50,6 +50,7 @@ class VacantPosition extends Model
         'general_knowledge',
         'knowledge_description',
 
+        'overtime_pay',
         'utilities',
         'bonuses',
         'dining_room',
@@ -111,6 +112,7 @@ class VacantPosition extends Model
             "general_knowledge" => "nnullable|boolean",
             "knowledge_description" => "nullable|string|max:500",
 
+            "overtime_pay" => "nullable|boolean",
             "utilities" => "nullable|boolean",
             "bonuses" => "nullable|boolean",
             "dining_room" => "nullable|boolean",
@@ -170,6 +172,7 @@ class VacantPosition extends Model
             "general_knowledge" => "nnullable|boolean",
             "knowledge_description" => "nullable|string|max:500",
 
+            "overtime_pay" => "nullable|boolean",
             "utilities" => "nullable|boolean",
             "bonuses" => "nullable|boolean",
             "dining_room" => "nullable|boolean",

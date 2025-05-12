@@ -15,7 +15,7 @@ class CreateGenerationsTable extends Migration
     {
         Schema::create('generations', function (Blueprint $table) {
             $table->id();
-            $table->integer('generation_name');
+            $table->string('generation_name');
             $table->enum("campus", ["MERIDA", "VALLADOLID", "OXKUTZCAB", "TIZIMIN"]);
             $table->boolean('generation_active');
             $table->timestamps();

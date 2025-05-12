@@ -47,6 +47,18 @@ class GenerationController extends Controller
         $data = $request->validate(Generation::$createRules);
         $data['generation_active'] = $data['generation_active'] ?? false;
 
+        // Validar existencia previa
+        $exists = Generation::where('generation_name', $data['generation_name'])
+            ->where('campus', $data['campus'])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'Ya existe una generación con ese nombre y campus.',
+            ], 422);
+        }
+
         $generation = Generation::create($data);
 
         return response()->json([

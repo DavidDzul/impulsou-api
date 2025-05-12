@@ -102,6 +102,10 @@ class GraduateController extends Controller
         $user = User::findOrFail($id);
         $data = $request->validate(User::updateRulesUser($user->id));
 
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($data['password']);
+        }
+
         if ($request->has('active')) {
             $data['active'] = (bool) $request->active;
         }

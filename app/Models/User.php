@@ -90,7 +90,7 @@ class User extends Authenticatable
             'email' => 'sometimes|string|email|unique:users,email,' . $userId,
             'phone' => 'nullable|string|max:15',
             'enrollment' => 'sometimes|string|min:9|max:9|unique:users,enrollment,' . $userId,
-            'password' => 'nullable|string|min:6',
+            'password' => 'sometimes|string|min:6',
             'active' => 'nullable|boolean',
             'user_type' => 'sometimes|string|in:BEC_ACTIVE,BEC_INACTIVE',
             'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',

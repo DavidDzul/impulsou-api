@@ -54,6 +54,7 @@ class CreateVacantPositionTable extends Migration
             $table->boolean('general_knowledge')->nullable()->default(false);
             $table->text('knowledge_description')->nullable();
 
+            $table->boolean('overtime_pay')->nullable()->default(false);
             $table->boolean('utilities')->nullable()->default(false);
             $table->boolean('bonuses')->nullable()->default(false);
             $table->boolean('dining_room')->nullable()->default(false);
