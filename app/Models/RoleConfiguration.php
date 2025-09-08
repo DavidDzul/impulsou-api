@@ -18,6 +18,10 @@ class RoleConfiguration extends Model
         'unlimited'
     ];
 
+    protected $casts = [
+        'unlimited' => 'boolean',
+    ];
+
     public function role()
     {
         return $this->belongsTo(Role::class, 'role_id');

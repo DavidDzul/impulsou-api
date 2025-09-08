@@ -74,6 +74,27 @@ class VacantPosition extends Model
         'compensations'
     ];
 
+    protected $casts = [
+        'saturday_hour' => 'boolean',
+        'sunday_hour' => 'boolean',
+        'overtime_pay' => 'boolean',
+        'utilities' => 'boolean',
+        'bonuses' => 'boolean',
+        'dining_room' => 'boolean',
+        'savings_fund' => 'boolean',
+        'grocery_vouchers' => 'boolean',
+        'extensive_vacation_bonus' => 'boolean',
+        'top_christmas_bonus' => 'boolean',
+        'flexible_hours' => 'boolean',
+        'major_medical_expenses' => 'boolean',
+        'transportation_help' => 'boolean',
+        'automobile' => 'boolean',
+        'loans' => 'boolean',
+        'life_insurance' => 'boolean',
+        'other' => 'boolean',
+        'status' => 'boolean',
+    ];
+
     public static function createVacantRules()
     {
         return [

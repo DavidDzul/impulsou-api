@@ -32,7 +32,7 @@ class GraduateController extends Controller
             $data = User::where('user_type', 'BEC_INACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus
-            $data = User::where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
+            $data = User::where('campus', $user->campus,)->where('user_type', 'BEC_INACTIVE')->get();
         }
 
         return response()->json([

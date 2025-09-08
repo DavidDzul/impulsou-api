@@ -19,6 +19,10 @@ class CandidateData extends Model
         'count',
     ];
 
+    protected $casts = [
+        'area_id' => 'integer',
+        'count' => 'integer',
+    ];
 
     public static function createRules()
     {

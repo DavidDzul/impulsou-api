@@ -18,6 +18,9 @@ class Curriculum extends Model
     //     'email',
     // ];
 
+    protected $casts = [
+        'public' => 'boolean',
+    ];
     // Todos los campos esta habilitados para actualizarlo masivamente.
     protected $guarded = [];
 

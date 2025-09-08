@@ -324,6 +324,7 @@ class CurriculumController extends Controller
         $authUser = auth()->user();
 
         $candidates = Curriculum::where('public', true)
+            ->inRandomOrder()
             ->with('academicInformation')
             ->get();
 
