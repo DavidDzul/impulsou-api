@@ -20,7 +20,7 @@ class CreateVacantPositionTable extends Migration
             $table->enum("mode", ["IN_PERSON", "REMOTE", "HYBRID"]);
             $table->enum("category", ["JOB_POSITION", "PROFESSIONAL_PRACTICE", "JR_POSITION"]);
             $table->text('activities');
-            $table->string('study_profile');
+            $table->text('study_profile');
             $table->boolean('financial_support')->nullable()->default(false);
             $table->string('net_salary')->nullable();
             $table->string('support_amount')->nullable();

@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\API\AttendanceController;
+use App\Http\Controllers\API\AttendanceTokenController;
 use App\Http\Controllers\API\CandidateDataController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\AuthController;
@@ -134,4 +136,11 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     /** CANDIDATE DATA */
     Route::apiResource('candidateData', CandidateDataController::class);
+    Route::apiResource('token', AttendanceTokenController::class);
+    Route::apiResource('attendance', AttendanceController::class);
+    Route::get('attendanceStatus', [AttendanceController::class, 'getAttendanceStatus']);
+
+    Route::prefix('attendance')->group(function () {
+        // Route::get('{id}/images', [TerrainController::class, 'getImages']);
+    });
 });

@@ -90,7 +90,6 @@ class AuthController extends Controller
         return response()->json([
             "res" => true,
             "token" => $token,
-            'usuario' => $user
         ], 200);
     }
 
