@@ -137,10 +137,11 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     /** CANDIDATE DATA */
     Route::apiResource('candidateData', CandidateDataController::class);
     Route::apiResource('token', AttendanceTokenController::class);
-    Route::apiResource('attendance', AttendanceController::class);
-    Route::get('attendanceStatus', [AttendanceController::class, 'getAttendanceStatus']);
 
+    Route::apiResource('attendance', AttendanceController::class);
+    Route::get('validateAttendance', [AttendanceController::class, 'getAttendanceStatus']);
     Route::prefix('attendance')->group(function () {
-        // Route::get('{id}/images', [TerrainController::class, 'getImages']);
+        Route::post('check-in', [AttendanceController::class, 'checkIn']);
+        Route::post('check-out', [AttendanceController::class, 'checkOut']);
     });
 });

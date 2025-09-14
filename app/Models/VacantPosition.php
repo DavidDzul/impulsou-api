@@ -75,8 +75,12 @@ class VacantPosition extends Model
     ];
 
     protected $casts = [
+        'financial_support' => 'boolean',
         'saturday_hour' => 'boolean',
         'sunday_hour' => 'boolean',
+        'experience' => 'boolean',
+        'software_use' => 'boolean',
+        'general_knowledge' => 'boolean',
         'overtime_pay' => 'boolean',
         'utilities' => 'boolean',
         'bonuses' => 'boolean',
