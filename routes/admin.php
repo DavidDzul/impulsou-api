@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BusinessController;
 use App\Http\Controllers\Admin\BusinessDataController;
 use App\Http\Controllers\Admin\CandidateDataController;
+use App\Http\Controllers\Admin\ClassController;
 use App\Http\Controllers\Admin\GraduateController;
 use App\Http\Controllers\Admin\JobApplicationController;
 use App\Http\Controllers\Admin\RoleController;
@@ -64,4 +65,5 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('applications', JobApplicationController::class);
     Route::apiResource('areas', AreaController::class);
     Route::apiResource('candidateData', CandidateDataController::class);
+    Route::apiResource('class', ClassController::class);
 });
