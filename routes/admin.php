@@ -66,4 +66,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('areas', AreaController::class);
     Route::apiResource('candidateData', CandidateDataController::class);
     Route::apiResource('class', ClassController::class);
+    Route::prefix('class')->group(function () {
+        Route::get('{id}/attendances', [ClassController::class, 'getAttendanceByClass']);
+    });
 });
