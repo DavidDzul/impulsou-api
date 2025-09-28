@@ -156,4 +156,21 @@ class UserController extends Controller
             ], 500);
         }
     }
+
+    public function getUsersByFilters(Request $request)
+    {
+        $request->validate([
+            'campus' => 'required|string',
+            'generation_id' => 'required|integer',
+        ]);
+
+        $users = User::where('campus', $request->campus)
+            ->where('generation_id', $request->generation_id)
+            ->get();
+
+        return response()->json([
+            'res' => true,
+            'data' => $users
+        ], 200);
+    }
 }

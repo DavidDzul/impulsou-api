@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AreaController;
+use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\VacantPositionController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Admin\AuthController;
@@ -33,6 +34,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('generations', GenerationController::class);
 
     Route::apiResource('users', UserController::class);
+    Route::get('filterUsers', [UserController::class, 'getUsersByFilters']);
     Route::prefix('users')->group(function () {
         Route::put('{id}/fetchPDF', [UserController::class, 'showUserPDF']);
     });
@@ -69,4 +71,5 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::prefix('class')->group(function () {
         Route::get('{id}/attendances', [ClassController::class, 'getAttendanceByClass']);
     });
+    Route::apiResource('attendance', AttendanceController::class);
 });
