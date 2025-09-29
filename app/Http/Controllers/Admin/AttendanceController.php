@@ -101,8 +101,41 @@ class AttendanceController extends Controller
      */
     public function update(Request $request, $id)
     {
-        //
+        $attendance = Attendance::with('class')->findOrFail($id);
+
+        $data = $request->validate([
+            'check_in'  => 'nullable|date_format:H:i',
+            'check_out' => 'nullable|date_format:H:i',
+        ]);
+
+        if (isset($data['check_in'])) {
+            $attendance->check_in = $data['check_in'];
+
+            // Actualizar status basado en la hora de inicio de la clase
+            $attendance->status = $data['check_in'] > $attendance->class->start_time
+                ? 'LATE'
+                : 'PRESENT';
+            $attendance->class_status = 'IN_PROCESS';
+        }
+
+        if (isset($data['check_out'])) {
+            $attendance->check_out = $data['check_out'];
+
+            // Si quieres marcar la clase como completada al hacer check-out
+            if ($attendance->check_in) {
+                $attendance->class_status = 'COMPLETED';
+            }
+        }
+
+        $attendance->save();
+        $attendance->load('user');
+
+        return response()->json([
+            'res' => true,
+            'data' => $attendance,
+        ]);
     }
+
 
     /**
      * Remove the specified resource from storage.
