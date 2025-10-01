@@ -21,6 +21,16 @@ class Attendance extends Model
         'observations'
     ];
 
+    public static function updateRules()
+    {
+        return [
+            'status' => 'required|string|in:ABSENT,JUSTIFIED,PRESENT,LATE',
+            'check_in' => 'required|date_format:H:i',
+            'check_out' => 'required|date_format:H:i',
+            'observations' => 'nullable|string',
+        ];
+    }
+
     public function class()
     {
         return $this->belongsTo(ClassModel::class, 'class_id');
