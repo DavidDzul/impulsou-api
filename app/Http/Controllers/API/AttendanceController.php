@@ -85,7 +85,7 @@ class AttendanceController extends Controller
             ]);
         }
 
-        $hasCheckedIn  = !is_null($attendance->check_in) && in_array($attendance->status, ['PRESENT', 'LATE']);
+        $hasCheckedIn  = !is_null($attendance->check_in) && in_array($attendance->status, ['PRESENT', 'LATE', 'JUSTIFIED']);
         $hasCheckedOut = !is_null($attendance->check_out);
 
         $canCheckIn  = !$hasCheckedIn;
@@ -116,10 +116,18 @@ class AttendanceController extends Controller
             ->latest()
             ->first();
 
+        // Primero verificar si existe
         if (!$token) {
             return response()->json([
                 'message' => 'Token inválido o expirado.'
             ], 401);
+        }
+
+        // Luego verificar si ya fue usado
+        if ($token->used) {
+            return response()->json([
+                'message' => 'El token ya fue utilizado.'
+            ], 400);
         }
 
         $userId = $token->user_id;
@@ -153,6 +161,10 @@ class AttendanceController extends Controller
         $attendance->class_status = 'IN_PROCESS';
         $attendance->save();
 
+        // Marcar token como usado
+        $token->used = true;
+        $token->save();
+
         return response()->json([
             'message' => 'Check-in registrado con éxito.',
             'attendance' => [
@@ -167,6 +179,7 @@ class AttendanceController extends Controller
             ]
         ]);
     }
+
 
     public function checkout(Request $request)
     {
@@ -211,7 +224,7 @@ class AttendanceController extends Controller
         $attendance->save();
 
         // Flags
-        $hasCheckedIn  = !is_null($attendance->check_in) && in_array($attendance->status, ['PRESENT', 'LATE']);
+        $hasCheckedIn  = !is_null($attendance->check_in) && in_array($attendance->status, ['PRESENT', 'LATE', 'JUSTIFIED']);
         $hasCheckedOut = !is_null($attendance->check_out);
 
         $canCheckIn  = !$hasCheckedIn;

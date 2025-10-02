@@ -26,6 +26,7 @@ class RoleSeeder extends Seeder
         $rootRole = Role::create(['name' => 'ROOT']);
         $campusRole = Role::create(['name' => 'CAMPUS']);
         $yucatanRole = Role::create(['name' => 'YUCATAN']);
+        $attendanceRole = Role::create(['name' => 'ATTENDANCE']);
 
         /** PANEL DE USUARIO */
         Permission::create(['name' => 'CANDIDATES_VIEW'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
@@ -59,5 +60,9 @@ class RoleSeeder extends Seeder
         Permission::create(['name' => 'PS_EDIT_APPLICATION'])->syncRoles([$rootRole, $campusRole]);
 
         Permission::create(['name' => 'PS_GROUP_CONFIG'])->syncRoles([$rootRole, $campusRole]);
+
+        Permission::create(['name' => 'PS_GROUP_ATTENDANCE'])->syncRoles([$rootRole, $campusRole, $attendanceRole]);
+        Permission::create(['name' => 'PS_CHECK'])->syncRoles([$rootRole, $campusRole, $attendanceRole]);
+        Permission::create(['name' => 'PS_CLASSES'])->syncRoles([$rootRole, $campusRole, $attendanceRole]);
     }
 }
