@@ -141,7 +141,6 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::apiResource('attendance', AttendanceController::class);
     Route::get('validateAttendance', [AttendanceController::class, 'getAttendanceStatus']);
     Route::prefix('attendance')->group(function () {
-        Route::post('check-in', [AttendanceController::class, 'checkIn']);
         Route::post('check-out', [AttendanceController::class, 'checkOut']);
     });
 });

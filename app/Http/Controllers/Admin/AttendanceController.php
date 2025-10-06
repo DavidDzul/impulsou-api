@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Attendance;
+use App\Models\AttendanceToken;
 
 class AttendanceController extends Controller
 {
@@ -128,5 +129,83 @@ class AttendanceController extends Controller
         $data->delete();
 
         return response()->json(['message' => 'Eliminado correctamente', 200]);
+    }
+
+    public function checkIn(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        $token = AttendanceToken::where('token', $request->token)
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
+
+        // Primero verificar si existe
+        if (!$token) {
+            return response()->json([
+                'message' => 'Token inválido o expirado.'
+            ], 401);
+        }
+
+        // Luego verificar si ya fue usado
+        if ($token->used) {
+            return response()->json([
+                'message' => 'El token ya fue utilizado.'
+            ], 400);
+        }
+
+        $userId = $token->user_id;
+        $today  = now()->toDateString();
+
+        $attendance = Attendance::where('user_id', $userId)
+            ->whereHas('class', function ($q) use ($today) {
+                $q->whereDate('date', $today);
+            })
+            ->with('class', 'user')
+            ->latest()
+            ->first();
+
+        if (!$attendance) {
+            return response()->json([
+                'message' => 'No tienes una clase asignada para hoy.'
+            ], 404);
+        }
+
+        if (!is_null($attendance->check_in)) {
+            return response()->json([
+                'message' => 'Ya has registrado tu entrada.'
+            ], 400);
+        }
+
+        // Registrar check-in
+        $attendance->check_in = now()->format('H:i:s');
+        $attendance->status = $attendance->class->start_time < now()->format('H:i:s')
+            ? 'LATE'
+            : 'PRESENT';
+        $attendance->class_status = 'IN_PROCESS';
+        $attendance->save();
+
+        // Marcar token como usado
+        $token->used = true;
+        $token->save();
+
+        return response()->json([
+            'message' => 'Check-in registrado con éxito.',
+            'attendance' => [
+                'status'        => $attendance->status,
+                'check_in'      => $attendance->check_in,
+                'class'         => [
+                    'id'          => $attendance->class->id,
+                    'name'        => $attendance->class->name,
+                ],
+                'user' => [
+                    'id' => $attendance->user->id,
+                    'first_name' => $attendance->user->first_name,
+                    'last_name' => $attendance->user->last_name,
+                ],
+            ]
+        ]);
     }
 }

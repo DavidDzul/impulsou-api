@@ -63,6 +63,6 @@ class RoleSeeder extends Seeder
 
         Permission::create(['name' => 'PS_GROUP_ATTENDANCE'])->syncRoles([$rootRole, $campusRole, $attendanceRole]);
         Permission::create(['name' => 'PS_CHECK'])->syncRoles([$rootRole, $campusRole, $attendanceRole]);
-        Permission::create(['name' => 'PS_CLASSES'])->syncRoles([$rootRole, $campusRole, $attendanceRole]);
+        Permission::create(['name' => 'PS_CLASSES'])->syncRoles([$rootRole, $campusRole]);
     }
 }

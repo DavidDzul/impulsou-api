@@ -72,4 +72,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('{id}/attendances', [ClassController::class, 'getAttendanceByClass']);
     });
     Route::apiResource('attendance', AttendanceController::class);
+    Route::prefix('attendance')->group(function () {
+        Route::post('check-in', [AttendanceController::class, 'checkIn']);
+    });
 });
