@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Attendance;
 use App\Models\AttendanceToken;
+use Carbon\Carbon;
 
 class AttendanceController extends Controller
 {
@@ -181,9 +182,12 @@ class AttendanceController extends Controller
 
         // Registrar check-in
         $attendance->check_in = now()->format('H:i:s');
-        $attendance->status = $attendance->class->start_time < now()->format('H:i:s')
-            ? 'LATE'
-            : 'PRESENT';
+
+        $timeNow = now();
+        $classStart = Carbon::parse($attendance->class->start_time);
+        $attendance->check_in = $timeNow->format('H:i:s');
+        $attendance->status = $timeNow->gt($classStart) ? 'LATE' : 'PRESENT';
+
         $attendance->class_status = 'IN_PROCESS';
         $attendance->save();
 

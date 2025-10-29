@@ -19,7 +19,7 @@ class CreateAttendancesTable extends Migration
             $table->foreignId('class_id')->constrained('classes')->onDelete('cascade');
             $table->time('check_in')->nullable();
             $table->time('check_out')->nullable();
-            $table->enum('status', ['ABSENT', 'JUSTIFIED', 'PRESENT', 'LATE'])->default('ABSENT');
+            $table->enum('status', ['ABSENT', 'JUSTIFIED_LATE', 'JUSTIFIED_ABSENCE', 'PRESENT', 'LATE'])->default('ABSENT');
             $table->enum('class_status', ['IN_PROCESS', 'COMPLETED'])->default('IN_PROCESS');
             $table->text('observations')->nullable();
             $table->timestamps();

@@ -67,10 +67,14 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('applications', JobApplicationController::class);
     Route::apiResource('areas', AreaController::class);
     Route::apiResource('candidateData', CandidateDataController::class);
+
     Route::apiResource('class', ClassController::class);
     Route::prefix('class')->group(function () {
         Route::get('{id}/attendances', [ClassController::class, 'getAttendanceByClass']);
+        Route::get('{id}/pdf', [ClassController::class, 'pdf']);
+        Route::get('{id}/sheet', [ClassController::class, 'sheet']);
     });
+
     Route::apiResource('attendance', AttendanceController::class);
     Route::prefix('attendance')->group(function () {
         Route::post('check-in', [AttendanceController::class, 'checkIn']);

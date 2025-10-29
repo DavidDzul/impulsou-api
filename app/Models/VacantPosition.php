@@ -105,7 +105,7 @@ class VacantPosition extends Model
             "user_id" => "required|exists:users,id",
             "vacant_name" => "required|string|max:255",
             "category" => "required|string|max:255",
-            "activities" => "required|string|max:500",
+            "activities" => "required|string",
             "study_profile" => "required|string|max:255",
             "net_salary" => "required|string|max:255",
             "start_day" => "required|string|max:255",
@@ -133,9 +133,9 @@ class VacantPosition extends Model
             "software_use" => "nullable|boolean",
             "software_description" => "nullable|string|max:255",
             "skills" => "required|string|max:255",
-            "observations" => "nullable|string|max:500",
+            "observations" => "nullable|string",
             "general_knowledge" => "nnullable|boolean",
-            "knowledge_description" => "nullable|string|max:500",
+            "knowledge_description" => "nullable|string",
 
             "overtime_pay" => "nullable|boolean",
             "utilities" => "nullable|boolean",
@@ -152,7 +152,7 @@ class VacantPosition extends Model
             "loans" => "nullable|boolean",
             "life_insurance" => "nullable|boolean",
             "other" => "nullable|boolean",
-            "benefit_description" => "nullable|string|max:500",
+            "benefit_description" => "nullable|string",
 
             "mode" => "required|string|max:255",
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
@@ -165,7 +165,7 @@ class VacantPosition extends Model
             "user_id" => "sometimes|exists:users,id",
             "vacant_name" => "sometimes|string|max:255",
             "category" => "sometimes|string|max:255",
-            "activities" => "sometimes|string|max:500",
+            "activities" => "sometimes|string",
             "study_profile" => "sometimes|string|max:255",
             "net_salary" => "sometimes|string|max:255",
             "start_day" => "sometimes|string|max:255",
@@ -193,9 +193,9 @@ class VacantPosition extends Model
             "software_use" => "nullable|boolean",
             "software_description" => "nullable|string|max:255",
             "skills" => "sometimes|string|max:255",
-            "observations" => "nullable|string|max:500",
+            "observations" => "nullable|string",
             "general_knowledge" => "nnullable|boolean",
-            "knowledge_description" => "nullable|string|max:500",
+            "knowledge_description" => "nullable|string",
 
             "overtime_pay" => "nullable|boolean",
             "utilities" => "nullable|boolean",
@@ -212,7 +212,7 @@ class VacantPosition extends Model
             "loans" => "nullable|boolean",
             "life_insurance" => "nullable|boolean",
             "other" => "nullable|boolean",
-            "benefit_description" => "nullable|string|max:500",
+            "benefit_description" => "nullable|string",
         ];
     }
 
@@ -222,7 +222,7 @@ class VacantPosition extends Model
             "user_id" => "required|exists:users,id",
             "vacant_name" => "required|string|max:255",
             "category" => "required|string|max:255",
-            "activities" => "required|string|max:500",
+            "activities" => "required|string",
             "study_profile" => "required|string|max:255",
             "financial_support" => "nullable|boolean",
             "support_amount" => "nullable|string|max:255",
@@ -250,10 +250,10 @@ class VacantPosition extends Model
             "software_description" => "nullable|string|max:255",
             "skills" => "required|string|max:255",
             "general_knowledge" => "nullable|boolean",
-            "knowledge_description" => "nullable|string|max:500",
-            "observations" => "nullable|string|max:500",
+            "knowledge_description" => "nullable|string",
+            "observations" => "nullable|string",
 
-            "compensations" => "nullable|string|max:500",
+            "compensations" => "nullable|string",
 
             "mode" => "required|string|max:255",
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
@@ -266,7 +266,7 @@ class VacantPosition extends Model
             "user_id" => "sometimes|exists:users,id",
             "vacant_name" => "sometimes|string|max:255",
             "category" => "sometimes|string|max:255",
-            "activities" => "sometimes|string|max:500",
+            "activities" => "sometimes|string",
             "study_profile" => "sometimes|string|max:255",
             "financial_support" => "nullable|boolean",
             "support_amount" => "nullable|string|max:255",
@@ -294,10 +294,10 @@ class VacantPosition extends Model
             "software_description" => "nullable|string|max:255",
             "skills" => "sometimes|string|max:255",
             "general_knowledge" => "nullable|boolean",
-            "knowledge_description" => "nullable|string|max:500",
-            "observations" => "nullable|string|max:500",
+            "knowledge_description" => "nullable|string",
+            "observations" => "nullable|string",
 
-            "compensations" => "nullable|string|max:500",
+            "compensations" => "nullable|string",
         ];
     }
 
@@ -307,11 +307,11 @@ class VacantPosition extends Model
             "user_id" => "required|exists:users,id",
             "vacant_name" => "required|string|max:255",
             "category" => "required|string|max:255",
-            "activities" => "required|string|max:500",
+            "activities" => "required|string",
             "study_profile" => "required|string|max:255",
             "net_salary" => "required|string|max:255",
 
-            "compensations" => "nullable|string|max:500",
+            "compensations" => "nullable|string",
 
             "start_day" => "required|string|max:255",
             "end_day" => "required|string|max:255",
@@ -337,8 +337,8 @@ class VacantPosition extends Model
             "software_description" => "nullable|string|max:255",
             "skills" => "required|string|max:255",
             "general_knowledge" => "nullable|boolean",
-            "knowledge_description" => "nullable|string|max:500",
-            "observations" => "nullable|string|max:500",
+            "knowledge_description" => "nullable|string",
+            "observations" => "nullable|string",
 
             "mode" => "required|string|max:255",
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
@@ -351,11 +351,11 @@ class VacantPosition extends Model
             "user_id" => "sometimes|exists:users,id",
             "vacant_name" => "sometimes|string|max:255",
             "category" => "sometimes|string|max:255",
-            "activities" => "sometimes|string|max:500",
+            "activities" => "sometimes|string",
             "study_profile" => "sometimes|string|max:255",
             "net_salary" => "sometimes|string|max:255",
 
-            "compensations" => "nullable|string|max:500",
+            "compensations" => "nullable|string",
 
             "start_day" => "sometimes|string|max:255",
             "end_day" => "sometimes|string|max:255",
@@ -381,8 +381,8 @@ class VacantPosition extends Model
             "software_description" => "nullable|string|max:255",
             "skills" => "sometimes|string|max:255",
             "general_knowledge" => "nullable|boolean",
-            "knowledge_description" => "nullable|string|max:500",
-            "observations" => "nullable|string|max:500",
+            "knowledge_description" => "nullable|string",
+            "observations" => "nullable|string",
 
             "mode" => "sometimes|string|max:255",
             'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
