@@ -35,16 +35,16 @@ class TestExport implements FromCollection, WithHeadings, WithStyles, WithColumn
             'ABSENT' => 'Falta',
             'JUSTIFIED_LATE' => 'Retardo Justificado',
             'JUSTIFIED_ABSENCE' => 'Falta Justificada',
-            'PRESENT' => 'Presente',
+            'PRESENT' => 'A tiempo',
             'LATE' => 'Retardo',
         ];
 
         $statusColors = [
-            'ABSENT' => 'FF4A4A',           // rojo
-            'JUSTIFIED_LATE' => 'FF7900',   // naranja
-            'JUSTIFIED_ABSENCE' => 'FFCE00', // amarillo
-            'PRESENT' => '275FFC',          // azul
-            'LATE' => 'A327FC',             // morado
+            'ABSENT' => 'FF0000',           // rojo
+            'JUSTIFIED_LATE' => '0022FF',   // azul
+            'JUSTIFIED_ABSENCE' => 'FF00F2', // rosa
+            'PRESENT' => '00BA10',          // verde
+            'LATE' => 'FF5300',             // naranja
         ];
 
         return $this->class->attendances->map(function ($attendance, $index) use ($statusTranslations, $statusColors) {

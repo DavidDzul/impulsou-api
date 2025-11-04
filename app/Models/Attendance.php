@@ -24,7 +24,7 @@ class Attendance extends Model
     public static function updateRules()
     {
         return [
-            'status' => 'required|string|in:ABSENT,JUSTIFIED,PRESENT,LATE',
+            'status' => 'required|string|in:ABSENT,JUSTIFIED,PRESENT,LATE,JUSTIFIED_LATE,JUSTIFIED_ABSENCE',
             'check_in' => 'required|date_format:H:i',
             'check_out' => 'required|date_format:H:i',
             'observations' => 'nullable|string',

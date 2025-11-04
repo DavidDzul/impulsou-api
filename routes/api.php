@@ -142,5 +142,6 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('validateAttendance', [AttendanceController::class, 'getAttendanceStatus']);
     Route::prefix('attendance')->group(function () {
         Route::post('check-out', [AttendanceController::class, 'checkOut']);
+        Route::get('{id}/history', [AttendanceController::class, 'getHistory']);
     });
 });

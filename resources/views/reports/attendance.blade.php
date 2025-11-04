@@ -4,135 +4,135 @@
 <head>
     <meta charset="UTF-8">
     <style>
-        @page {
-            margin: 10px 40px;
-        }
+    @page {
+        margin: 10px 40px;
+    }
 
-        /* Fuente Roboto */
-        @font-face {
-            font-family: 'Roboto';
-            font-style: normal;
-            font-weight: 400;
-            src: url("{{ public_path('fonts/Roboto-Regular.ttf') }}") format('truetype');
-        }
+    /* Fuente Roboto */
+    @font-face {
+        font-family: 'Roboto';
+        font-style: normal;
+        font-weight: 400;
+        src: url("{{ public_path('fonts/Roboto-Regular.ttf') }}") format('truetype');
+    }
 
-        @font-face {
-            font-family: 'Roboto';
-            font-style: bold;
-            font-weight: 700;
-            src: url("{{ public_path('fonts/Roboto-Bold.ttf') }}") format('truetype');
-        }
+    @font-face {
+        font-family: 'Roboto';
+        font-style: bold;
+        font-weight: 700;
+        src: url("{{ public_path('fonts/Roboto-Bold.ttf') }}") format('truetype');
+    }
 
-        body {
-            font-family: 'Roboto', sans-serif;
-            font-size: 12px;
-            color: #000;
-        }
+    body {
+        font-family: 'Roboto', sans-serif;
+        font-size: 12px;
+        color: #000;
+    }
 
-        header {
-            width: 100%;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #e4e4e4ff;
-            padding-bottom: 10px;
-        }
+    header {
+        width: 100%;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #e4e4e4ff;
+        padding-bottom: 10px;
+    }
 
-        .header-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+    .header-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
 
-        .header-table td {
-            border: none !important;
-            vertical-align: top;
-        }
+    .header-table td {
+        border: none !important;
+        vertical-align: top;
+    }
 
-        .logo {
-            width: 120px;
-        }
+    .logo {
+        width: 120px;
+    }
 
-        h2,
-        h3 {
-            margin: 0;
-        }
+    h2,
+    h3 {
+        margin: 0;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
 
-        th {
-            background-color: #e2e2e2;
-            text-align: center;
-            padding: 8px;
-            font-size: 13px;
-        }
+    th {
+        background-color: #e2e2e2;
+        text-align: center;
+        padding: 8px;
+        font-size: 13px;
+    }
 
-        td {
-            border: 1px solid #ddd;
-            padding: 6px;
-            text-align: center;
-            font-size: 12px;
-        }
+    td {
+        border: 1px solid #ddd;
+        padding: 6px;
+        text-align: center;
+        font-size: 12px;
+    }
 
-        td.text-left {
-            text-align: left;
-        }
+    td.text-left {
+        text-align: left;
+    }
 
-        /* Círculos de estatus */
-        .status-circle {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-        }
+    /* Círculos de estatus */
+    .status-circle {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+    }
 
-        .status-ABSENT {
-            background-color: #FF4A4A;
-        }
+    .status-ABSENT {
+        background-color: red;
+    }
 
-        .status-JUSTIFIED_LATE {
-            background-color: #FF7900;
-        }
+    .status-JUSTIFIED_LATE {
+        background-color: blue;
+    }
 
-        .status-JUSTIFIED_ABSENCE {
-            background-color: #FFCE00;
-        }
+    .status-JUSTIFIED_ABSENCE {
+        background-color: pink;
+    }
 
-        .status-PRESENT {
-            background-color: #275FFC;
-        }
+    .status-PRESENT {
+        background-color: green;
+    }
 
-        .status-LATE {
-            background-color: #A327FC;
-        }
+    .status-LATE {
+        background-color: orange;
+    }
 
-        /* Leyenda de estatus */
-        .status-legend {
-            margin-top: 10px;
-            margin-bottom: 10px;
-            font-size: 11px;
-        }
+    /* Leyenda de estatus */
+    .status-legend {
+        margin-top: 10px;
+        margin-bottom: 10px;
+        font-size: 11px;
+    }
 
-        .status-legend span {
-            display: inline-flex;
-            align-items: center;
-            margin-right: 15px;
-        }
+    .status-legend span {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 15px;
+    }
 
-        .status-legend span .status-circle {
-            margin-right: 5px;
-        }
+    .status-legend span .status-circle {
+        margin-right: 5px;
+    }
 
-        footer {
-            position: fixed;
-            bottom: 20px;
-            left: 0;
-            right: 0;
-            text-align: center;
-            font-size: 11px;
-            color: #666;
-        }
+    footer {
+        position: fixed;
+        bottom: 20px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 11px;
+        color: #666;
+    }
     </style>
 </head>
 
@@ -210,11 +210,11 @@
             @foreach($attendances as $index => $attendance)
             @php
             $statusTranslations = [
+            'PRESENT' => 'A tiempo',
+            'LATE' => 'Retardo',
             'ABSENT' => 'Falta',
             'JUSTIFIED_LATE' => 'Retardo Justificado',
-            'JUSTIFIED_ABSENCE' => 'Falta Justificada',
-            'PRESENT' => 'Presente',
-            'LATE' => 'Retardo'
+            'JUSTIFIED_ABSENCE' => 'Falta Justificada'
             ];
             @endphp
             <tr>

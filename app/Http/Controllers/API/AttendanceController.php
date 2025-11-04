@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\AttendanceResource;
 use Illuminate\Http\Request;
 use App\Models\Attendance;
 use App\Models\AttendanceToken;
@@ -167,5 +168,14 @@ class AttendanceController extends Controller
             'is_completed'  => $isCompleted,
             'class'         => $attendance->class,
         ]);
+    }
+
+    public function getHistory($id)
+    {
+        $data = Attendance::where('user_id', $id)
+            ->with('class')
+            ->get();
+
+        return AttendanceResource::collection($data);
     }
 }
