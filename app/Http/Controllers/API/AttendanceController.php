@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AttendanceResource;
+use App\Http\Resources\AttendanceStatusResource;
 use Illuminate\Http\Request;
 use App\Models\Attendance;
 use App\Models\AttendanceToken;
@@ -66,6 +67,21 @@ class AttendanceController extends Controller
         //
     }
 
+
+    public function getHistory($id, Request $request)
+    {
+        $data = $request->validate(Attendance::validateHistoy());
+
+        $attendance = Attendance::where('user_id', $id)
+            ->whereHas('class', function ($query) use ($data) {
+                $query->whereYear('date', $data['year']);
+            })
+            ->with('class')
+            ->get();
+
+        return AttendanceResource::collection($attendance);
+    }
+
     public function getAttendanceStatus(Request $request)
     {
         $userId = $request->user()->id;
@@ -73,7 +89,7 @@ class AttendanceController extends Controller
 
         $attendance = Attendance::where('user_id', $userId)
             ->whereHas('class', function ($q) use ($today) {
-                $q->whereDate('date', $today); // filtra por fecha real de la clase
+                $q->whereDate('date', $today);
             })
             ->with('class')
             ->latest()
@@ -86,24 +102,7 @@ class AttendanceController extends Controller
             ]);
         }
 
-        $hasCheckedIn  = !is_null($attendance->check_in) && in_array($attendance->status, ['PRESENT', 'LATE', 'JUSTIFIED']);
-        $hasCheckedOut = !is_null($attendance->check_out);
-
-        $canCheckIn  = !$hasCheckedIn;
-        $canCheckOut = $hasCheckedIn && !$hasCheckedOut;
-
-        $isCompleted = $hasCheckedIn && $hasCheckedOut && $attendance->class_status === 'COMPLETED';
-
-        return response()->json([
-            'status'        => $attendance->status,
-            'class_status'  => $attendance->class_status,
-            'check_in'      => $attendance->check_in,
-            'check_out'     => $attendance->check_out,
-            'can_checkin'   => $canCheckIn,
-            'can_checkout'  => $canCheckOut,
-            'is_completed'  => $isCompleted,
-            'class'         => $attendance->class,
-        ]);
+        return new AttendanceStatusResource($attendance);
     }
 
     public function checkout(Request $request)
@@ -128,7 +127,7 @@ class AttendanceController extends Controller
         }
 
         // Validar que ya haya hecho check-in
-        if (is_null($attendance->check_in)) {
+        if (is_null($attendance->check_in) || $attendance->check_in === '00:00:00') {
             return response()->json([
                 'status'  => 'ERROR',
                 'message' => 'No puedes hacer check-out sin haber hecho check-in primero.'
@@ -136,46 +135,17 @@ class AttendanceController extends Controller
         }
 
         // Validar que no haya hecho ya el check-out
-        if (!is_null($attendance->check_out)) {
+        if (!is_null($attendance->check_out) && $attendance->check_out !== '00:00:00') {
             return response()->json([
                 'status'  => 'ALREADY_COMPLETED',
                 'message' => 'Ya has marcado tu salida.'
             ], 400);
         }
 
-        // Registrar check-out
         $attendance->check_out = now()->format('H:i:s');
         $attendance->class_status = 'COMPLETED';
         $attendance->save();
 
-        // Flags
-        $hasCheckedIn  = !is_null($attendance->check_in) && in_array($attendance->status, ['PRESENT', 'LATE', 'JUSTIFIED']);
-        $hasCheckedOut = !is_null($attendance->check_out);
-
-        $canCheckIn  = !$hasCheckedIn;
-        $canCheckOut = $hasCheckedIn && !$hasCheckedOut;
-
-        $isCompleted = $hasCheckedIn && $hasCheckedOut && $attendance->class_status === 'COMPLETED';
-
-        // Devolver respuesta inmediata para que el front actualice sin esperar onMounted
-        return response()->json([
-            'status'        => $attendance->status,
-            'class_status'  => $attendance->class_status,
-            'check_in'      => $attendance->check_in,
-            'check_out'     => $attendance->check_out,
-            'can_checkin'   => $canCheckIn,
-            'can_checkout'  => $canCheckOut,
-            'is_completed'  => $isCompleted,
-            'class'         => $attendance->class,
-        ]);
-    }
-
-    public function getHistory($id)
-    {
-        $data = Attendance::where('user_id', $id)
-            ->with('class')
-            ->get();
-
-        return AttendanceResource::collection($data);
+        return new AttendanceStatusResource($attendance);
     }
 }

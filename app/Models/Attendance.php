@@ -21,6 +21,13 @@ class Attendance extends Model
         'observations'
     ];
 
+    public static function validateHistoy()
+    {
+        return [
+            'year' => 'required|integer',
+        ];
+    }
+
     public static function updateRules()
     {
         return [
