@@ -30,7 +30,7 @@ class BusinessController extends Controller
             ->where('user_type', 'BUSINESS');
 
         // Si es ROOT o ROOT_JOB → puede ver todo
-        if (!$user->isRoot()) {
+        if (!($user->isRoot() || $user->isRootJob())) {
 
             // Si es YUCATAN → filtrar por business asignados
             if ($user->hasRole('YUCATAN')) {

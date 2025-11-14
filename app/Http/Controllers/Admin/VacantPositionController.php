@@ -34,7 +34,7 @@ class VacantPositionController extends Controller
             }]);
 
         // 1. ROOT / ROOT_JOB → ven TODO
-        if (!$user->isRoot() || !$user->isRootJob()) {
+        if (!($user->isRoot() || $user->isRootJob())) {
 
             // 2. YUCATAN → ver solo vacantes de sus business asignados
             if ($user->hasRole('YUCATAN')) {

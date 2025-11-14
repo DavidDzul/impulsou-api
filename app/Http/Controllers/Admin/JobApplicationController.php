@@ -33,7 +33,7 @@ class JobApplicationController extends Controller
         ]);
 
         // 🟢 1. ROOT o ROOT_JOB → ven todo (sin filtros)
-        if (!$user->isRoot() || !$user->isRootJob()) {
+        if (!($user->isRoot() || $user->isRootJob())) {
 
             // 🟡 2. Rol YUCATAN → filtrar por business asignados
             if ($user->hasRole('YUCATAN')) {
