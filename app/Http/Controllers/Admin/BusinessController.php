@@ -15,9 +15,9 @@ use App\Mail\WelcomeMail;
 
 class BusinessController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -29,23 +29,24 @@ class BusinessController extends Controller
         $query = User::with(['businessData:id,user_id,bs_name'])
             ->where('user_type', 'BUSINESS');
 
-        // Obtener el primer rol del usuario
-        $role = $user->roles->first();
+        // Si es ROOT o ROOT_JOB → puede ver todo
+        if (!$user->isRoot()) {
 
-        // Si el rol es "YUCATAN", filtrar por los business_id asignados al usuario
-        if ($role && $role->name === 'YUCATAN') {
-            $businessIds = UserBusinessMap::where('user_id', $user->id)
-                ->pluck('business_id');
+            // Si es YUCATAN → filtrar por business asignados
+            if ($user->hasRole('YUCATAN')) {
+                $businessIds = UserBusinessMap::where('user_id', $user->id)
+                    ->pluck('business_id');
 
-            $query->whereIn('id', $businessIds);
-        } else if ($user->campus !== 'MERIDA') {
-            $query->where('campus', $user->campus);
+                $query->whereIn('id', $businessIds);
+            } else {
+                // Si NO es ROOT, NO es ROOT_JOB y NO es YUCATAN → campus normal
+                $query->where('campus', $user->campus);
+            }
         }
 
         $data = $query->get()->map(function ($user) {
-            $user->role = $user->roles->first();
+            $user->role = $user->mainRole();
             $user->makeHidden('roles');
-
             return $user;
         });
 
@@ -54,7 +55,6 @@ class BusinessController extends Controller
             'business' => $data
         ]);
     }
-
 
     public function store(Request $request)
     {

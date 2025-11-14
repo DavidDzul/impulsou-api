@@ -24,9 +24,10 @@ use App\Mail\WelcomeMail;
 class UserController extends Controller
 {
     //
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $user = auth()->user();
+        // $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -36,7 +37,7 @@ class UserController extends Controller
         }
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->campus === 'MERIDA') {
+        if ($user->isRoot()) {
             $data = User::where('user_type', 'BEC_ACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus

@@ -14,9 +14,9 @@ class JobApplicationController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -25,31 +25,32 @@ class JobApplicationController extends Controller
             ], 401);
         }
 
-        // Obtener el primer rol del usuario
-        $role = $user->roles->first();
-
-        // Construcción de la consulta base con las relaciones necesarias
+        // Consulta base
         $query = JobApplication::with([
             'business:id,user_id,bs_name',
             'vacant:id,vacant_name,campus',
             'user:id,first_name,last_name,campus'
         ]);
 
-        // Si el usuario tiene el rol "YUCATAN", filtrar por business_id en JobApplication
-        if ($role && $role->name === 'YUCATAN') {
-            $businessIds = UserBusinessMap::where('user_id', $user->id)
-                ->pluck('business_id'); // Obtener todos los business_id asignados al usuario
+        // 🟢 1. ROOT o ROOT_JOB → ven todo (sin filtros)
+        if (!$user->isRoot() || !$user->isRootJob()) {
 
-            $query->whereIn('business_id', $businessIds);
-        }
-        // Si el usuario no tiene el rol "YUCATAN" y su campus no es "MERIDA", filtrar por campus del usuario postulante
-        else if ($user->campus !== 'MERIDA') {
-            $query->whereHas('user', function ($query) use ($user) {
-                $query->where('campus', $user->campus);
-            });
+            // 🟡 2. Rol YUCATAN → filtrar por business asignados
+            if ($user->hasRole('YUCATAN')) {
+                $businessIds = UserBusinessMap::where('user_id', $user->id)
+                    ->pluck('business_id');
+
+                $query->whereIn('business_id', $businessIds);
+            }
+            // 🔵 3. Usuario normal → campus del postulante
+            else if ($user->campus !== 'MERIDA') {
+                $query->whereHas('user', function ($query) use ($user) {
+                    $query->where('campus', $user->campus);
+                });
+            }
         }
 
-        // Obtener los datos finales
+        // Datos finales
         $data = $query->get();
 
         return response()->json([
@@ -57,6 +58,7 @@ class JobApplicationController extends Controller
             'applications' => $data
         ]);
     }
+
 
 
 

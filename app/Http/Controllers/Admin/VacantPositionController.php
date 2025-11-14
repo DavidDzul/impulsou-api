@@ -15,9 +15,10 @@ class VacantPositionController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $user = auth()->user();
+        // $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -26,20 +27,28 @@ class VacantPositionController extends Controller
             ], 401);
         }
 
-        $role = $user->roles->first();
-
+        // Consulta base
         $query = VacantPosition::select('id', 'user_id', 'vacant_name', 'status', 'category', 'created_at')
             ->with(['business' => function ($query) {
                 $query->select('id', 'user_id', 'bs_name');
             }]);
 
-        if ($role && $role->name === 'YUCATAN') {
-            $userIds = UserBusinessMap::where('user_id', $user->id)
-                ->pluck('business_id');
+        // 1. ROOT / ROOT_JOB → ven TODO
+        if (!$user->isRoot() || !$user->isRootJob()) {
 
-            $query->whereIn('user_id', $userIds);
-        } else if ($user->campus !== 'MERIDA') {
-            $query->where('campus', $user->campus);
+            // 2. YUCATAN → ver solo vacantes de sus business asignados
+            if ($user->hasRole('YUCATAN')) {
+
+                $businessIds = UserBusinessMap::where('user_id', $user->id)
+                    ->pluck('business_id'); // devuelve los business_id
+
+                $query->whereIn('user_id', $businessIds);
+            }
+            // 3. Usuario normal → filtrar por campus
+            else {
+
+                $query->where('campus', $user->campus);
+            }
         }
 
         $data = $query->get();
@@ -49,6 +58,7 @@ class VacantPositionController extends Controller
             'positions' => $data
         ]);
     }
+
 
 
     /**

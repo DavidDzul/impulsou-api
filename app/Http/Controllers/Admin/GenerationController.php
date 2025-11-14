@@ -12,9 +12,10 @@ class GenerationController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $user = auth()->user();
+        // $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -24,7 +25,7 @@ class GenerationController extends Controller
         }
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->campus === 'MERIDA') {
+        if ($user->isRoot()) {
             $data = Generation::all();
         } else {
             // Si no, solo obtiene los registros de su campus

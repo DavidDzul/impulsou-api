@@ -19,9 +19,9 @@ class ClassController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -30,7 +30,7 @@ class ClassController extends Controller
             ], 401);
         }
 
-        if ($user->campus === 'MERIDA') {
+        if ($user->isRoot()) {
             $data = ClassModel::all();
         } else {
             $data = ClassModel::where('campus', $user->campus)->get();

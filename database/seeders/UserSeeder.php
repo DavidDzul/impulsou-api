@@ -60,11 +60,47 @@ class UserSeeder extends Seeder
             "email" => "campus@iu.org.mx",
             "password" => Hash::make("abc123"),
             "phone" => "9911071509",
-            "campus" => "VALLADOLID",
+            "campus" => "MERIDA",
             "user_type" => "ADMIN",
             "generation_id" => null,
             "active" => 1,
-        ])->assignRole('CAMPUS');
+        ])->assignRole('ROOT_CAMPUS');
+
+        User::create([
+            "first_name" => "Impulso",
+            "last_name" => "Universitario A.C.",
+            "email" => "students@iu.org.mx",
+            "password" => Hash::make("abc123"),
+            "phone" => "9911071509",
+            "campus" => "MERIDA",
+            "user_type" => "ADMIN",
+            "generation_id" => null,
+            "active" => 1,
+        ])->assignRole('ADMIN_STUDENT');
+
+        User::create([
+            "first_name" => "Impulso",
+            "last_name" => "Universitario A.C.",
+            "email" => "root_jobs@iu.org.mx",
+            "password" => Hash::make("abc123"),
+            "phone" => "9911071509",
+            "campus" => "MERIDA",
+            "user_type" => "ADMIN",
+            "generation_id" => null,
+            "active" => 1,
+        ])->assignRole('ROOT_JOB');
+
+        User::create([
+            "first_name" => "Impulso",
+            "last_name" => "Universitario A.C.",
+            "email" => "jobs@iu.org.mx",
+            "password" => Hash::make("abc123"),
+            "phone" => "9911071509",
+            "campus" => "MERIDA",
+            "user_type" => "ADMIN",
+            "generation_id" => null,
+            "active" => 1,
+        ])->assignRole('ADMIN_JOB');
 
         User::create([
             "first_name" => "Impulso",

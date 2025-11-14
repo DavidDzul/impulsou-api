@@ -148,4 +148,30 @@ class User extends Authenticatable
     {
         return $this->hasOne(BusinessAgreement::class, 'user_id');
     }
+
+    // VALIDACIONES DE ROLES
+    public function hasRole(string $roleName): bool
+    {
+        return $this->roles()->where('name', $roleName)->exists();
+    }
+
+    public function hasAnyRole(array $roles): bool
+    {
+        return $this->roles()->whereIn('name', $roles)->exists();
+    }
+
+    public function isRoot(): bool
+    {
+        return $this->hasAnyRole(['ROOT']);
+    }
+
+    public function isRootJob(): bool
+    {
+        return $this->hasAnyRole(['ROOT_JOB']);
+    }
+
+    public function mainRole()
+    {
+        return $this->roles->first();
+    }
 }

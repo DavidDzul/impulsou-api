@@ -16,9 +16,10 @@ class GraduateController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $user = auth()->user();
+        // $user = auth()->user();
+        $user = $request->user();
 
         if (!$user) {
             return response()->json([
@@ -28,7 +29,7 @@ class GraduateController extends Controller
         }
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->campus === 'MERIDA') {
+        if ($user->isRoot()) {
             $data = User::where('user_type', 'BEC_INACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus

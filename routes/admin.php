@@ -22,7 +22,7 @@ Route::controller(AuthController::class)->group(function () {
 });
 
 Route::middleware('auth:sanctum')->get('/admin', function (Request $request) {
-    return $request->user();
+    return $request->user()->load('roles');
 });
 
 Route::middleware('auth:sanctum')->get('/permissions', [AuthController::class, 'getPermissions']);
