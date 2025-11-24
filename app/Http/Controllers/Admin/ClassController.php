@@ -9,6 +9,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use App\Exports\AttendanceExport;
 use App\Exports\TestExport;
+use App\Http\Resources\ClassResource;
+use App\Models\User;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 
@@ -36,10 +38,7 @@ class ClassController extends Controller
             $data = ClassModel::where('campus', $user->campus)->get();
         }
 
-        return response()->json([
-            'res' => true,
-            'data' => $data
-        ]);
+        return ClassResource::collection($data);
     }
 
     /**
@@ -50,21 +49,26 @@ class ClassController extends Controller
      */
     public function store(Request $request)
     {
-        $user = auth()->user();
         $data = $request->validate(ClassModel::createRules());
 
-        // Asegura el formato correcto de hora (HH:MM:SS)
         $data['start_time'] = Carbon::createFromFormat('H:i', $data['start_time'])->format('H:i:s');
         $data['end_time']   = Carbon::createFromFormat('H:i', $data['end_time'])->format('H:i:s');
-
         $class = ClassModel::create($data);
-        $data['campus'] = $user->campus;
 
-        return response()->json([
-            'res' => true,
-            'msg' => 'Generación creada con éxito',
-            'data' => $class,
-        ], 201);
+        $userIds = User::where('campus', $data['campus'])
+            ->where('generation_id', $data['generation_id'])
+            ->where('user_type', 'BEC_ACTIVE')
+            ->where('active', true)
+            ->pluck('id');
+
+        foreach ($userIds as $userId) {
+            Attendance::create([
+                'class_id' => $class->id,
+                'user_id'  => $userId,
+            ]);
+        }
+
+        return ClassResource::make($class);
     }
 
     /**

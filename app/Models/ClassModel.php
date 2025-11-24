@@ -11,16 +11,17 @@ class ClassModel extends Model
 
     protected $table = 'classes';
 
-    protected $casts = [
-        'start_time' => 'datetime:H:i:s',
-        'end_time' => 'datetime:H:i:s',
-    ];
+    // protected $casts = [
+    //     'start_time' => 'datetime:H:i:s',
+    //     'end_time' => 'datetime:H:i:s',
+    // ];
     protected $fillable = [
         'name',
         'date',
         'start_time',
         'end_time',
-        'campus'
+        'campus',
+        'generation_id'
     ];
 
     public static function createRules()
@@ -30,7 +31,8 @@ class ClassModel extends Model
             'date'       => 'required|date',
             'start_time' => 'required|date_format:H:i',
             'end_time'   => 'required|date_format:H:i|after:start_time',
-            // 'campus'     => 'required|in:MERIDA,TIZIMIN,OXKUTZCAB,VALLADOLID',
+            'campus'     => 'required|in:MERIDA,TIZIMIN,OXKUTZCAB,VALLADOLID',
+            'generation_id' => 'required|exists:generations,id',
         ];
     }
 

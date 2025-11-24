@@ -20,6 +20,7 @@ class CreateClassesTable extends Migration
             $table->time('start_time');
             $table->time('end_time');
             $table->enum('campus', ['MERIDA', 'TIZIMIN', 'OXKUTZCAB', 'VALLADOLID']);
+            $table->foreignId('generation_id')->constrained('generations')->restrictOnDelete();
             $table->timestamps();
         });
     }

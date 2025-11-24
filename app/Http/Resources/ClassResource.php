@@ -21,6 +21,7 @@ class ClassResource extends JsonResource
             'start_time' => $this->start_time,
             'end_time' => $this->end_time,
             'campus' => $this->campus,
+            'generation_id' => $this->generation_id,
         ];
     }
 }
