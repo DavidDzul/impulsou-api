@@ -141,7 +141,6 @@ class ClassController extends Controller
 
     public function pdf($id)
     {
-
         $class = ClassModel::with(['attendances.user'])
             ->findOrFail($id);
 
@@ -151,5 +150,78 @@ class ClassController extends Controller
         ])->setPaper('a4', 'portrait');
 
         return $pdf->stream("Reporte_{$class->name}.pdf");
+    }
+    public function generalReport(Request $request)
+    {
+
+        $request->validate([
+            'campus' => 'required|string',
+            'generation_id' => 'required|integer',
+            'year' => 'required|integer',
+            'semester' => 'required|integer|in:1,2',
+        ]);
+
+        $year = $request->year;
+        $semester = $request->semester;
+
+        // Rango de fechas por semestre
+        if ($semester == 1) {
+            $startDate = Carbon::create($year, 1, 1)->startOfDay();
+            $endDate   = Carbon::create($year, 6, 30)->endOfDay();
+        } else {
+            $startDate = Carbon::create($year, 8, 1)->startOfDay();
+            $endDate   = Carbon::create($year, 12, 31)->endOfDay();
+        }
+
+        // Clases del período
+        $classes = ClassModel::where('campus', $request->campus)
+            ->where('generation_id', $request->generation_id)
+            ->whereBetween('date', [$startDate, $endDate])
+            ->get(['id', 'name', 'date', 'start_time', 'end_time']);
+
+        if ($classes->isEmpty()) {
+            return response()->json(['message' => 'No hay clases para este periodo'], 404);
+        }
+
+        $classIds = $classes->pluck('id');
+
+        // Obtener asistencias
+        $attendances = Attendance::with(['user', 'class'])
+            ->whereIn('class_id', $classIds)
+            ->orderBy('class_id')
+            ->orderBy('user_id')
+            ->get();
+
+        if ($attendances->isEmpty()) {
+            return response()->json(['message' => 'No hay asistencias registradas'], 404);
+        }
+
+        // Mapear datos
+        $reportData = $attendances->map(function ($att) {
+            return [
+                'user' => $att->user->first_name . ' ' . $att->user->last_name,
+                'class' => $att->class->name,
+                'date' => $att->class->date->format('Y-m-d'),
+                'status' => $att->status,
+                'check_in' => $att->check_in,
+                'check_out' => $att->check_out,
+                'observations' => $att->observations,
+            ];
+        });
+
+        // Agrupar por clase
+        $reportDataGrouped = $reportData->groupBy('class');
+
+        // Generar PDF
+        $pdf = PDF::loadView('reports.attendance_general', [
+            'reportDataGrouped' => $reportDataGrouped,
+            'reportData' => $reportData,
+            'campus' => $request->campus,
+            'generation' => $request->generation_id,
+            'semester' => $semester,
+            'year' => $year,
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream("Reporte_General_{$year}_S{$semester}.pdf");
     }
 }

@@ -73,6 +73,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('{id}/attendances', [ClassController::class, 'getAttendanceByClass']);
         Route::get('{id}/pdf', [ClassController::class, 'pdf']);
         Route::get('{id}/sheet', [ClassController::class, 'sheet']);
+        Route::post('report', [ClassController::class, 'generalReport']);
     });
 
     Route::apiResource('attendance', AttendanceController::class);

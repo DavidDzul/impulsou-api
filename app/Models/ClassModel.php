@@ -11,10 +11,10 @@ class ClassModel extends Model
 
     protected $table = 'classes';
 
-    // protected $casts = [
-    //     'start_time' => 'datetime:H:i:s',
-    //     'end_time' => 'datetime:H:i:s',
-    // ];
+    protected $casts = [
+        'date' => 'date',
+    ];
+
     protected $fillable = [
         'name',
         'date',
@@ -40,9 +40,9 @@ class ClassModel extends Model
     {
         return [
             'name'       => 'required|string|max:255',
-            'date'       => 'required|date',
-            'start_time' => 'required|date_format:H:i',
-            'end_time'   => 'required|date_format:H:i|after:start_time',
+            // 'date'       => 'required|date',
+            // 'start_time' => 'required|date_format:H:i',
+            // 'end_time'   => 'required|date_format:H:i|after:start_time',
         ];
     }
 
