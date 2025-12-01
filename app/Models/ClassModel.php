@@ -24,6 +24,14 @@ class ClassModel extends Model
         'generation_id'
     ];
 
+    public static function indexRules()
+    {
+        return [
+            'campus'     => 'required|in:MERIDA,TIZIMIN,OXKUTZCAB,VALLADOLID',
+            'generation_id' => 'required|exists:generations,id',
+        ];
+    }
+
     public static function createRules()
     {
         return [

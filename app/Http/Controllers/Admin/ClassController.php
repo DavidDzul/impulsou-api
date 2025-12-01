@@ -23,6 +23,8 @@ class ClassController extends Controller
      */
     public function index(Request $request)
     {
+
+        $data = $request->validate(ClassModel::indexRules());
         $user = $request->user();
 
         if (!$user) {
@@ -32,13 +34,11 @@ class ClassController extends Controller
             ], 401);
         }
 
-        if ($user->isRoot()) {
-            $data = ClassModel::all();
-        } else {
-            $data = ClassModel::where('campus', $user->campus)->get();
-        }
+        $classes = ClassModel::where('campus', $data['campus'])
+            ->where('generation_id', $data['generation_id'])
+            ->get();
 
-        return ClassResource::collection($data);
+        return ClassResource::collection($classes);
     }
 
     /**
