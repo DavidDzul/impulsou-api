@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\CandidateDataController;
 use App\Http\Controllers\Admin\ClassController;
 use App\Http\Controllers\Admin\GraduateController;
 use App\Http\Controllers\Admin\JobApplicationController;
+use App\Http\Controllers\Admin\NoticeController;
 use App\Http\Controllers\Admin\RoleController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -80,4 +81,6 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::prefix('attendance')->group(function () {
         Route::post('check-in', [AttendanceController::class, 'checkIn']);
     });
+
+    Route::apiResource('notices', NoticeController::class);
 });

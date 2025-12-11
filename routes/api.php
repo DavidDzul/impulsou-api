@@ -14,6 +14,7 @@ use App\Http\Controllers\API\PDFController;
 use App\Http\Controllers\API\BusinessController;
 use App\Http\Controllers\API\VacantController;
 use App\Http\Controllers\API\JobApplicationController;
+use App\Http\Controllers\Api\NoticeController;
 use App\Models\Curriculum;
 
 /*
@@ -144,4 +145,6 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
         Route::post('check-out', [AttendanceController::class, 'checkOut']);
         Route::get('{id}/history', [AttendanceController::class, 'getHistory']);
     });
+
+    Route::apiResource('notices', NoticeController::class);
 });

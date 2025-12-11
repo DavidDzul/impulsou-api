@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use App\Exports\AttendanceExport;
 use App\Exports\TestExport;
 use App\Http\Resources\ClassResource;
+use App\Models\Generation;
 use App\Models\User;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
@@ -153,16 +154,27 @@ class ClassController extends Controller
     }
     public function generalReport(Request $request)
     {
-
-        $request->validate([
+        $validatedData = $request->validate([
             'campus' => 'required|string',
             'generation_id' => 'required|integer',
             'year' => 'required|integer',
             'semester' => 'required|integer|in:1,2',
         ]);
 
-        $year = $request->year;
-        $semester = $request->semester;
+        $year = $validatedData['year'];
+        $semester = $validatedData['semester'];
+        $generationId = $validatedData['generation_id']; // Usar la variable
+
+        // 1. Obtener el nombre de la generación usando el ID
+        $generation = Generation::find($generationId);
+
+        // Verificar si la generación existe antes de continuar
+        if (!$generation) {
+            return response()->json(['message' => 'Generación no encontrada'], 404);
+        }
+
+        // 2. Almacenar el nombre que queremos mostrar en el reporte
+        $generationName = $generation->generation_name;
 
         // Rango de fechas por semestre
         if ($semester == 1) {
@@ -173,9 +185,9 @@ class ClassController extends Controller
             $endDate   = Carbon::create($year, 12, 31)->endOfDay();
         }
 
-        // Clases del período
+        // Clases del período (Consulta sin cambios)
         $classes = ClassModel::where('campus', $request->campus)
-            ->where('generation_id', $request->generation_id)
+            ->where('generation_id', $generationId) // Usar $generationId
             ->whereBetween('date', [$startDate, $endDate])
             ->get(['id', 'name', 'date', 'start_time', 'end_time']);
 
@@ -185,7 +197,7 @@ class ClassController extends Controller
 
         $classIds = $classes->pluck('id');
 
-        // Obtener asistencias
+        // Obtener asistencias (Consulta sin cambios)
         $attendances = Attendance::with(['user', 'class'])
             ->whereIn('class_id', $classIds)
             ->orderBy('class_id')
@@ -196,7 +208,7 @@ class ClassController extends Controller
             return response()->json(['message' => 'No hay asistencias registradas'], 404);
         }
 
-        // Mapear datos
+        // Mapear datos (sin cambios)
         $reportData = $attendances->map(function ($att) {
             return [
                 'user' => $att->user->first_name . ' ' . $att->user->last_name,
@@ -209,15 +221,13 @@ class ClassController extends Controller
             ];
         });
 
-        // Agrupar por clase
         $reportDataGrouped = $reportData->groupBy('class');
 
-        // Generar PDF
         $pdf = PDF::loadView('reports.attendance_general', [
             'reportDataGrouped' => $reportDataGrouped,
             'reportData' => $reportData,
             'campus' => $request->campus,
-            'generation' => $request->generation_id,
+            'generation' => $generationName,
             'semester' => $semester,
             'year' => $year,
         ])->setPaper('a4', 'landscape');

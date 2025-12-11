@@ -138,6 +138,16 @@
         font-size: 11px;
         color: #666;
     }
+
+    .session-group {
+        /* Indica que no debe haber un salto de página dentro de este elemento si es posible */
+        page-break-inside: avoid;
+    }
+
+    /* Opcional: Para controlar la paginación después de cada grupo */
+    .page-break {
+        page-break-after: always;
+    }
     </style>
 </head>
 
@@ -175,15 +185,13 @@
                 'OXKUTZCAB' => 'Oxkutzcab'
                 ];
                 @endphp
-                <strong>Sede:</strong> {{ $campusNames[$campus] ?? $campus }}
-            </p>
-            <p style="margin: 2px 0;">
-                <strong>Generación:</strong> {{ $generation }} <br>
+                <strong>Sede:</strong> {{ $campusNames[$campus] ?? $campus }} &nbsp;|&nbsp;
+                <strong>Generación:</strong> {{ $generation }}
             </p>
         </div>
     </header>
 
-    <div style="margin-top: 15px;">
+    <div style="margin-top: 15px; padding-bottom: -5px;">
         <strong>Estatus de Asistencia:</strong>
         <div class="status-legend">
             <span><span class="status-circle status-ABSENT"></span> Falta</span>
@@ -230,42 +238,42 @@
 
     @foreach($reportDataGrouped as $className => $rows)
 
-    <div>
-        <strong>Sesión:</strong> {{ $className }}
+    <div class="session-group">
+
+        <div style="margin-top: 20px; padding-bottom: 2px;">
+            <strong style="font-size: 14px; color: #333;">Sesión:</strong> {{ $className }}
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th style="width: 25%;" class="text-left">Nombre completo</th>
+                    <th>Fecha</th>
+                    <th>Entrada</th>
+                    <th>Salida</th>
+                    <th>Estatus</th>
+                    <th style="width: 20%;">Observaciones</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach($rows as $i => $row)
+                <tr>
+                    <td>{{ $i + 1 }}</td>
+                    <td class="text-left">{{ $row['user'] }}</td>
+                    <td>{{ \Carbon\Carbon::parse($row['date'])->format('d-m-Y') }}</td>
+                    <td>{{ $row['check_in'] ?? '-' }}</td>
+                    <td>{{ $row['check_out'] ?? '-' }}</td>
+                    <td>
+                        <span class="status-circle status-{{ $row['status'] }}"></span>
+                    </td>
+                    <td class="text-left">{{ $row['observations'] ?? '-' }}</td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
     </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th style="width: 25%;" class="text-left">Alumno</th>
-                <th>Fecha</th>
-                <th>Entrada</th>
-                <th>Salida</th>
-                <th>Estatus</th>
-                <th style="width: 20%;">Observaciones</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            @foreach($rows as $i => $row)
-            <tr>
-                <td>{{ $i + 1 }}</td>
-                <td class="text-left">{{ $row['user'] }}</td>
-                <td>{{ \Carbon\Carbon::parse($row['date'])->format('d-m-Y') }}</td>
-                <td>{{ $row['check_in'] ?? '-' }}</td>
-                <td>{{ $row['check_out'] ?? '-' }}</td>
-                <td>
-                    <span class="status-circle status-{{ $row['status'] }}"></span>
-                </td>
-                <td class="text-left">{{ $row['observations'] ?? '-' }}</td>
-            </tr>
-            @endforeach
-        </tbody>
-    </table>
-
-    {{-- Salto de página opcional --}}
-    <div class="page-break"></div>
 
     @endforeach
 
