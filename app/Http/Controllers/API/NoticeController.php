@@ -33,7 +33,7 @@ class NoticeController extends Controller
             $query->where('global', true)
 
                 ->orWhere('campus', $userCampus);
-        })
+        })->where('active', true)
 
             ->get();
 
