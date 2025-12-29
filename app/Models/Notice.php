@@ -20,6 +20,11 @@ class Notice extends Model
         'active',
     ];
 
+    protected $casts = [
+        'global' => 'boolean',
+        'active' => 'boolean'
+    ];
+
     public static function createRules()
     {
         return [

@@ -8,6 +8,7 @@ use App\Models\ClassModel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use App\Exports\AttendanceExport;
+use App\Exports\AttendanceMatrixExport;
 use App\Exports\TestExport;
 use App\Http\Resources\ClassResource;
 use App\Models\Generation;
@@ -233,5 +234,34 @@ class ClassController extends Controller
         ])->setPaper('a4', 'landscape');
 
         return $pdf->stream("Reporte_General_{$year}_S{$semester}.pdf");
+    }
+
+
+
+    public function generalReportExcel(Request $request)
+    {
+        $validatedData = $request->validate([
+            'campus' => 'required|string',
+            'generation_id' => 'required|integer',
+            'year' => 'required|integer',
+            'semester' => 'required|integer|in:1,2',
+        ]);
+
+        if ($validatedData['semester'] == 1) {
+            $startDate = Carbon::create($validatedData['year'], 1, 1)->startOfDay();
+            $endDate   = Carbon::create($validatedData['year'], 6, 30)->endOfDay();
+        } else {
+            $startDate = Carbon::create($validatedData['year'], 8, 1)->startOfDay();
+            $endDate   = Carbon::create($validatedData['year'], 12, 31)->endOfDay();
+        }
+
+        $params = [
+            'campus' => $request->campus,
+            'generation_id' => $request->generation_id,
+            'startDate' => $startDate,
+            'endDate' => $endDate
+        ];
+
+        return Excel::download(new AttendanceMatrixExport($params), "Reporte_Asistencia_{$request->campus}.xlsx");
     }
 }

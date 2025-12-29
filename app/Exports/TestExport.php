@@ -67,13 +67,11 @@ class TestExport implements FromCollection, WithHeadings, WithStyles, WithColumn
 
     public function styles(Worksheet $sheet)
     {
-        // 🔹 Encabezado general
         $sheet->mergeCells('A1:G1');
         $sheet->setCellValue('A1', 'REPORTE DE ASISTENCIAS');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
         $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        // 🔹 Datos de la clase
         $sheet->setCellValue('A3', 'Clase:');
         $sheet->setCellValue('B3', $this->class->name);
         $sheet->setCellValue('A4', 'Fecha:');
@@ -83,13 +81,11 @@ class TestExport implements FromCollection, WithHeadings, WithStyles, WithColumn
         $sheet->setCellValue('A6', 'Sede:');
         $sheet->setCellValue('B6', $this->class->campus);
 
-        // 🔹 Encabezado de tabla (A8:G8)
         $sheet->getStyle('A8:G8')->getFont()->setBold(true);
         $sheet->getStyle('A8:G8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle('A8:G8')->getFill()->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setARGB('E2E2E2');
 
-        // 🔹 Filas de estatus
         foreach (range(9, $sheet->getHighestRow()) as $row) {
             $color = $sheet->getCell('F' . $row)->getValue(); // color oculto
             if ($color) {
@@ -101,25 +97,8 @@ class TestExport implements FromCollection, WithHeadings, WithStyles, WithColumn
             }
         }
 
-        // 🔹 Ocultar columna auxiliar de color
         $sheet->getColumnDimension('F')->setVisible(false);
 
-        // $lastRow = $sheet->getHighestRow() + 2;
-        // $legend = [
-        //     ['Falta', 'FF4A4A'],
-        //     ['Retardo Justificado', 'FF7900'],
-        //     ['Falta Justificada', 'FFCE00'],
-        //     ['Presente', '275FFC'],
-        //     ['Retardo', 'A327FC'],
-        // ];
-        // $sheet->setCellValue('A' . $lastRow, 'Estatus:');
-        // foreach ($legend as $i => [$label, $color]) {
-        //     $cell = 'B' . ($lastRow + $i);
-        //     $sheet->setCellValue($cell, $label);
-        //     $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)
-        //         ->getStartColor()->setARGB($color);
-        //     $sheet->getStyle($cell)->getFont()->getColor()->setARGB('FFFFFF');
-        // }
 
         return [];
     }

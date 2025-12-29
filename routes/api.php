@@ -14,7 +14,7 @@ use App\Http\Controllers\API\PDFController;
 use App\Http\Controllers\API\BusinessController;
 use App\Http\Controllers\API\VacantController;
 use App\Http\Controllers\API\JobApplicationController;
-use App\Http\Controllers\Api\NoticeController;
+use App\Http\Controllers\API\NoticeController;
 use App\Models\Curriculum;
 
 /*
