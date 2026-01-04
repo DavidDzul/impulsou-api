@@ -31,29 +31,31 @@ Route::middleware('auth:sanctum')->get('/permissions', [AuthController::class, '
 Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('updateProfile', [AuthController::class, 'updateProfile']);
+    Route::get('search', [BusinessController::class, 'searchBusinesses']);
 
     Route::apiResource('generations', GenerationController::class);
-
-    Route::apiResource('users', UserController::class);
     Route::get('filterUsers', [UserController::class, 'getUsersByFilters']);
+
     Route::prefix('users')->group(function () {
         Route::put('{id}/fetchPDF', [UserController::class, 'showUserPDF']);
     });
+    Route::apiResource('users', UserController::class);
 
     Route::apiResource('graduates', GraduateController::class);
 
-    Route::apiResource('business', BusinessController::class);
     Route::prefix('business')->group(function () {
         Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement']);
     });
-
-    Route::get('search', [BusinessController::class, 'searchBusinesses']);
+    Route::apiResource('business', BusinessController::class);
 
     Route::apiResource('businessData', BusinessDataController::class);
     Route::apiResource('businessAgreement', BusinessAgreementController::class);
+
+    Route::prefix('roles')->group(function () {
+        Route::get('permissions', [RoleController::class, 'getAllPermissions']);
+    });
     Route::apiResource('roles', RoleController::class);
 
-    Route::apiResource('vacantPositions', VacantPositionController::class);
     Route::prefix('vacantPositions')->group(function () {
         Route::post('{id}/storeVacant', [VacantPositionController::class, 'storeVacant']);
         Route::put('{id}/updateVacant', [VacantPositionController::class, 'updateVacant']);
@@ -64,12 +66,13 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::put('{id}/status', [VacantPositionController::class, 'updateStatus']);
         Route::put('{id}/reset', [VacantPositionController::class, 'resetStatus']);
     });
+    Route::apiResource('vacantPositions', VacantPositionController::class);
+
 
     Route::apiResource('applications', JobApplicationController::class);
     Route::apiResource('areas', AreaController::class);
     Route::apiResource('candidateData', CandidateDataController::class);
 
-    Route::apiResource('class', ClassController::class);
     Route::prefix('class')->group(function () {
         Route::get('{id}/attendances', [ClassController::class, 'getAttendanceByClass']);
         Route::get('{id}/pdf', [ClassController::class, 'pdf']);
@@ -77,6 +80,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('reportPDF', [ClassController::class, 'generalReport']);
         Route::post('reportExcel', [ClassController::class, 'generalReportExcel']);
     });
+    Route::apiResource('class', ClassController::class);
+
 
     Route::apiResource('attendance', AttendanceController::class);
     Route::prefix('attendance')->group(function () {

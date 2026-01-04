@@ -18,4 +18,16 @@ class Role extends SpatieRole
     {
         return $this->hasOne(RoleConfiguration::class, 'role_id');
     }
+
+
+    public static function updateRules()
+    {
+        return [
+            'num_visualizations' => 'required|integer|min:0',
+            'num_vacancies'      => 'required|integer|min:0',
+            'unlimited'          => 'boolean',
+            'permissions_ids'    => 'array',
+            'permissions_ids.*'  => 'exists:permissions,id',
+        ];
+    }
 }
