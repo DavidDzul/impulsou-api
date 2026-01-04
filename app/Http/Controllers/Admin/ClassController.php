@@ -38,6 +38,7 @@ class ClassController extends Controller
 
         $classes = ClassModel::where('campus', $data['campus'])
             ->where('generation_id', $data['generation_id'])
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return ClassResource::collection($classes);
@@ -166,7 +167,7 @@ class ClassController extends Controller
         $semester = $validatedData['semester'];
         $generationId = $validatedData['generation_id']; // Usar la variable
 
-        // 1. Obtener el nombre de la generación usando el ID
+        // Obtener el nombre de la generación usando el ID
         $generation = Generation::find($generationId);
 
         // Verificar si la generación existe antes de continuar
