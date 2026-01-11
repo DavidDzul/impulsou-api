@@ -14,18 +14,13 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 
 class AttendanceMatrixExport implements FromCollection, WithHeadings, WithStyles, WithTitle, ShouldAutoSize, WithCustomStartCell
 {
     protected $params;
     protected $classes;
-    protected $statusColors = [
-        'ABSENT'            => 'FF0000', // Rojo
-        'LATE'              => 'FF5300', // Naranja
-        'PRESENT'           => '00BA10', // Verde
-        'JUSTIFIED_LATE'    => '0022FF', // Azul
-        'JUSTIFIED_ABSENCE' => 'FF00F2', // Rosa
-    ];
+    protected $counter = 1;
 
     public function __construct($params)
     {
@@ -39,32 +34,60 @@ class AttendanceMatrixExport implements FromCollection, WithHeadings, WithStyles
 
     public function startCell(): string
     {
-        // Los datos de los alumnos (Collection) comenzarán en A5
-        return 'A5';
+        return 'A3'; // Encabezados en fila 3, Datos en fila 4
     }
 
     public function collection()
     {
         $classIds = $this->classes->pluck('id');
+
         $attendances = Attendance::with('user')->whereIn('class_id', $classIds)->get();
 
-        // Agrupamos por usuario para crear una fila por alumno
-        return $attendances->groupBy('user_id')->map(function ($userAttendances) {
-            $user = $userAttendances->first()->user;
-            $row = ['Nombre' => $user->first_name . ' ' . $user->last_name];
+        return $attendances->groupBy('user_id')
+            ->sortBy(function ($userAttendances) {
+                return $userAttendances->first()->user->last_name;
+            })
+            ->map(function ($userAttendances) {
+                $user = $userAttendances->first()->user;
 
-            foreach ($this->classes as $class) {
-                $att = $userAttendances->firstWhere('class_id', $class->id);
-                // Retornamos el código del estatus para procesar el color después
-                $row[$class->date->format('d/m/Y')] = $att ? $att->status : '';
-            }
-            return $row;
-        });
+                $row = [
+                    'index'      => $this->counter++,
+                    'name'       => $user->last_name . ' ' . $user->first_name,
+                    'enrollment' => $user->enrollment ?? 'N/A',
+                ];
+
+                foreach ($this->classes as $class) {
+                    $att = $userAttendances->firstWhere('class_id', $class->id);
+                    $cellValue = '';
+
+                    if ($att) {
+                        switch ($att->status) {
+                            case 'PRESENT':
+                                $cellValue = '*';
+                                break;
+                            case 'LATE':
+                                $cellValue = "R " . ($att->check_in ? date('G:i', strtotime($att->check_in)) : '');
+                                break;
+                            case 'JUSTIFIED_LATE':
+                                $cellValue = "RJ " . ($att->check_in ? date('G:i', strtotime($att->check_in)) : '');
+                                break;
+                            case 'JUSTIFIED_ABSENCE':
+                                $cellValue = '1J';
+                                break;
+                            case 'ABSENT':
+                                $cellValue = '1';
+                                break;
+                        }
+                    }
+                    $row[$class->date->format('d/m/Y')] = $cellValue;
+                }
+                return $row;
+            });
     }
 
     public function headings(): array
     {
-        $headers = ['Nombre'];
+        $headers = ['#', 'Nombre', 'Matrícula'];
         foreach ($this->classes as $class) {
             $headers[] = $class->date->format('d/m/Y');
         }
@@ -73,63 +96,77 @@ class AttendanceMatrixExport implements FromCollection, WithHeadings, WithStyles
 
     public function styles(Worksheet $sheet)
     {
-        // 1. Título y Leyenda (Filas 1 y 2)
-        $sheet->setCellValue('A1', 'Estatus de Asistencia:');
-        $sheet->getStyle('A1')->getFont()->setBold(true);
-
-        $labels = [
-            'Falta' => 'ABSENT',
-            'Retardo' => 'LATE',
-            'Presente' => 'PRESENT',
-            'Retardo Just.' => 'JUSTIFIED_LATE',
-            'Falta Just.' => 'JUSTIFIED_ABSENCE'
-        ];
-
-        $currentCol = 1;
-        foreach ($labels as $text => $key) {
-            $cell = $sheet->getCell([$currentCol, 2]); // Fila 2 para colores
-            $cell->setValue($text);
-
-            $sheet->getStyle($cell->getCoordinate())->applyFromArray([
-                'fill' => [
-                    'fillType' => Fill::FILL_SOLID,
-                    'startColor' => ['argb' => $this->statusColors[$key]],
-                ],
-                'font' => ['color' => ['argb' => 'FFFFFF'], 'bold' => true],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
-            ]);
-            $currentCol++;
-        }
-
-        // 2. Estilo de Encabezados de Tabla (Fila 5 debido al startCell)
-        $highestCol = $sheet->getHighestColumn();
-        $sheet->getStyle("A5:{$highestCol}5")->getFont()->setBold(true);
-        $sheet->getStyle("A5:{$highestCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-
-        // 3. Pintar la Matriz de Datos (Fila 6 en adelante)
         $highestRow = $sheet->getHighestRow();
+        $highestCol = $sheet->getHighestColumn();
         $highestColumnIndex = Coordinate::columnIndexFromString($highestCol);
 
-        for ($row = 6; $row <= $highestRow; $row++) {
-            // Recorremos desde la columna 2 (B) que son las fechas
-            for ($col = 2; $col <= $highestColumnIndex; $col++) {
+        // 1. INMOVILIZAR PANELES: Congela hasta la columna C (Nombre) y la fila 3 (Encabezados)
+        $sheet->freezePane('C3');
+
+        // 2. ESTILO ENCABEZADOS (Fila 3)
+        // Primero, el azul oscuro para #, Matrícula y Nombre (A, B, C)
+        $sheet->getStyle("A3:C3")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => 'FF0070C0'], // Azul Oscuro (Navy)
+            ],
+        ]);
+
+        // Segundo, el azul cyan para las fechas (D en adelante)
+        $sheet->getStyle("D3:{$highestCol}3")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FF000000']],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => 'FF00B0F0'], // Azul Fechas
+            ],
+        ]);
+
+        // Alineación y bordes para todos los encabezados
+        $sheet->getStyle("A3:{$highestCol}3")->applyFromArray([
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical'   => Alignment::VERTICAL_CENTER,
+            ],
+            'borders' => [
+                'allBorders' => ['borderStyle' => Border::BORDER_THIN],
+            ],
+        ]);
+
+        // 3. ESTILO DE LA MATRIZ DE DATOS (Fila 4 en adelante)
+        $sheet->getStyle("A4:{$highestCol}{$highestRow}")->applyFromArray([
+            'borders' => [
+                'allBorders' => ['borderStyle' => Border::BORDER_THIN],
+            ],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
+        ]);
+
+        // Pintar los retardos "R" únicamente
+        for ($row = 4; $row <= $highestRow; $row++) {
+            // Centrar columnas de control (ID y Matrícula)
+            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            for ($col = 4; $col <= $highestColumnIndex; $col++) {
                 $cell = $sheet->getCell([$col, $row]);
-                $val = $cell->getValue();
+                $val = (string)$cell->getValue();
+                $coordinate = $cell->getCoordinate();
 
-                if ($val && isset($this->statusColors[$val])) {
-                    $coordinate = $cell->getCoordinate();
+                $sheet->getStyle($coordinate)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                    $sheet->getStyle($coordinate)->getFill()
-                        ->setFillType(Fill::FILL_SOLID)
-                        ->getStartColor()->setARGB($this->statusColors[$val]);
-
-                    // Colocamos el asterisco y limpiamos el texto del estatus
-                    $cell->setValue('*');
-                    $sheet->getStyle($coordinate)->getFont()->getColor()->setARGB('FFFFFF');
-                    $sheet->getStyle($coordinate)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                // Condición estricta para retardos "R" (gris con texto blanco)
+                if (str_starts_with($val, 'R ') && !str_starts_with($val, 'RJ')) {
+                    $sheet->getStyle($coordinate)->applyFromArray([
+                        'fill' => [
+                            'fillType' => Fill::FILL_SOLID,
+                            'startColor' => ['argb' => '757575'],
+                        ],
+                        'font' => ['color' => ['argb' => 'FFFFFF']],
+                    ]);
                 }
             }
         }
+
+        $sheet->getRowDimension(3)->setRowHeight(30);
 
         return [];
     }

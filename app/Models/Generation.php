@@ -20,4 +20,12 @@ class Generation extends Model
         'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
         'generation_active' => 'nullable|boolean',
     ];
+
+    public static function updateRules()
+    {
+        return [
+            'generation_name'       => 'sometimes|string|max:255',
+            'generation_active'       => 'sometimes|boolean',
+        ];
+    }
 }

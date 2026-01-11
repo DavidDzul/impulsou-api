@@ -87,14 +87,14 @@ class GenerationController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
-        // $terrain = Terrain::findOrFail($id);
-        // $data = $request->validate(Terrain::$updateRules);
+        $gen = Generation::findOrFail($id);
+        $data = $request->validate(Generation::updateRules());
 
-        // $terrain->update($data);
+        $gen->update($data);
 
         return response()->json([
-            'message' => 'Terreno actualizado correctamente',
-            // 'terrain' => $terrain
+            'message' => 'Actualizado correctamente',
+            'data' => $gen
         ]);
     }
 

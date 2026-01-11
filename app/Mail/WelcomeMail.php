@@ -12,15 +12,16 @@ class WelcomeMail extends Mailable
     use Queueable, SerializesModels;
 
     public $user;
-
+    public $isInformative;
     /**
      * Create a new message instance.
      *
      * @return void
      */
-    public function __construct($user)
+    public function __construct($user, $isInformative = false)
     {
         $this->user = $user;
+        $this->isInformative = $isInformative;
     }
 
     /**
@@ -30,6 +31,17 @@ class WelcomeMail extends Mailable
      */
     public function build()
     {
-        return $this->from('vinculacion.laboral@iu.org.mx', 'Plataforma de Vinculación Laboral')->subject('Tu registro ha sido exitoso. ¡Comienza a conectar con nuevas oportunidades!')->view('email.welcome')->with(['data' => $this->user]);
+        if ($this->isInformative) {
+            $subject = 'Confirmación de Registro Institucional - Impulso Universitario';
+            $view = 'email.users_registration';
+        } else {
+            $subject = 'Tu registro ha sido exitoso. ¡Comienza a conectar!';
+            $view = 'email.welcome';
+        }
+
+        return $this->from('vinculacion.laboral@iu.org.mx', 'Impulso Universitario')
+            ->subject($subject)
+            ->view($view)
+            ->with(['data' => $this->user]);
     }
 }

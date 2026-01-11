@@ -60,7 +60,7 @@ class GraduateController extends Controller
 
             $user = User::create($data);
 
-            $mail = new WelcomeMail($user);
+            $mail = new WelcomeMail($user, true);
             Mail::to($user->email)->send($mail);
 
             return response()->json([

@@ -83,7 +83,7 @@ class BusinessController extends Controller
 
         $userArray['role'] = $role;
 
-        $mail = new WelcomeMail($createData);
+        $mail = new WelcomeMail($createData, false);
         Mail::to($createData->email)->send($mail);
 
         return response()->json([
