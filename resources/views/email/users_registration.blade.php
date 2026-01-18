@@ -203,14 +203,24 @@
                         </td>
                     </tr>
 
+                    @php
+                    $contacto = match($data->campus) {
+                    'MERIDA' => 'maria.may@iu.org.mx',
+                    'VALLADOLID' => 'gilberto.rodriguez@iu.org.mx',
+                    'TIZIMIN' => 'magaly.ac@iu.org.mx',
+                    'OXKUTZCAB' => 'mervin.canche@iu.org.mx',
+                    default => 'maria.may@iu.org.mx',
+                    };
+                    @endphp
+
                     <tr>
                         <td class="paragraph">
                             Si tienes dudas sobre tu registro o el alcance de nuestras plataformas, por favor contacta
                             al área de personal correspondiente o escríbenos a:
                             <br><br>
-                            <a href="mailto:contacto@iu.org.mx"
+                            <a href="mailto:{{ $contacto }}"
                                 style="text-decoration: underline; color: #ff7900; font-weight: bold;">
-                                contacto@iu.org.mx
+                                {{ $contacto }}
                             </a>
                         </td>
                     </tr>

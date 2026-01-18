@@ -12,9 +12,34 @@ class GenerationController extends Controller
     /**
      * Display a listing of the resource.
      */
+    // public function index(Request $request): JsonResponse
+    // {
+    //     // $user = auth()->user();
+    //     $user = $request->user();
+
+    //     if (!$user) {
+    //         return response()->json([
+    //             'res' => false,
+    //             'msg' => 'Usuario no autenticado.'
+    //         ], 401);
+    //     }
+
+    //     // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
+    //     if ($user->isRoot()) {
+    //         $data = Generation::all();
+    //     } else {
+    //         // Si no, solo obtiene los registros de su campus
+    //         $data = Generation::where('campus', $user->campus)->get();
+    //     }
+
+    //     return response()->json([
+    //         'res' => true,
+    //         'generations' => $data
+    //     ]);
+    // }
+
     public function index(Request $request): JsonResponse
     {
-        // $user = auth()->user();
         $user = $request->user();
 
         if (!$user) {
@@ -24,13 +49,16 @@ class GenerationController extends Controller
             ], 401);
         }
 
-        // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->isRoot()) {
-            $data = Generation::all();
-        } else {
-            // Si no, solo obtiene los registros de su campus
-            $data = Generation::where('campus', $user->campus)->get();
+        // Usamos el query builder para evitar repetir código
+        $query = Generation::query();
+
+        // Filtramos por campus si no es Root
+        if (!$user->isRoot()) {
+            $query->where('campus', $user->campus);
         }
+
+        // Ordenamos alfabéticamente por el nombre y ejecutamos la consulta
+        $data = $query->orderBy('generation_name', 'asc')->get();
 
         return response()->json([
             'res' => true,
