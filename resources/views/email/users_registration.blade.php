@@ -163,25 +163,49 @@
 
                     <tr>
                         <td class="paragraph">
-                            Te informamos que tu registro ha sido procesado correctamente. Ahora formas parte del
-                            <b>Ecosistema Digital de Impulso Universitario</b>, integrando tu perfil en todas nuestras
-                            plataformas de vinculación y seguimiento.
+                            Te informamos que haz sido registrado exitosamente. A partir de este momento, formas parte
+                            de las siguientes plataformas institucionales:
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td class="paragraph" style="text-align: left; padding-bottom: 0px;">
+                            <div style="margin-bottom: 10px;">
+                                <b>Vinculación laboral:</b> En esta plataforma podrás realizar tu C.V., consultar y
+                                postularte a ofertas de empleo y/o prácticas profesionales.
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <b>Seguimiento institucional:</b> Aquí podrás generar tu código QR de asistencia,
+                                consultar
+                                tu historial de asistencias del PFI y conocer avisos generales.
+                            </div>
+
                         </td>
                     </tr>
 
                     <tr>
                         <td align="center" style="padding: 10px 6.25%;">
                             <table width="100%"
-                                style="background-color: #F9F9F9; border-radius: 8px; border: 1px solid #E0E0E0;">
+                                style="background-color: #F9F9F9; border-radius: 8px; border: 1px solid #E0E0E0; table-layout: fixed;">
                                 <tr>
+                                    <td style="padding: 20px; text-align: center; border-right: 1px solid #E0E0E0;">
+                                        <span
+                                            style="font-size: 11px; color: #666666; font-family: sans-serif; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 5px;">
+                                            Matrícula
+                                        </span>
+                                        <span
+                                            style="font-size: 18px; font-weight: bold; color: #000000; font-family: sans-serif;">
+                                            {{ $data->enrollment }}
+                                        </span>
+                                    </td>
                                     <td style="padding: 20px; text-align: center;">
                                         <span
-                                            style="font-size: 14px; color: #666666; font-family: sans-serif; text-transform: uppercase; letter-spacing: 1px;">
-                                            Matrícula Institucional
-                                        </span><br>
+                                            style="font-size: 11px; color: #666666; font-family: sans-serif; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 5px;">
+                                            Contraseña Temporal
+                                        </span>
                                         <span
-                                            style="font-size: 24px; font-weight: bold; color: #000000; font-family: sans-serif; line-height: 150%;">
-                                            {{ $data->enrollment }}
+                                            style="font-size: 18px; font-weight: bold; color: #ff7900; font-family: sans-serif;">
+                                            Agentedecambio
                                         </span>
                                     </td>
                                 </tr>
@@ -190,8 +214,21 @@
                     </tr>
 
                     <tr>
+                        <td class="paragraph"
+                            style="text-align: left; padding-top: 10px; padding-bottom: 10px; font-size: 14px;">
+                            <div
+                                style="background-color: #fff4e5; border-left: 4px solid #ff7900; padding: 12px; border-radius: 4px; color: #666666;">
+                                <strong style="color: #ff7900;">⚠️ Importante:</strong> Por seguridad, es obligatorio
+                                cambiar esta
+                                contraseña por una personal al iniciar sesión por primera vez.
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr>
                         <td class="paragraph">
-                            Esta matrícula es tu identificador único ante la institución. Este es un correo <b>meramente
+                            Tu matrícula es tu identificador único ante la institución y te permitirá acceder a ambas
+                            plataformas. Este es un correo <b>meramente
                                 informativo</b>, por lo que no es necesario realizar ninguna acción adicional por el
                             momento.
                         </td>
@@ -215,8 +252,8 @@
 
                     <tr>
                         <td class="paragraph">
-                            Si tienes dudas sobre tu registro o el alcance de nuestras plataformas, por favor contacta
-                            al área de personal correspondiente o escríbenos a:
+                            Si tienes dudas sobre tu registro o el alcance de nuestras plataformas, puedes contactar al
+                            área correspondiente o escribirnos a:
                             <br><br>
                             <a href="mailto:{{ $contacto }}"
                                 style="text-decoration: underline; color: #ff7900; font-weight: bold;">

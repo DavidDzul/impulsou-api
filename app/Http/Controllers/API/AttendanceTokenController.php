@@ -38,7 +38,7 @@ class AttendanceTokenController extends Controller
         $attendanceToken = AttendanceToken::create([
             'user_id'    => $data['user_id'],
             'token'      => $token,
-            'expires_at' => Carbon::now()->addMinutes(5),
+            'expires_at' => Carbon::now()->addMinutes(30),
             'used'       => false,
         ]);
 
