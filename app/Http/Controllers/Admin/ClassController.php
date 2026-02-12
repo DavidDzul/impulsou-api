@@ -54,8 +54,8 @@ class ClassController extends Controller
     {
         $data = $request->validate(ClassModel::createRules());
 
-        $data['start_time'] = Carbon::createFromFormat('H:i', $data['start_time'])->format('H:i:s');
-        $data['end_time']   = Carbon::createFromFormat('H:i', $data['end_time'])->format('H:i:s');
+        $data['start_time'] = Carbon::createFromFormat('H:i:s', $data['start_time'])->toTimeString();
+        $data['end_time']   = Carbon::createFromFormat('H:i:s', $data['end_time'])->toTimeString();
         $class = ClassModel::create($data);
 
         $userIds = User::where('campus', $data['campus'])
@@ -64,12 +64,14 @@ class ClassController extends Controller
             ->where('active', true)
             ->pluck('id');
 
-        foreach ($userIds as $userId) {
-            Attendance::create([
-                'class_id' => $class->id,
-                'user_id'  => $userId,
-            ]);
-        }
+        $attendanceData = $userIds->map(fn($userId) => [
+            'class_id'   => $class->id,
+            'user_id'    => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ])->toArray();
+
+        Attendance::insert($attendanceData);
 
         return ClassResource::make($class);
     }

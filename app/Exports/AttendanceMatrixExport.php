@@ -44,8 +44,12 @@ class AttendanceMatrixExport implements FromCollection, WithHeadings, WithStyles
         $attendances = Attendance::with('user')->whereIn('class_id', $classIds)->get();
 
         return $attendances->groupBy('user_id')
+            // ->sortBy(function ($userAttendances) {
+            //     return $userAttendances->first()->user->last_name;
+            // })
             ->sortBy(function ($userAttendances) {
-                return $userAttendances->first()->user->last_name;
+                $lastName = $userAttendances->first()->user->last_name;
+                return transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $lastName);
             })
             ->map(function ($userAttendances) {
                 $user = $userAttendances->first()->user;
