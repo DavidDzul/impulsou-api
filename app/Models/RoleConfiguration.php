@@ -13,13 +13,23 @@ class RoleConfiguration extends Model
 
     protected $fillable = [
         'role_id',
+        'unlimited_jobs',
+        'num_job_vacancies',
+        'unlimited_professionals',
+        'num_professional_vacancies',
+        'unlimited_jr',
+        'num_jr_vacancies',
+        'unlimited_visualizations',
         'num_visualizations',
-        'num_vacancies',
-        'unlimited'
+        // 'num_vacancies',
+        // 'unlimited'
     ];
 
     protected $casts = [
-        'unlimited' => 'boolean',
+        'unlimited_jobs' => 'boolean',
+        'unlimited_professionals' => 'boolean',
+        'unlimited_jr' => 'boolean',
+        'unlimited_visualizations' => 'boolean',
     ];
 
     public function role()
