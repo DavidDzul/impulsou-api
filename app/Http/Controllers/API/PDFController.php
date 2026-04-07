@@ -25,6 +25,13 @@ class PDFController extends Controller
             $user = $request->user();
             $role = $user->roles()->with('configuration')->first();
 
+            if (!$role && !$role->configuration) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
+                ], 403);
+            }
+
             $cvExists = Curriculum::find($id);
             if (!$cvExists) {
                 return response()->json([
@@ -34,17 +41,9 @@ class PDFController extends Controller
             }
 
             $cvOwnerId = $cvExists->user_id;
-
-            if (!$role && !$role->configuration) {
-                return response()->json([
-                    'res' => false,
-                    'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
-                ], 403);
-            }
-
             $roleConfig = $role->configuration;
 
-            if (!$roleConfig->unlimited) {
+            if (!$roleConfig->unlimited_visualizations) {
                 $currentVisualizations = BusinessVisualization::where('user_id', $user->id)->count();
 
                 if ($currentVisualizations >= $roleConfig->num_visualizations) {
