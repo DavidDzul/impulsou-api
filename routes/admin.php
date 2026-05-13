@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\ClassController;
 use App\Http\Controllers\Admin\GraduateController;
 use App\Http\Controllers\Admin\JobApplicationController;
 use App\Http\Controllers\Admin\NoticeController;
+use App\Http\Controllers\Admin\PersonController;
 use App\Http\Controllers\Admin\RoleController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -42,6 +43,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('users', UserController::class);
 
     Route::apiResource('graduates', GraduateController::class);
+
+    Route::post('persons', [PersonController::class, 'store']);
 
     Route::prefix('business')->group(function () {
         Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement']);

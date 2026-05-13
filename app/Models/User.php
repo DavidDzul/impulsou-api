@@ -31,7 +31,6 @@ class User extends Authenticatable
         'campus',
         'generation_id',
         'password',
-        'campus',
         'active',
     ];
 
