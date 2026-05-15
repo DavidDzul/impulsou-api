@@ -18,7 +18,13 @@ class Attendance extends Model
         'check_out',
         'status',
         'class_status',
-        'observations'
+        'observations',
+        'late_penalty_consumed',
+        'late_penalty_consumed_refrend_id',
+    ];
+
+    protected $casts = [
+        'late_penalty_consumed' => 'boolean',
     ];
 
     public static function validateHistoy()
@@ -46,5 +52,19 @@ class Attendance extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function latePenaltyRefrend()
+    {
+        return $this->belongsTo(ScholarshipRefrend::class, 'late_penalty_consumed_refrend_id');
+    }
+
+    // Retardos sin justificar no consumidos dentro de un rango de fechas
+    public function scopeUnconsumedLatesInRange($query, string $start, string $end)
+    {
+        return $query
+            ->where('status', 'LATE')
+            ->where('late_penalty_consumed', false)
+            ->whereHas('class', fn($q) => $q->whereBetween('date', [$start, $end]));
     }
 }

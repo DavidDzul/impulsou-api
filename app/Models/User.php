@@ -127,6 +127,23 @@ class User extends Authenticatable
         ];
     }
 
+    // Scholarship relationships
+
+    public function scholarshipProfile()
+    {
+        return $this->hasOne(ScholarshipProfile::class, 'user_id');
+    }
+
+    public function scholarshipRefrends()
+    {
+        return $this->hasMany(ScholarshipRefrend::class, 'user_id');
+    }
+
+    public function studentDocuments()
+    {
+        return $this->hasMany(StudentDocument::class, 'user_id');
+    }
+
     public function agreement()
     {
         return $this->hasOne(BusinessAgreement::class, 'user_id')->latestOfMany();

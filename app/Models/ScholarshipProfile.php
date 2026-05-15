@@ -1,0 +1,90 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\ScholarshipType;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class ScholarshipProfile extends Model
+{
+    use HasFactory;
+
+    protected $table = 'scholarship_profiles';
+
+    protected $fillable = [
+        'user_id',
+        'scholarship_type',
+        'monthly_amount',
+        'payment_start_date',
+        'payment_end_date',
+        'active_discount_percentage',
+        'discount_valid_until',
+        'reticula_start_date',
+        'reticula_end_date',
+        'reticula_file_path',
+        'reticula_original_name',
+    ];
+
+    protected $casts = [
+        'scholarship_type'           => ScholarshipType::class,
+        'monthly_amount'             => 'decimal:2',
+        'active_discount_percentage' => 'decimal:2',
+        'payment_start_date'         => 'date',
+        'payment_end_date'           => 'date',
+        'discount_valid_until'       => 'date',
+        'reticula_start_date'        => 'date',
+        'reticula_end_date'          => 'date',
+    ];
+
+    public static function createRules(): array
+    {
+        return [
+            'user_id'                    => 'required|exists:users,id|unique:scholarship_profiles,user_id',
+            'scholarship_type'           => 'required|string|in:IU,TELMEX',
+            'monthly_amount'             => 'required|numeric|min:0',
+            'payment_start_date'         => 'required|date',
+            'payment_end_date'           => 'nullable|date|after:payment_start_date',
+            'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'discount_valid_until'       => 'nullable|date',
+        ];
+    }
+
+    public static function updateRules(int $id): array
+    {
+        return [
+            'scholarship_type'           => 'sometimes|string|in:IU,TELMEX',
+            'monthly_amount'             => 'sometimes|numeric|min:0',
+            'payment_start_date'         => 'sometimes|date',
+            'payment_end_date'           => 'nullable|date',
+            'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'discount_valid_until'       => 'nullable|date',
+        ];
+    }
+
+    // Relations
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function refrends(): HasMany
+    {
+        return $this->hasMany(ScholarshipRefrend::class, 'user_id', 'user_id');
+    }
+
+    // Scopes
+
+    public function scopeActive($query)
+    {
+        return $query->whereHas('user', fn($q) => $q->where('user_type', 'BEC_ACTIVE'));
+    }
+
+    public function scopeByType($query, string $type)
+    {
+        return $query->where('scholarship_type', $type);
+    }
+}

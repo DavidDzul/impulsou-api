@@ -18,6 +18,10 @@ use App\Http\Controllers\Admin\JobApplicationController;
 use App\Http\Controllers\Admin\NoticeController;
 use App\Http\Controllers\Admin\PersonController;
 use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\ScholarshipDocumentController;
+use App\Http\Controllers\Admin\ScholarshipProfileController;
+use App\Http\Controllers\Admin\ScholarshipRefrendController;
+use App\Http\Controllers\Admin\ScholarshipSemesterGradeController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
@@ -92,4 +96,44 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     });
 
     Route::apiResource('notices', NoticeController::class);
+
+    // ── Scholarship Profiles ──────────────────────────────────────────────────
+    Route::prefix('scholarship-profiles')->group(function () {
+        Route::get('{userId}', [ScholarshipProfileController::class, 'show']);
+        Route::post('/', [ScholarshipProfileController::class, 'store']);
+        Route::put('{userId}', [ScholarshipProfileController::class, 'update']);
+        Route::post('{userId}/reticula', [ScholarshipProfileController::class, 'updateReticula']);
+    });
+
+    // ── Semester Grades ───────────────────────────────────────────────────────
+    Route::prefix('users/{userId}/semester-grades')->group(function () {
+        Route::get('/', [ScholarshipSemesterGradeController::class, 'index']);
+        Route::post('/', [ScholarshipSemesterGradeController::class, 'upsert']);
+    });
+    Route::delete('semester-grades/{id}', [ScholarshipSemesterGradeController::class, 'destroy']);
+
+    // ── Scholarship Refrends ──────────────────────────────────────────────────
+    Route::prefix('scholarship-refrends')->group(function () {
+        Route::get('/', [ScholarshipRefrendController::class, 'index']);
+        Route::get('{id}', [ScholarshipRefrendController::class, 'show']);
+        Route::post('generate', [ScholarshipRefrendController::class, 'generate']);
+        Route::post('generate/{userId}', [ScholarshipRefrendController::class, 'generateForUser']);
+        Route::put('{id}/atencion-review', [ScholarshipRefrendController::class, 'atencionReview']);
+        Route::put('{id}/pedagogia-review', [ScholarshipRefrendController::class, 'pedagogiaReview']);
+        Route::put('{id}/authorize', [ScholarshipRefrendController::class, 'approveRefrend']);
+        Route::put('{id}/paid', [ScholarshipRefrendController::class, 'markPaid']);
+        Route::put('{id}/withhold', [ScholarshipRefrendController::class, 'withhold']);
+    });
+
+    Route::get('users/{userId}/scholarship-refrends', [ScholarshipRefrendController::class, 'forUser']);
+    Route::get('users/{userId}/attendance-summary', [ScholarshipRefrendController::class, 'attendanceSummary']);
+
+    // ── Student Documents ─────────────────────────────────────────────────────
+    Route::prefix('scholarship-documents')->group(function () {
+        Route::get('user/{userId}', [ScholarshipDocumentController::class, 'index']);
+        Route::post('/', [ScholarshipDocumentController::class, 'store']);
+        Route::put('{id}/accept', [ScholarshipDocumentController::class, 'accept']);
+        Route::put('{id}/reject', [ScholarshipDocumentController::class, 'reject']);
+        Route::delete('{id}', [ScholarshipDocumentController::class, 'destroy']);
+    });
 });
