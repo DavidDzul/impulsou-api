@@ -49,6 +49,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('graduates', GraduateController::class);
 
     Route::post('persons', [PersonController::class, 'store']);
+    Route::post('persons/{userId}/graduate', [PersonController::class, 'graduate']);
 
     Route::prefix('business')->group(function () {
         Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement']);

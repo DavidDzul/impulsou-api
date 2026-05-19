@@ -12,6 +12,7 @@ use App\Enums\RefrendStatus;
 use App\Services\AttendancePenaltyService;
 use App\Services\GenerateMonthlyRefrendsService;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ScholarshipRefrendController extends Controller
@@ -91,7 +92,7 @@ class ScholarshipRefrendController extends Controller
     /**
      * Genera el refrendo de un becario específico para el periodo indicado.
      */
-    public function generateForUser(Request $request, int $userId)
+    public function generateForUser(Request $request, int $userId): JsonResponse
     {
         $data = $request->validate([
             'year'  => 'required|integer|min:2020|max:2100',
@@ -99,7 +100,12 @@ class ScholarshipRefrendController extends Controller
         ]);
 
         $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
-        $refrend = $this->generateService->generateForUser($profile, $data['year'], $data['month']);
+
+        try {
+            $refrend = $this->generateService->generateForUser($profile, $data['year'], $data['month']);
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
 
         if ($refrend === null) {
             return response()->json(['res' => false, 'msg' => 'Ya existe un refrendo para este periodo.'], 409);
@@ -158,7 +164,7 @@ class ScholarshipRefrendController extends Controller
      * Autorizar refrendo (Pedagogía aprueba el pago).
      * Acepta override opcional del monto final y notas de autorización.
      */
-    public function approveRefrend(Request $request, int $id)
+    public function approveRefrend(Request $request, int $id): JsonResponse
     {
         $data = $request->validate([
             'final_amount_override' => 'nullable|numeric|min:0',
@@ -169,6 +175,18 @@ class ScholarshipRefrendController extends Controller
 
         if ($refrend->isLocked()) {
             return response()->json(['res' => false, 'msg' => 'El refrendo ya está bloqueado.'], 422);
+        }
+
+        // Revalidar que el periodo siga dentro de la retícula al momento de autorizar
+        $profile = ScholarshipProfile::where('user_id', $refrend->user_id)->first();
+        if ($profile && $profile->reticula_end_date) {
+            $periodStart = Carbon::create($refrend->period_year, $refrend->period_month, 1);
+            if ($periodStart->gt($profile->reticula_end_date)) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => "No se puede autorizar: el periodo académico del becario finalizó el {$profile->reticula_end_date->toDateString()}.",
+                ], 422);
+            }
         }
 
         $updates = [

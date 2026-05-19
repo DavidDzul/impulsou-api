@@ -26,6 +26,7 @@ class ScholarshipRefrend extends Model
         'discount_percentage',
         'discount_amount',
         'final_amount',
+        'amount_pending_from_previous',
         'snapshot_name',
         'snapshot_generation',
         'snapshot_campus',
@@ -41,17 +42,30 @@ class ScholarshipRefrend extends Model
     ];
 
     protected $casts = [
-        'refrend_type'              => RefrendType::class,
-        'status'                    => RefrendStatus::class,
-        'snapshot_scholarship_type' => ScholarshipType::class,
-        'base_amount'               => 'decimal:2',
-        'discount_percentage'       => 'decimal:2',
-        'discount_amount'           => 'decimal:2',
-        'final_amount'              => 'decimal:2',
-        'atencion_reviewed_at'      => 'datetime',
-        'pedagogia_reviewed_at'     => 'datetime',
-        'locked_at'                 => 'datetime',
+        'refrend_type'                => RefrendType::class,
+        'status'                      => RefrendStatus::class,
+        'snapshot_scholarship_type'   => ScholarshipType::class,
+        'base_amount'                 => 'decimal:2',
+        'discount_percentage'         => 'decimal:2',
+        'discount_amount'             => 'decimal:2',
+        'final_amount'                => 'decimal:2',
+        'amount_pending_from_previous' => 'decimal:2',
+        'atencion_reviewed_at'        => 'datetime',
+        'pedagogia_reviewed_at'       => 'datetime',
+        'locked_at'                   => 'datetime',
     ];
+
+    protected $appends = ['total_to_pay'];
+
+    public function getTotalToPayAttribute(): string
+    {
+        return number_format(
+            (float) $this->final_amount + (float) $this->amount_pending_from_previous,
+            2,
+            '.',
+            ''
+        );
+    }
 
     // Relations
 

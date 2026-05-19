@@ -58,6 +58,7 @@ class GenerateMonthlyRefrendsService
     /**
      * Genera el refrendo de un becario para el periodo dado.
      * Retorna el refrendo creado o null si ya existía.
+     * Lanza DomainException si el periodo está fuera del rango de la retícula.
      */
     public function generateForUser(ScholarshipProfile $profile, int $year, int $month): ?ScholarshipRefrend
     {
@@ -72,24 +73,31 @@ class GenerateMonthlyRefrendsService
             return null;
         }
 
-        $snapshot = $this->calculationService->buildSnapshot($profile);
+        // Validar que el periodo esté dentro del rango de la retícula
+        $this->assertPeriodWithinReticula($profile, $year, $month);
+
+        $snapshot      = $this->calculationService->buildSnapshot($profile);
         $referenceDate = Carbon::create($year, $month, 1);
 
-        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate) {
+        // Calcular monto arrastrado de refrendos WITHHELD previos no liberados
+        $pendingFromPrevious = $this->calculatePendingCarryover($profile->user_id, $year, $month);
+
+        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious) {
             $refrend = ScholarshipRefrend::create([
-                'user_id'                  => $profile->user_id,
-                'period_year'              => $year,
-                'period_month'             => $month,
-                'refrend_type'             => RefrendType::NORMAL->value,
-                'status'                   => RefrendStatus::DRAFT->value,
-                'base_amount'              => $snapshot['base_amount'],
-                'discount_percentage'      => 0,
-                'discount_amount'          => 0,
-                'final_amount'             => $snapshot['base_amount'],
-                'snapshot_name'            => $snapshot['snapshot_name'],
-                'snapshot_generation'      => $snapshot['snapshot_generation'],
-                'snapshot_campus'          => $snapshot['snapshot_campus'],
-                'snapshot_scholarship_type' => $snapshot['snapshot_scholarship_type'],
+                'user_id'                      => $profile->user_id,
+                'period_year'                  => $year,
+                'period_month'                 => $month,
+                'refrend_type'                 => RefrendType::NORMAL->value,
+                'status'                       => RefrendStatus::DRAFT->value,
+                'base_amount'                  => $snapshot['base_amount'],
+                'discount_percentage'          => 0,
+                'discount_amount'              => 0,
+                'final_amount'                 => $snapshot['base_amount'],
+                'amount_pending_from_previous' => $pendingFromPrevious,
+                'snapshot_name'                => $snapshot['snapshot_name'],
+                'snapshot_generation'          => $snapshot['snapshot_generation'],
+                'snapshot_campus'              => $snapshot['snapshot_campus'],
+                'snapshot_scholarship_type'    => $snapshot['snapshot_scholarship_type'],
             ]);
 
             // Aplicar descuento académico vigente si corresponde
@@ -104,5 +112,68 @@ class GenerateMonthlyRefrendsService
 
             return $refrend->fresh();
         });
+    }
+
+    /**
+     * Valida que el periodo (año/mes) esté dentro del rango de la retícula del perfil.
+     * Lanza DomainException si está fuera del rango.
+     */
+    private function assertPeriodWithinReticula(ScholarshipProfile $profile, int $year, int $month): void
+    {
+        $periodStart = Carbon::create($year, $month, 1)->startOfDay();
+
+        if ($profile->reticula_start_date && $periodStart->lt($profile->reticula_start_date)) {
+            throw new \DomainException(
+                "El periodo {$month}/{$year} es anterior al inicio de la retícula ({$profile->reticula_start_date->toDateString()})."
+            );
+        }
+
+        if ($profile->reticula_end_date && $periodStart->gt($profile->reticula_end_date)) {
+            throw new \DomainException(
+                "El periodo {$month}/{$year} está fuera del periodo académico. La retícula finalizó el {$profile->reticula_end_date->toDateString()}."
+            );
+        }
+    }
+
+    /**
+     * Suma los montos finales de todos los refrendos WITHHELD previos del becario
+     * que aún no han sido liberados (no tienen un refrendo PAID posterior).
+     * Retorna el total acumulado pendiente.
+     */
+    private function calculatePendingCarryover(int $userId, int $year, int $month): float
+    {
+        // Obtener refrendos WITHHELD anteriores al periodo actual
+        $withheld = ScholarshipRefrend::where('user_id', $userId)
+            ->where('status', RefrendStatus::WITHHELD->value)
+            ->where(function ($q) use ($year, $month) {
+                $q->where('period_year', '<', $year)
+                  ->orWhere(function ($q2) use ($year, $month) {
+                      $q2->where('period_year', $year)->where('period_month', '<', $month);
+                  });
+            })
+            ->get();
+
+        if ($withheld->isEmpty()) {
+            return 0.0;
+        }
+
+        // Descontar los que ya fueron incluidos en un refrendo anterior como arrastre
+        // (si ya existe un refrendo PAID o AUTHORIZED con amount_pending_from_previous > 0,
+        // ese arrastre ya fue cubierto).
+        $alreadyCovered = ScholarshipRefrend::where('user_id', $userId)
+            ->whereIn('status', [RefrendStatus::PAID->value, RefrendStatus::AUTHORIZED->value])
+            ->where('amount_pending_from_previous', '>', 0)
+            ->where(function ($q) use ($year, $month) {
+                $q->where('period_year', '<', $year)
+                  ->orWhere(function ($q2) use ($year, $month) {
+                      $q2->where('period_year', $year)->where('period_month', '<', $month);
+                  });
+            })
+            ->sum('amount_pending_from_previous');
+
+        $totalWithheld = $withheld->sum(fn($r) => (float) $r->final_amount);
+        $pending = max(0.0, round($totalWithheld - (float) $alreadyCovered, 2));
+
+        return $pending;
     }
 }
