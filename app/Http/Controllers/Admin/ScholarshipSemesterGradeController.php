@@ -25,11 +25,13 @@ class ScholarshipSemesterGradeController extends Controller
             'semester_year'   => 'required|integer|min:2020|max:2100',
             'semester_period' => 'required|integer|in:1,2',
             'grade'           => 'nullable|numeric|min:0|max:100',
+            'is_original'     => 'nullable|boolean',
             'file'            => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
         $attrs = [
             'grade'          => $data['grade'] ?? null,
+            'is_original'    => (bool) ($data['is_original'] ?? false),
             'uploaded_by_id' => auth()->id(),
         ];
 

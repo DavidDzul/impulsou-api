@@ -18,8 +18,6 @@ class ScholarshipProfile extends Model
         'user_id',
         'scholarship_type',
         'monthly_amount',
-        'payment_start_date',
-        'payment_end_date',
         'active_discount_percentage',
         'discount_valid_until',
         'reticula_start_date',
@@ -32,8 +30,6 @@ class ScholarshipProfile extends Model
         'scholarship_type'           => ScholarshipType::class,
         'monthly_amount'             => 'decimal:2',
         'active_discount_percentage' => 'decimal:2',
-        'payment_start_date'         => 'date',
-        'payment_end_date'           => 'date',
         'discount_valid_until'       => 'date',
         'reticula_start_date'        => 'date',
         'reticula_end_date'          => 'date',
@@ -45,8 +41,6 @@ class ScholarshipProfile extends Model
             'user_id'                    => 'required|exists:users,id|unique:scholarship_profiles,user_id',
             'scholarship_type'           => 'required|string|in:IU,TELMEX',
             'monthly_amount'             => 'required|numeric|min:0',
-            'payment_start_date'         => 'required|date',
-            'payment_end_date'           => 'nullable|date|after:payment_start_date',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_valid_until'       => 'nullable|date',
         ];
@@ -57,8 +51,6 @@ class ScholarshipProfile extends Model
         return [
             'scholarship_type'           => 'sometimes|string|in:IU,TELMEX',
             'monthly_amount'             => 'sometimes|numeric|min:0',
-            'payment_start_date'         => 'sometimes|date',
-            'payment_end_date'           => 'nullable|date',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_valid_until'       => 'nullable|date',
         ];

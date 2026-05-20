@@ -21,6 +21,8 @@ class StoreStudentDocumentRequest extends FormRequest
             'period_year'   => 'required|integer|min:2020|max:2100',
             'period_month'  => 'required|integer|min:1|max:12',
             'file'          => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'description'   => 'nullable|string|max:255',
+            'observations'  => 'nullable|string|max:2000',
         ];
     }
 }

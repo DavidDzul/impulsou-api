@@ -133,8 +133,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::prefix('scholarship-documents')->group(function () {
         Route::get('user/{userId}', [ScholarshipDocumentController::class, 'index']);
         Route::post('/', [ScholarshipDocumentController::class, 'store']);
-        Route::put('{id}/accept', [ScholarshipDocumentController::class, 'accept']);
-        Route::put('{id}/reject', [ScholarshipDocumentController::class, 'reject']);
+        Route::patch('{id}', [ScholarshipDocumentController::class, 'update']);
         Route::delete('{id}', [ScholarshipDocumentController::class, 'destroy']);
     });
 });

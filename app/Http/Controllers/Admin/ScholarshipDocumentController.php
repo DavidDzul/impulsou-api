@@ -44,67 +44,56 @@ class ScholarshipDocumentController extends Controller
             'public'
         );
 
-        $version = StudentDocument::where('user_id', $validated['user_id'])
-            ->where('document_type', $validated['document_type'])
-            ->where('period_year', $validated['period_year'])
-            ->where('period_month', $validated['period_month'])
-            ->max('version') ?? 0;
-
         $document = StudentDocument::create([
             'user_id'       => $validated['user_id'],
             'document_type' => $validated['document_type'],
             'period_year'   => $validated['period_year'],
             'period_month'  => $validated['period_month'],
-            'status'        => DocumentStatus::SUBMITTED->value,
+            'status'        => DocumentStatus::ACCEPTED->value,
             'file_path'     => $path,
             'original_name' => $file->getClientOriginalName(),
             'mime_type'     => $file->getMimeType(),
             'file_size'     => $file->getSize(),
-            'version'       => $version + 1,
+            'description'   => $validated['description'] ?? null,
+            'observations'  => $validated['observations'] ?? null,
         ]);
 
         return response()->json(['res' => true, 'data' => $document], 201);
     }
 
     /**
-     * Aceptar documento.
+     * Actualizar descripción y observaciones de un documento.
      */
-    public function accept(int $id)
+    public function update(Request $request, int $id)
     {
-        $document = StudentDocument::findOrFail($id);
-        $document->update(['status' => DocumentStatus::ACCEPTED->value, 'rejected_reason' => null]);
-
-        return response()->json(['res' => true, 'data' => $document->fresh()]);
-    }
-
-    /**
-     * Rechazar documento con motivo.
-     */
-    public function reject(Request $request, int $id)
-    {
-        $data = $request->validate(['reason' => 'required|string|max:1000']);
-
-        $document = StudentDocument::findOrFail($id);
-        $document->update([
-            'status'          => DocumentStatus::REJECTED->value,
-            'rejected_reason' => $data['reason'],
+        $data = $request->validate([
+            'document_type' => ['sometimes', \Illuminate\Validation\Rule::in(\App\Enums\DocumentType::values())],
+            'description'   => 'nullable|string|max:255',
+            'observations'  => 'nullable|string|max:2000',
         ]);
 
+        $document = StudentDocument::findOrFail($id);
+
+        if (isset($data['document_type']) && $data['document_type'] !== 'OTRO') {
+            $data['description'] = null;
+        }
+
+        $document->update($data);
+
         return response()->json(['res' => true, 'data' => $document->fresh()]);
     }
 
     /**
-     * Eliminar documento (solo si está en PENDING o REJECTED).
+     * Eliminar documento.
      */
     public function destroy(int $id)
     {
         $document = StudentDocument::findOrFail($id);
 
-        if (!in_array($document->status, [DocumentStatus::PENDING, DocumentStatus::REJECTED])) {
-            return response()->json(['res' => false, 'msg' => 'No se puede eliminar un documento aceptado.'], 422);
+        if ($document->file_path) {
+            Storage::disk('public')->delete($document->file_path);
         }
 
-        Storage::disk('public')->delete($document->file_path);
         $document->delete();
 
         return response()->json(['res' => true, 'data' => null]);

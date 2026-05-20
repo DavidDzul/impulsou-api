@@ -24,8 +24,9 @@ class StudentDocument extends Model
         'original_name',
         'mime_type',
         'file_size',
-        'version',
         'rejected_reason',
+        'description',
+        'observations',
     ];
 
     protected $casts = [

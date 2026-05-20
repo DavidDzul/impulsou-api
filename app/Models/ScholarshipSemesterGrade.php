@@ -17,6 +17,7 @@ class ScholarshipSemesterGrade extends Model
         'semester_year',
         'semester_period',
         'grade',
+        'is_original',
         'file_path',
         'original_name',
         'mime_type',
@@ -25,7 +26,8 @@ class ScholarshipSemesterGrade extends Model
     ];
 
     protected $casts = [
-        'grade' => 'decimal:2',
+        'grade'       => 'decimal:2',
+        'is_original' => 'boolean',
     ];
 
     protected $appends = ['semester_label'];
