@@ -8,6 +8,12 @@ class RemovePaymentDatesFromScholarshipProfilesTable extends Migration
 {
     public function up(): void
     {
+        // SQLite does not support dropping columns without doctrine/dbal.
+        // Skip this step on SQLite (test environment) since the extra columns are harmless.
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            return;
+        }
+
         Schema::table('scholarship_profiles', function (Blueprint $table) {
             $table->dropColumn(['payment_start_date', 'payment_end_date']);
         });

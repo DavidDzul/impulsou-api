@@ -24,6 +24,9 @@ class ScholarshipProfile extends Model
         'reticula_end_date',
         'reticula_file_path',
         'reticula_original_name',
+        // Legacy columns kept for backward compatibility with SQLite test migrations
+        'payment_start_date',
+        'payment_end_date',
     ];
 
     protected $casts = [
