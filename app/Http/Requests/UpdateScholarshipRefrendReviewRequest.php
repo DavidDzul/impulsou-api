@@ -15,6 +15,8 @@ class UpdateScholarshipRefrendReviewRequest extends FormRequest
     {
         return [
             'observations' => 'nullable|string|max:2000',
+            'labels'       => 'nullable|array',
+            'labels.*'     => 'string|max:100',
         ];
     }
 }

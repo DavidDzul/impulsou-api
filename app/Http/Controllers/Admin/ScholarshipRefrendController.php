@@ -36,11 +36,13 @@ class ScholarshipRefrendController extends Controller
         $year  = (int) $request->query('year', now()->year);
         $month = (int) $request->query('month', now()->month);
 
-        $refrends = ScholarshipRefrend::with(['user', 'discounts'])
-            ->forPeriod($year, $month)
-            ->get();
+        $query = ScholarshipRefrend::with(['user', 'discounts'])->forPeriod($year, $month);
 
-        return response()->json(['res' => true, 'data' => $refrends]);
+        if ($campus = $request->query('campus')) {
+            $query->where('snapshot_campus', $campus);
+        }
+
+        return response()->json(['res' => true, 'data' => $query->get()]);
     }
 
     /**
@@ -80,11 +82,16 @@ class ScholarshipRefrendController extends Controller
     public function generate(Request $request)
     {
         $data = $request->validate([
-            'year'  => 'required|integer|min:2020|max:2100',
-            'month' => 'required|integer|min:1|max:12',
+            'year'   => 'required|integer|min:2020|max:2100',
+            'month'  => 'required|integer|min:1|max:12',
+            'campus' => 'nullable|string|max:20',
         ]);
 
-        $stats = $this->generateService->generateForPeriod($data['year'], $data['month']);
+        $stats = $this->generateService->generateForPeriod(
+            $data['year'],
+            $data['month'],
+            $data['campus'] ?? null
+        );
 
         return response()->json(['res' => true, 'data' => $stats]);
     }
@@ -125,14 +132,17 @@ class ScholarshipRefrendController extends Controller
             return response()->json(['res' => false, 'msg' => 'El refrendo está bloqueado.'], 422);
         }
 
+        $validated = $request->validated();
+
         $refrend->update([
             'status'                  => RefrendStatus::ATENCION_REVIEW->value,
-            'atencion_observations'   => $request->validated()['observations'] ?? null,
+            'atencion_observations'   => $validated['observations'] ?? null,
+            'atencion_labels'         => $validated['labels'] ?? null,
             'atencion_reviewed_by_id' => auth()->id(),
             'atencion_reviewed_at'    => now(),
         ]);
 
-        $this->log($refrend->id, 'atencion_review', $request->validated()['observations'] ?? null);
+        $this->log($refrend->id, 'atencion_review', $validated['observations'] ?? null);
 
         return response()->json(['res' => true, 'data' => $refrend->fresh()]);
     }

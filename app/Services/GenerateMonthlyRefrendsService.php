@@ -31,13 +31,18 @@ class GenerateMonthlyRefrendsService
      *
      * @return array{created: int, skipped: int, errors: int}
      */
-    public function generateForPeriod(int $year, int $month): array
+    public function generateForPeriod(int $year, int $month, ?string $campus = null): array
     {
         $stats = ['created' => 0, 'skipped' => 0, 'errors' => 0];
 
         /** @var \Illuminate\Support\Collection<int, ScholarshipProfile> $profiles */
         $profiles = ScholarshipProfile::with('user')
-            ->whereHas('user', fn($q) => $q->where('user_type', 'BEC_ACTIVE')->where('active', true))
+            ->whereHas('user', function ($q) use ($campus) {
+                $q->where('user_type', 'BEC_ACTIVE')->where('active', true);
+                if ($campus !== null) {
+                    $q->where('campus', $campus);
+                }
+            })
             ->get();
 
         foreach ($profiles as $profile) {
