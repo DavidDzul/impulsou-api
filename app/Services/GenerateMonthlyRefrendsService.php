@@ -31,16 +31,19 @@ class GenerateMonthlyRefrendsService
      *
      * @return array{created: int, skipped: int, errors: int}
      */
-    public function generateForPeriod(int $year, int $month, ?string $campus = null): array
+    public function generateForPeriod(int $year, int $month, ?string $campus = null, ?int $generationId = null): array
     {
         $stats = ['created' => 0, 'skipped' => 0, 'errors' => 0];
 
         /** @var \Illuminate\Support\Collection<int, ScholarshipProfile> $profiles */
         $profiles = ScholarshipProfile::with('user')
-            ->whereHas('user', function ($q) use ($campus) {
+            ->whereHas('user', function ($q) use ($campus, $generationId) {
                 $q->where('user_type', 'BEC_ACTIVE')->where('active', true);
                 if ($campus !== null) {
                     $q->where('campus', $campus);
+                }
+                if ($generationId !== null) {
+                    $q->where('generation_id', $generationId);
                 }
             })
             ->get();
@@ -87,13 +90,19 @@ class GenerateMonthlyRefrendsService
         // Calcular monto arrastrado de refrendos WITHHELD previos no liberados
         $pendingFromPrevious = $this->calculatePendingCarryover($profile->user_id, $year, $month);
 
-        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious) {
+        // Freeze academic snapshot at generation time
+        $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
+        $attendanceSummary = $this->getAttendanceSummaryForPeriod($profile->user_id, $year, $month, $referenceDate);
+
+        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious, $lastGrade, $attendanceSummary) {
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,
                 'period_month'                 => $month,
                 'refrend_type'                 => RefrendType::NORMAL->value,
                 'status'                       => RefrendStatus::DRAFT->value,
+                'workflow_status'              => 'DRAFT',
+                'resolution_type'              => null,
                 'base_amount'                  => $snapshot['base_amount'],
                 'discount_percentage'          => 0,
                 'discount_amount'              => 0,
@@ -101,8 +110,12 @@ class GenerateMonthlyRefrendsService
                 'amount_pending_from_previous' => $pendingFromPrevious,
                 'snapshot_name'                => $snapshot['snapshot_name'],
                 'snapshot_generation'          => $snapshot['snapshot_generation'],
+                'snapshot_generation_id'       => $snapshot['snapshot_generation_id'] ?? null,
                 'snapshot_campus'              => $snapshot['snapshot_campus'],
                 'snapshot_scholarship_type'    => $snapshot['snapshot_scholarship_type'],
+                'average_grade_snapshot'       => $lastGrade,
+                'missing_subjects_snapshot'    => 0,
+                'attendance_summary_snapshot'  => $attendanceSummary,
             ]);
 
             // Aplicar descuento académico vigente si corresponde
@@ -138,6 +151,63 @@ class GenerateMonthlyRefrendsService
                 "El periodo {$month}/{$year} está fuera del periodo académico. La retícula finalizó el {$profile->reticula_end_date->toDateString()}."
             );
         }
+    }
+
+    /**
+     * Returns the most recent semester grade for the user, or null if none exists.
+     */
+    private function getLastSemesterGrade(int $userId): ?float
+    {
+        $row = DB::table('scholarship_semester_grades')
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->value('grade');
+
+        return $row !== null ? (float) $row : null;
+    }
+
+    /**
+     * Builds a light attendance summary for the given period month.
+     * Used for freezing the snapshot at generation time.
+     *
+     * @return array{present: int, late: int, absent: int, late_unconsumed: int}
+     */
+    private function getAttendanceSummaryForPeriod(int $userId, int $year, int $month, Carbon $referenceDate): array
+    {
+        $start = Carbon::create($year, $month, 1)->toDateString();
+        $end   = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+
+        $rows = DB::table('attendances')
+            ->join('classes', 'attendances.class_id', '=', 'classes.id')
+            ->where('attendances.user_id', $userId)
+            ->whereBetween('classes.date', [$start, $end])
+            ->selectRaw('attendances.status, attendances.late_penalty_consumed, COUNT(*) as cnt')
+            ->groupBy('attendances.status', 'attendances.late_penalty_consumed')
+            ->get();
+
+        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_consumed' => 0];
+
+        foreach ($rows as $row) {
+            $cnt = (int) $row->cnt;
+            match ($row->status) {
+                'PRESENT'           => $summary['present'] += $cnt,
+                'LATE'              => $summary['late'] += $cnt,
+                'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
+                'ABSENT'            => $summary['absent'] += $cnt,
+                'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
+                default             => null,
+            };
+            if ($row->late_penalty_consumed) {
+                $summary['late_consumed'] += $cnt;
+            }
+        }
+
+        return [
+            'present'        => $summary['present'],
+            'late'           => $summary['late'],
+            'absent'         => $summary['absent'],
+            'late_unconsumed' => max(0, $summary['late'] - $summary['late_consumed']),
+        ];
     }
 
     /**

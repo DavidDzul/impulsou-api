@@ -20,6 +20,9 @@ class ScholarshipProfile extends Model
         'monthly_amount',
         'active_discount_percentage',
         'discount_valid_until',
+        'suspension_percentage',
+        'suspension_until',
+        'suspension_cause',
         'reticula_start_date',
         'reticula_end_date',
         'reticula_file_path',
@@ -34,6 +37,8 @@ class ScholarshipProfile extends Model
         'monthly_amount'             => 'decimal:2',
         'active_discount_percentage' => 'decimal:2',
         'discount_valid_until'       => 'date',
+        'suspension_percentage'      => 'decimal:2',
+        'suspension_until'           => 'date',
         'reticula_start_date'        => 'date',
         'reticula_end_date'          => 'date',
     ];

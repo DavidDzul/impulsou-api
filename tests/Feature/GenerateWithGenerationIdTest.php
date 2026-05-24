@@ -85,8 +85,9 @@ class GenerateWithGenerationIdTest extends TestCase
         $user2 = $this->makeBecario(['generation_id' => $gen->id]);
 
         $response = $this->postGenerate([
-            'year'  => 2026,
-            'month' => 5,
+            'year'   => 2026,
+            'month'  => 5,
+            'campus' => 'MERIDA',
         ]);
 
         $response->assertStatus(200);
@@ -115,6 +116,7 @@ class GenerateWithGenerationIdTest extends TestCase
         $response = $this->postGenerate([
             'year'          => 2026,
             'month'         => 5,
+            'campus'        => 'MERIDA',
             'generation_id' => $genA->id,
         ]);
 
@@ -139,6 +141,7 @@ class GenerateWithGenerationIdTest extends TestCase
         $params = [
             'year'          => 2026,
             'month'         => 5,
+            'campus'        => 'MERIDA',
             'generation_id' => $gen->id,
         ];
 
@@ -169,6 +172,7 @@ class GenerateWithGenerationIdTest extends TestCase
         $this->postGenerate([
             'year'          => 2026,
             'month'         => 5,
+            'campus'        => 'MERIDA',
             'generation_id' => $gen->id,
         ]);
 
@@ -187,6 +191,7 @@ class GenerateWithGenerationIdTest extends TestCase
         $response = $this->postGenerate([
             'year'          => 2026,
             'month'         => 5,
+            'campus'        => 'MERIDA',
             'generation_id' => 99999,
         ]);
 
@@ -208,6 +213,7 @@ class GenerateWithGenerationIdTest extends TestCase
         $this->postGenerate([
             'year'          => 2026,
             'month'         => 5,
+            'campus'        => 'MERIDA',
             'generation_id' => $gen->id,
         ]);
 

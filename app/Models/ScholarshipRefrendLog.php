@@ -13,7 +13,14 @@ class ScholarshipRefrendLog extends Model
         'scholarship_refrend_id',
         'action',
         'notes',
+        'old_values',
+        'new_values',
         'performed_by_id',
+    ];
+
+    protected $casts = [
+        'old_values' => 'array',
+        'new_values' => 'array',
     ];
 
     public function refrend(): BelongsTo

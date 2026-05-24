@@ -66,8 +66,9 @@ class PatchInlineEndpointTest extends TestCase
     public function it_returns_422_when_refrend_is_locked_authorized(): void
     {
         $refrend = $this->makeRefrend([
-            'status'    => RefrendStatus::AUTHORIZED->value,
-            'locked_at' => now(),
+            'status'          => RefrendStatus::AUTHORIZED->value,
+            'workflow_status' => 'CLOSED',
+            'locked_at'       => now(),
         ]);
 
         $response = $this->actingAs($this->admin)
@@ -84,8 +85,9 @@ class PatchInlineEndpointTest extends TestCase
     public function it_returns_422_when_refrend_is_locked_paid(): void
     {
         $refrend = $this->makeRefrend([
-            'status'    => RefrendStatus::PAID->value,
-            'locked_at' => now(),
+            'status'          => RefrendStatus::PAID->value,
+            'workflow_status' => 'CLOSED',
+            'locked_at'       => now(),
         ]);
 
         $response = $this->actingAs($this->admin)

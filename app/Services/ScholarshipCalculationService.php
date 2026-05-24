@@ -103,12 +103,13 @@ class ScholarshipCalculationService
     {
         $user       = $profile->user()->with('roles')->first();
         $generation = $user->generation_id
-            ? \App\Models\Generation::find($user->generation_id)?->generation_name
+            ? \App\Models\Generation::find($user->generation_id)
             : null;
 
         return [
             'snapshot_name'             => trim("{$user->first_name} {$user->last_name}"),
-            'snapshot_generation'       => $generation,
+            'snapshot_generation'       => $generation?->generation_name,
+            'snapshot_generation_id'    => $generation?->id,
             'snapshot_campus'           => $user->campus,
             'snapshot_scholarship_type' => $profile->scholarship_type->value,
             'base_amount'               => (float) $profile->monthly_amount,

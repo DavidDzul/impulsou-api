@@ -116,14 +116,26 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     // ── Scholarship Refrends ──────────────────────────────────────────────────
     Route::prefix('scholarship-refrends')->group(function () {
         Route::get('/', [ScholarshipRefrendController::class, 'index']);
-        Route::get('{id}', [ScholarshipRefrendController::class, 'show']);
+        // Bulk and static routes MUST come before {refrend} to prevent route shadowing
+        Route::get('bulk-table', [ScholarshipRefrendController::class, 'bulkTable']);
         Route::post('generate', [ScholarshipRefrendController::class, 'generate']);
         Route::post('generate/{userId}', [ScholarshipRefrendController::class, 'generateForUser']);
-        Route::put('{id}/atencion-review', [ScholarshipRefrendController::class, 'atencionReview']);
-        Route::put('{id}/pedagogia-review', [ScholarshipRefrendController::class, 'pedagogiaReview']);
-        Route::put('{id}/authorize', [ScholarshipRefrendController::class, 'approveRefrend']);
-        Route::put('{id}/paid', [ScholarshipRefrendController::class, 'markPaid']);
-        Route::put('{id}/withhold', [ScholarshipRefrendController::class, 'withhold']);
+        Route::post('bulk/approve', [ScholarshipRefrendController::class, 'bulkApprove']);
+        Route::post('bulk/notify', [ScholarshipRefrendController::class, 'bulkNotify']);
+        Route::post('bulk/pay', [ScholarshipRefrendController::class, 'bulkPay']);
+        // Single-refrend routes (model binding)
+        Route::get('{refrend}', [ScholarshipRefrendController::class, 'show']);
+        Route::post('{refrend}/atencion-approve', [ScholarshipRefrendController::class, 'atencionApprove']);
+        Route::post('{refrend}/atencion-flag', [ScholarshipRefrendController::class, 'atencionFlag']);
+        Route::post('{refrend}/atencion-clear', [ScholarshipRefrendController::class, 'atencionClearFlag']);
+        Route::post('{refrend}/pedagogia-resolve', [ScholarshipRefrendController::class, 'pedagogiaResolve']);
+        Route::post('{refrend}/notify', [ScholarshipRefrendController::class, 'notifyStudent']);
+        Route::patch('{refrend}/inline', [ScholarshipRefrendController::class, 'patchInline']);
+        Route::post('{refrend}/recalculate', [ScholarshipRefrendController::class, 'recalculate']);
+        Route::put('{refrend}/discharge', [ScholarshipRefrendController::class, 'discharge']);
+        Route::post('{refrend}/incidents', [ScholarshipRefrendController::class, 'createIncident']);
+        Route::delete('{refrend}/incidents/{incident}', [ScholarshipRefrendController::class, 'deleteIncident']);
+        Route::patch('{refrend}/incidents/{incident}/resolve', [ScholarshipRefrendController::class, 'resolveIncident']);
     });
 
     Route::get('users/{userId}/scholarship-refrends', [ScholarshipRefrendController::class, 'forUser']);

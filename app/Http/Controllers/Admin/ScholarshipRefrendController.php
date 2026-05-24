@@ -2,15 +2,26 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Scholarship\ApproveRefrendAction;
+use App\Actions\Scholarship\ClearRefrendIncidentAction;
+use App\Actions\Scholarship\BulkApproveAction;
+use App\Actions\Scholarship\BulkNotifyAction;
+use App\Actions\Scholarship\DischargeScholarshipAction;
+use App\Actions\Scholarship\FlagRefrendIncidentAction;
+use App\Actions\Scholarship\NotifyStudentAction;
+use App\Actions\Scholarship\ResolvePedagogiaAction;
+use App\Enums\RefrendStatus;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\UpdateScholarshipRefrendReviewRequest;
+use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
 use App\Models\Attendance;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
-use App\Models\ScholarshipRefrendLog;
-use App\Enums\RefrendStatus;
+use App\Models\ScholarshipRefrendIncident;
 use App\Services\AttendancePenaltyService;
 use App\Services\GenerateMonthlyRefrendsService;
+use App\Services\RecalculateRefrendService;
+use App\Services\RefrendBulkQueryService;
+use App\Services\ScholarshipLoggingService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,13 +30,19 @@ class ScholarshipRefrendController extends Controller
 {
     private GenerateMonthlyRefrendsService $generateService;
     private AttendancePenaltyService $penaltyService;
+    private ScholarshipLoggingService $loggingService;
+    private RecalculateRefrendService $recalculateService;
 
     public function __construct(
         GenerateMonthlyRefrendsService $generateService,
-        AttendancePenaltyService $penaltyService
+        AttendancePenaltyService $penaltyService,
+        ScholarshipLoggingService $loggingService,
+        RecalculateRefrendService $recalculateService
     ) {
-        $this->generateService = $generateService;
-        $this->penaltyService  = $penaltyService;
+        $this->generateService    = $generateService;
+        $this->penaltyService     = $penaltyService;
+        $this->loggingService     = $loggingService;
+        $this->recalculateService = $recalculateService;
     }
 
     /**
@@ -40,6 +57,10 @@ class ScholarshipRefrendController extends Controller
 
         if ($campus = $request->query('campus')) {
             $query->where('snapshot_campus', $campus);
+        }
+
+        if ($generationId = $request->query('generation_id')) {
+            $query->forGeneration((int) $generationId);
         }
 
         return response()->json(['res' => true, 'data' => $query->get()]);
@@ -62,16 +83,18 @@ class ScholarshipRefrendController extends Controller
     /**
      * Detalle de un refrendo.
      */
-    public function show(int $id)
+    public function show(ScholarshipRefrend $refrend): JsonResponse
     {
-        $refrend = ScholarshipRefrend::with([
+        $refrend->load([
             'user',
             'discounts.lateConsumptions.attendance',
             'adjustments',
             'logs.performedBy',
             'atencionReviewedBy',
             'pedagogiaReviewedBy',
-        ])->findOrFail($id);
+            'incidents.createdBy',
+            'incidents.resolvedBy',
+        ]);
 
         return response()->json(['res' => true, 'data' => $refrend]);
     }
@@ -82,15 +105,17 @@ class ScholarshipRefrendController extends Controller
     public function generate(Request $request)
     {
         $data = $request->validate([
-            'year'   => 'required|integer|min:2020|max:2100',
-            'month'  => 'required|integer|min:1|max:12',
-            'campus' => 'nullable|string|max:20',
+            'year'          => 'required|integer|min:2020|max:2100',
+            'month'         => 'required|integer|min:1|max:12',
+            'campus'        => 'required|string|max:20',
+            'generation_id' => 'nullable|integer|exists:generations,id',
         ]);
 
         $stats = $this->generateService->generateForPeriod(
             $data['year'],
             $data['month'],
-            $data['campus'] ?? null
+            $data['campus'] ?? null,
+            isset($data['generation_id']) ? (int) $data['generation_id'] : null
         );
 
         return response()->json(['res' => true, 'data' => $stats]);
@@ -122,143 +147,70 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Revisión de Atención de Becarios.
+     * Inline partial update for a refrend (atencion fields, pedagogia observations, amount override).
      */
-    public function atencionReview(UpdateScholarshipRefrendReviewRequest $request, int $id)
+    public function patchInline(InlineUpdateScholarshipRefrendRequest $request, ScholarshipRefrend $refrend): JsonResponse
     {
-        $refrend = ScholarshipRefrend::findOrFail($id);
 
         if ($refrend->isLocked()) {
             return response()->json(['res' => false, 'msg' => 'El refrendo está bloqueado.'], 422);
         }
 
-        $validated = $request->validated();
+        $data    = $request->validated();
+        $updates = [];
+        $touchedAtencion = false;
 
-        $refrend->update([
-            'status'                  => RefrendStatus::ATENCION_REVIEW->value,
-            'atencion_observations'   => $validated['observations'] ?? null,
-            'atencion_labels'         => $validated['labels'] ?? null,
-            'atencion_reviewed_by_id' => auth()->id(),
-            'atencion_reviewed_at'    => now(),
-        ]);
-
-        $this->log($refrend->id, 'atencion_review', $validated['observations'] ?? null);
-
-        return response()->json(['res' => true, 'data' => $refrend->fresh()]);
-    }
-
-    /**
-     * Revisión de Pedagogía.
-     */
-    public function pedagogiaReview(UpdateScholarshipRefrendReviewRequest $request, int $id)
-    {
-        $refrend = ScholarshipRefrend::findOrFail($id);
-
-        if ($refrend->isLocked()) {
-            return response()->json(['res' => false, 'msg' => 'El refrendo está bloqueado.'], 422);
+        if (array_key_exists('atencion_labels', $data)) {
+            $updates['atencion_labels'] = $data['atencion_labels'];
+            $touchedAtencion = true;
         }
-
-        $refrend->update([
-            'status'                    => RefrendStatus::PEDAGOGIA_REVIEW->value,
-            'pedagogia_observations'    => $request->validated()['observations'] ?? null,
-            'pedagogia_reviewed_by_id'  => auth()->id(),
-            'pedagogia_reviewed_at'     => now(),
-        ]);
-
-        $this->log($refrend->id, 'pedagogia_review', $request->validated()['observations'] ?? null);
-
-        return response()->json(['res' => true, 'data' => $refrend->fresh()]);
-    }
-
-    /**
-     * Autorizar refrendo (Pedagogía aprueba el pago).
-     * Acepta override opcional del monto final y notas de autorización.
-     */
-    public function approveRefrend(Request $request, int $id): JsonResponse
-    {
-        $data = $request->validate([
-            'final_amount_override' => 'nullable|numeric|min:0',
-            'authorization_notes'   => 'nullable|string|max:2000',
-        ]);
-
-        $refrend = ScholarshipRefrend::findOrFail($id);
-
-        if ($refrend->isLocked()) {
-            return response()->json(['res' => false, 'msg' => 'El refrendo ya está bloqueado.'], 422);
+        if (array_key_exists('atencion_observations', $data)) {
+            $updates['atencion_observations'] = $data['atencion_observations'];
+            $touchedAtencion = true;
         }
-
-        // Revalidar que el periodo siga dentro de la retícula al momento de autorizar
-        $profile = ScholarshipProfile::where('user_id', $refrend->user_id)->first();
-        if ($profile && $profile->reticula_end_date) {
-            $periodStart = Carbon::create($refrend->period_year, $refrend->period_month, 1);
-            if ($periodStart->gt($profile->reticula_end_date)) {
-                return response()->json([
-                    'res' => false,
-                    'msg' => "No se puede autorizar: el periodo académico del becario finalizó el {$profile->reticula_end_date->toDateString()}.",
-                ], 422);
-            }
+        if ($touchedAtencion) {
+            $updates['atencion_reviewed_by_id'] = auth()->id();
+            $updates['atencion_reviewed_at']    = now();
         }
-
-        $updates = [
-            'status'       => RefrendStatus::AUTHORIZED->value,
-            'locked_at'    => now(),
-            'locked_by_id' => auth()->id(),
-        ];
-
+        if (array_key_exists('pedagogia_observations', $data)) {
+            $updates['pedagogia_observations']   = $data['pedagogia_observations'];
+            $updates['pedagogia_reviewed_by_id'] = auth()->id();
+            $updates['pedagogia_reviewed_at']    = now();
+        }
+        if (array_key_exists('notification_method', $data)) {
+            $updates['notification_method'] = $data['notification_method'];
+        }
+        if (array_key_exists('notified_at', $data)) {
+            $updates['notified_at'] = $data['notified_at'];
+        }
         if (array_key_exists('final_amount_override', $data) && $data['final_amount_override'] !== null) {
             $updates['final_amount']        = $data['final_amount_override'];
             $updates['discount_percentage'] = 0;
             $updates['discount_amount']     = 0;
         }
 
-        $refrend->update($updates);
-
-        $notes = $data['authorization_notes'] ?? null;
-        $this->log($refrend->id, 'authorized', $notes);
-
-        return response()->json(['res' => true, 'data' => $refrend->fresh()]);
-    }
-
-    /**
-     * Marcar como pagado.
-     */
-    public function markPaid(int $id)
-    {
-        $refrend = ScholarshipRefrend::findOrFail($id);
-
-        if ($refrend->status !== RefrendStatus::AUTHORIZED) {
-            return response()->json(['res' => false, 'msg' => 'El refrendo debe estar autorizado antes de marcarse como pagado.'], 422);
+        if (empty($updates)) {
+            return response()->json(['res' => true, 'data' => $refrend], 200);
         }
 
-        $refrend->update([
-            'status'    => RefrendStatus::PAID->value,
-            'locked_at' => now(),
-            'locked_by_id' => auth()->id(),
-        ]);
+        $old = $this->loggingService->snapshotRefrend($refrend);
 
-        $this->log($refrend->id, 'paid');
+        $fresh = \Illuminate\Support\Facades\DB::transaction(function () use ($refrend, $updates, $old) {
+            $refrend->update($updates);
+            $fresh = $refrend->fresh();
 
-        return response()->json(['res' => true, 'data' => $refrend->fresh()]);
-    }
+            $this->loggingService->log(
+                $refrend,
+                'inline_update',
+                $old,
+                $this->loggingService->snapshotRefrend($fresh),
+                json_encode(array_keys($updates), JSON_UNESCAPED_UNICODE)
+            );
 
-    /**
-     * Retener refrendo.
-     */
-    public function withhold(Request $request, int $id)
-    {
-        $data = $request->validate(['reason' => 'nullable|string|max:1000']);
+            return $fresh;
+        });
 
-        $refrend = ScholarshipRefrend::findOrFail($id);
-
-        if ($refrend->isLocked()) {
-            return response()->json(['res' => false, 'msg' => 'El refrendo está bloqueado.'], 422);
-        }
-
-        $refrend->update(['status' => RefrendStatus::WITHHELD->value]);
-
-        $this->log($refrend->id, 'withheld', $data['reason'] ?? null);
-
-        return response()->json(['res' => true, 'data' => $refrend->fresh()]);
+        return response()->json(['res' => true, 'data' => $fresh]);
     }
 
     /**
@@ -302,23 +254,334 @@ class ScholarshipRefrendController extends Controller
             'semester_start'      => $semesterBounds['start'],
             'semester_end'        => $semesterBounds['end'],
             'records'             => $attendances->map(fn($a) => [
-                'id'                     => $a->id,
-                'class_date'             => $a->class?->date,
-                'status'                 => $a->status,
-                'late_penalty_consumed'  => $a->late_penalty_consumed,
+                'id'                    => $a->id,
+                'class_date'            => $a->class?->date,
+                'status'                => $a->status,
+                'late_penalty_consumed' => $a->late_penalty_consumed,
             ])->sortBy('class_date')->values(),
         ];
 
         return response()->json(['res' => true, 'data' => $summary]);
     }
 
-    private function log(int $refrendId, string $action, ?string $notes = null): void
+    /**
+     * Returns the paginated bulk master table for a given period.
+     */
+    public function bulkTable(Request $request, RefrendBulkQueryService $service): JsonResponse
     {
-        ScholarshipRefrendLog::create([
-            'scholarship_refrend_id' => $refrendId,
-            'performed_by_id'        => auth()->id(),
-            'action'                 => $action,
-            'notes'                  => $notes,
+        $data = $request->validate([
+            'year'          => 'required|integer|min:2020|max:2100',
+            'month'         => 'required|integer|min:1|max:12',
+            'campus'        => 'nullable|string|max:20',
+            'generation_id' => 'nullable|integer|exists:generations,id',
+            'page'          => 'nullable|integer|min:1',
+            'per_page'      => 'nullable|integer|min:1|max:500',
         ]);
+
+        $result = $service->buildTable(
+            $data['year'],
+            $data['month'],
+            $data['campus'] ?? null,
+            isset($data['generation_id']) ? (int) $data['generation_id'] : null,
+            $data['page'] ?? 1,
+            $data['per_page'] ?? 200,
+        );
+
+        return response()->json([
+            'res'  => true,
+            'data' => $result['rows'],
+            'meta' => $result['meta'],
+        ]);
+    }
+
+    // ── New workflow endpoints ─────────────────────────────────────────────────
+
+    /**
+     * Atención approves a DRAFT refrend → LISTO_PARA_PAGO (no incidents).
+     */
+    public function atencionApprove(ScholarshipRefrend $refrend): JsonResponse
+    {
+        try {
+            $updated = app(ApproveRefrendAction::class)->execute($refrend, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /**
+     * Clears the active incident on a CON_INCIDENCIA refrend → reverts to DRAFT.
+     */
+    public function atencionClearFlag(ScholarshipRefrend $refrend): JsonResponse
+    {
+        try {
+            $updated = app(ClearRefrendIncidentAction::class)->execute($refrend, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /**
+     * Atención flags a DRAFT refrend with an incident → CON_INCIDENCIA.
+     */
+    public function atencionFlag(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        $data = $request->validate([
+            'incident_category' => 'required|in:ASISTENCIA,ACADEMICO,DOCUMENTOS,ADMINISTRATIVO,OTRO',
+            'incident_type'     => 'required|string|max:100',
+            'description'       => 'required|string|max:1000',
+            'priority'          => 'required|in:LOW,MEDIUM,HIGH,CRITICAL',
+            'incident_date'     => 'nullable|date',
+            'comment'           => 'nullable|string|max:2000',
+        ]);
+
+        try {
+            $updated = app(FlagRefrendIncidentAction::class)->execute(
+                $refrend,
+                [
+                    'incident_category' => $data['incident_category'],
+                    'incident_type'     => $data['incident_type'],
+                    'description'       => $data['description'],
+                    'priority'          => $data['priority'],
+                    'incident_date'     => $data['incident_date'] ?? null,
+                ],
+                $data['comment'] ?? '',
+                auth()->id()
+            );
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated], 201);
+    }
+
+    /**
+     * Pedagogía resolves a CON_INCIDENCIA refrend.
+     * notify_student=true  → PENDIENTE_NOTIFICACION (Atención notifies the student)
+     * notify_student=false → LISTO_PARA_PAGO
+     */
+    public function pedagogiaResolve(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        $data = $request->validate([
+            'comment'        => 'nullable|string|max:2000',
+            'notify_student' => 'required|boolean',
+        ]);
+
+        try {
+            $updated = app(ResolvePedagogiaAction::class)->execute($refrend, $data, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /**
+     * Notifies the student and advances the refrend from PENDIENTE_NOTIFICACION.
+     */
+    public function notifyStudent(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        $data = $request->validate([
+            'notification_method' => 'nullable|string|max:50',
+        ]);
+
+        try {
+            $updated = app(NotifyStudentAction::class)->execute(
+                $refrend,
+                $data['notification_method'] ?? null,
+                auth()->id()
+            );
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /**
+     * Bulk-approves multiple DRAFT refrends → LISTO_PARA_PAGO.
+     */
+    public function bulkApprove(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'integer|exists:scholarship_refrends,id',
+        ]);
+
+        $result = app(BulkApproveAction::class)->execute($request->ids, auth()->id());
+
+        return response()->json(['res' => true, 'data' => $result]);
+    }
+
+    /**
+     * Bulk-notifies multiple PENDIENTE_NOTIFICACION refrends.
+     */
+    public function bulkNotify(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids'                 => 'required|array|min:1',
+            'ids.*'               => 'integer|exists:scholarship_refrends,id',
+            'notification_method' => 'nullable|string|max:50',
+        ]);
+
+        $result = app(BulkNotifyAction::class)->execute(
+            $request->ids,
+            $request->notification_method ?? null,
+            auth()->id()
+        );
+
+        return response()->json(['res' => true, 'data' => $result]);
+    }
+
+    /**
+     * Marks multiple LISTO_PARA_PAGO refrends as CLOSED (administrative close).
+     */
+    public function bulkPay(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'integer|exists:scholarship_refrends,id',
+        ]);
+
+        $refrends = ScholarshipRefrend::whereIn('id', $request->ids)
+            ->where('workflow_status', 'LISTO_PARA_PAGO')
+            ->get();
+
+        foreach ($refrends as $refrend) {
+            $old = $this->loggingService->snapshotRefrend($refrend);
+            $refrend->update([
+                'status'          => RefrendStatus::PAID->value,
+                'workflow_status' => 'CLOSED',
+                'locked_at'       => now(),
+                'locked_by_id'    => auth()->id(),
+            ]);
+            $this->loggingService->log(
+                $refrend,
+                'BULK_PAY',
+                $old,
+                $this->loggingService->snapshotRefrend($refrend->fresh())
+            );
+        }
+
+        return response()->json(['res' => true, 'data' => ['paid' => $refrends->count()]]);
+    }
+
+    // ── Incidents ─────────────────────────────────────────────────────────────
+
+    /**
+     * Adds a new incident to an unlocked refrend.
+     */
+    public function createIncident(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        if ($refrend->isLocked()) {
+            return response()->json(['res' => false, 'msg' => 'Refrendo cerrado, no se pueden agregar incidencias.'], 422);
+        }
+
+        $data = $request->validate([
+            'incident_category' => 'required|in:ASISTENCIA,ACADEMICO,DOCUMENTOS,ADMINISTRATIVO,OTRO',
+            'incident_type'     => 'required|string|max:100',
+            'incident_date'     => 'nullable|date',
+            'description'       => 'required|string|max:1000',
+        ]);
+
+        $incident = $refrend->incidents()->create([
+            ...$data,
+            'created_by_id' => auth()->id(),
+        ]);
+
+        $this->loggingService->log(
+            $refrend,
+            'INCIDENT_ADDED',
+            [],
+            ['incident_type' => $data['incident_type']]
+        );
+
+        return response()->json(['res' => true, 'data' => $incident], 201);
+    }
+
+    /**
+     * Deletes an incident from an unlocked refrend.
+     */
+    public function deleteIncident(ScholarshipRefrend $refrend, ScholarshipRefrendIncident $incident): JsonResponse
+    {
+        if ($refrend->isLocked()) {
+            return response()->json(['res' => false, 'msg' => 'Refrendo cerrado.'], 422);
+        }
+
+        $this->loggingService->log(
+            $refrend,
+            'INCIDENT_REMOVED',
+            ['incident_type' => $incident->incident_type],
+            []
+        );
+
+        $incident->delete();
+
+        return response()->json(null, 204);
+    }
+
+    /**
+     * Marks an incident as resolved.
+     */
+    public function resolveIncident(Request $request, ScholarshipRefrend $refrend, ScholarshipRefrendIncident $incident): JsonResponse
+    {
+        $data = $request->validate([
+            'resolution_notes' => 'required|string|min:10|max:500',
+        ]);
+
+        $incident->update([
+            'is_resolved'      => true,
+            'resolved_at'      => now(),
+            'resolved_by_id'   => auth()->id(),
+            'resolution_notes' => $data['resolution_notes'],
+        ]);
+
+        $this->loggingService->log(
+            $refrend,
+            'INCIDENT_RESOLVED',
+            ['is_resolved' => false],
+            ['is_resolved' => true, 'resolution_notes' => $data['resolution_notes']]
+        );
+
+        return response()->json(['res' => true, 'data' => $incident->fresh()]);
+    }
+
+    // ── Recalculate ───────────────────────────────────────────────────────────
+
+    /**
+     * Recalculates a non-locked refrend.
+     */
+    public function recalculate(ScholarshipRefrend $refrend): JsonResponse
+    {
+        try {
+            $updated = $this->recalculateService->recalculate($refrend);
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    // ── Discharge ─────────────────────────────────────────────────────────────
+
+    /**
+     * Discharges a scholar via DischargeScholarshipAction.
+     */
+    public function discharge(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        $request->validate([
+            'reason' => 'required|string|min:20|max:1000',
+        ]);
+
+        try {
+            $updated = app(DischargeScholarshipAction::class)->execute($refrend, $request->reason, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
     }
 }
