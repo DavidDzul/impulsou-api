@@ -552,12 +552,13 @@ class ScholarshipRefrendController extends Controller
     // ── Recalculate ───────────────────────────────────────────────────────────
 
     /**
-     * Recalculates a non-locked refrend.
+     * Full recalculation: refreshes all snapshots, clears and re-applies
+     * automatic discounts, then recalculates final amount. DRAFT only.
      */
     public function recalculate(ScholarshipRefrend $refrend): JsonResponse
     {
         try {
-            $updated = $this->recalculateService->recalculate($refrend);
+            $updated = $this->recalculateService->fullRecalculate($refrend);
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }

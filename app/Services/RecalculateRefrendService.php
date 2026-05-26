@@ -2,25 +2,151 @@
 
 namespace App\Services;
 
+use App\Enums\DiscountType;
+use App\Models\Attendance;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendDiscount;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class RecalculateRefrendService
 {
     public function __construct(
-        private ScholarshipCalculationService $calculationService
+        private ScholarshipCalculationService $calculationService,
+        private AttendancePenaltyService $penaltyService,
+        private ScholarshipLoggingService $loggingService
     ) {}
 
     /**
-     * Recalculates discount and final amount for a non-locked refrend.
+     * Full recalculation pipeline. Only allowed in DRAFT state.
+     * Refreshes all snapshots, clears and re-applies auto discounts,
+     * then recalculates final amount. Preserves the same refrend_id.
      *
-     * @throws \DomainException if the refrend is locked and cannot be modified.
+     * @throws \DomainException if the refrend is not in DRAFT.
      */
-    public function recalculate(ScholarshipRefrend $refrend): ScholarshipRefrend
+    public function fullRecalculate(ScholarshipRefrend $refrend): ScholarshipRefrend
     {
-        if (in_array($refrend->status, ['PAID', 'CANCELLED'], true)) {
-            throw new \DomainException('El refrendo está cerrado y no puede recalcularse.');
+        if ($refrend->workflow_status !== 'DRAFT') {
+            throw new \DomainException('Solo se pueden recalcular refrendos en estado DRAFT.');
         }
 
-        return $this->calculationService->recalculate($refrend);
+        $profile       = ScholarshipProfile::where('user_id', $refrend->user_id)->firstOrFail();
+        $user          = $profile->user()->with('roles')->first();
+        $year          = $refrend->period_year;
+        $month         = $refrend->period_month;
+        $referenceDate = Carbon::create($year, $month, 1);
+
+        return DB::transaction(function () use ($refrend, $profile, $user, $year, $month, $referenceDate) {
+            $old = $this->loggingService->snapshotRefrend($refrend);
+
+            // 1. Refresh all snapshots
+            $snapshot          = $this->calculationService->buildSnapshot($profile);
+            $lastGrade         = $this->getLastSemesterGrade($refrend->user_id);
+            $attendanceSummary = $this->getAttendanceSummaryForPeriod($refrend->user_id, $year, $month);
+
+            $refrend->update([
+                'snapshot_name'               => $snapshot['snapshot_name'],
+                'snapshot_generation'         => $snapshot['snapshot_generation'],
+                'snapshot_generation_id'      => $snapshot['snapshot_generation_id'] ?? null,
+                'snapshot_campus'             => $snapshot['snapshot_campus'],
+                'snapshot_scholarship_type'   => $snapshot['snapshot_scholarship_type'],
+                'base_amount'                 => $snapshot['base_amount'],
+                'average_grade_snapshot'      => $lastGrade,
+                'attendance_summary_snapshot' => $attendanceSummary,
+                // Reset any manual amount override so recalculation starts clean
+                'discount_percentage'         => 0,
+                'discount_amount'             => 0,
+                'final_amount'                => $snapshot['base_amount'],
+            ]);
+
+            // 2. Remove RETARDOS discounts and unmark consumed attendances
+            $retardosDiscounts = ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
+                ->where('discount_type', DiscountType::RETARDOS->value)
+                ->with('lateConsumptions')
+                ->get();
+
+            foreach ($retardosDiscounts as $discount) {
+                foreach ($discount->lateConsumptions as $consumption) {
+                    Attendance::where('id', $consumption->attendance_id)->update([
+                        'late_penalty_consumed'            => false,
+                        'late_penalty_consumed_refrend_id' => null,
+                    ]);
+                }
+                $discount->lateConsumptions()->delete();
+                $discount->delete();
+            }
+
+            // 3. Remove PROMEDIO_BAJO discount
+            ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
+                ->where('discount_type', DiscountType::PROMEDIO_BAJO->value)
+                ->delete();
+
+            // 4. Re-apply automatic discounts on a fresh instance
+            $fresh = $refrend->fresh();
+            $this->calculationService->applyAcademicDiscount($fresh, $profile);
+            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 25.0, $referenceDate);
+
+            // 5. Recalculate final amount from all remaining discounts
+            $fresh = $this->calculationService->recalculate($fresh);
+
+            // 6. Log the recalculation
+            $this->loggingService->log(
+                $fresh,
+                'FULL_RECALCULATE',
+                $old,
+                $this->loggingService->snapshotRefrend($fresh)
+            );
+
+            return $fresh;
+        });
+    }
+
+    private function getLastSemesterGrade(int $userId): ?float
+    {
+        $row = DB::table('scholarship_semester_grades')
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->value('grade');
+
+        return $row !== null ? (float) $row : null;
+    }
+
+    private function getAttendanceSummaryForPeriod(int $userId, int $year, int $month): array
+    {
+        $start = Carbon::create($year, $month, 1)->toDateString();
+        $end   = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+
+        $rows = DB::table('attendances')
+            ->join('classes', 'attendances.class_id', '=', 'classes.id')
+            ->where('attendances.user_id', $userId)
+            ->whereBetween('classes.date', [$start, $end])
+            ->selectRaw('attendances.status, attendances.late_penalty_consumed, COUNT(*) as cnt')
+            ->groupBy('attendances.status', 'attendances.late_penalty_consumed')
+            ->get();
+
+        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_consumed' => 0];
+
+        foreach ($rows as $row) {
+            $cnt = (int) $row->cnt;
+            match ($row->status) {
+                'PRESENT'           => $summary['present'] += $cnt,
+                'LATE'              => $summary['late'] += $cnt,
+                'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
+                'ABSENT'            => $summary['absent'] += $cnt,
+                'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
+                default             => null,
+            };
+            if ($row->late_penalty_consumed) {
+                $summary['late_consumed'] += $cnt;
+            }
+        }
+
+        return [
+            'present'         => $summary['present'],
+            'late'            => $summary['late'],
+            'absent'          => $summary['absent'],
+            'late_unconsumed' => max(0, $summary['late'] - $summary['late_consumed']),
+        ];
     }
 }
