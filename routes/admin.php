@@ -125,6 +125,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('bulk/pay', [ScholarshipRefrendController::class, 'bulkPay']);
         // Single-refrend routes (model binding)
         Route::get('{refrend}', [ScholarshipRefrendController::class, 'show']);
+        Route::post('{refrend}/situation', [ScholarshipRefrendController::class, 'recordSituation']);
         Route::post('{refrend}/atencion-approve', [ScholarshipRefrendController::class, 'atencionApprove']);
         Route::post('{refrend}/atencion-flag', [ScholarshipRefrendController::class, 'atencionFlag']);
         Route::post('{refrend}/atencion-clear', [ScholarshipRefrendController::class, 'atencionClearFlag']);

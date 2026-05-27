@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ApproveRefrendAction;
+use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
 use App\Actions\Scholarship\BulkApproveAction;
 use App\Actions\Scholarship\BulkNotifyAction;
@@ -295,6 +296,30 @@ class ScholarshipRefrendController extends Controller
     }
 
     // ── New workflow endpoints ─────────────────────────────────────────────────
+
+    /**
+     * Records the payment situation for a refrend, advancing it to LISTO_PARA_PAGO.
+     * Applies to DRAFT and LISTO_PARA_PAGO refrendos (allows re-classification).
+     */
+    public function recordSituation(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        $data = $request->validate([
+            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO',
+            'resolution_cause'        => 'nullable|string|max:200',
+            'resolution_notes'        => 'nullable|string|max:1000',
+            'suspension_percentage'   => 'required_if:resolution_type,SUSPENDIDA|nullable|numeric|in:25,30,50,65,75,100',
+            'carryover_months_count'  => 'nullable|integer|min:1|max:12',
+            'carryover_months_detail' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $updated = app(RecordPaymentSituationAction::class)->execute($refrend, $data, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
 
     /**
      * Atención approves a DRAFT refrend → LISTO_PARA_PAGO (no incidents).
