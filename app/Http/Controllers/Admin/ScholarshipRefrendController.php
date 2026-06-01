@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Scholarship\ApproveAsIsAction;
+use App\Actions\Scholarship\ApproveFullPaymentAction;
 use App\Actions\Scholarship\ApproveRefrendAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
@@ -109,14 +111,14 @@ class ScholarshipRefrendController extends Controller
             'year'          => 'required|integer|min:2020|max:2100',
             'month'         => 'required|integer|min:1|max:12',
             'campus'        => 'required|string|max:20',
-            'generation_id' => 'nullable|integer|exists:generations,id',
+            'generation_id' => 'required|integer|exists:generations,id',
         ]);
 
         $stats = $this->generateService->generateForPeriod(
             $data['year'],
             $data['month'],
             $data['campus'] ?? null,
-            isset($data['generation_id']) ? (int) $data['generation_id'] : null
+            (int) $data['generation_id'],
         );
 
         return response()->json(['res' => true, 'data' => $stats]);
@@ -226,17 +228,14 @@ class ScholarshipRefrendController extends Controller
 
         $year  = $data['year'];
         $month = $data['month'];
-        $start = Carbon::create($year, $month, 1)->startOfDay()->toDateString();
-        $end   = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+
+        $referenceDate  = Carbon::create($year, $month, 1);
+        $semesterBounds = $this->penaltyService->getCurrentSemesterBounds($referenceDate);
 
         $attendances = Attendance::with('class')
             ->where('user_id', $userId)
-            ->whereHas('class', fn($q) => $q->whereBetween('date', [$start, $end]))
+            ->whereHas('class', fn($q) => $q->whereBetween('date', [$semesterBounds['start'], $semesterBounds['end']]))
             ->get();
-
-        $semesterBounds = $this->penaltyService->getCurrentSemesterBounds(
-            Carbon::create($year, $month, 1)
-        );
 
         $unconsumedLates = $this->penaltyService->getUnconsumedLatesForUser(
             \App\Models\User::findOrFail($userId),
@@ -271,10 +270,10 @@ class ScholarshipRefrendController extends Controller
     public function bulkTable(Request $request, RefrendBulkQueryService $service): JsonResponse
     {
         $data = $request->validate([
-            'year'          => 'required|integer|min:2020|max:2100',
-            'month'         => 'required|integer|min:1|max:12',
-            'campus'        => 'nullable|string|max:20',
-            'generation_id' => 'nullable|integer|exists:generations,id',
+            'year'                  => 'required|integer|min:2020|max:2100',
+            'month'                 => 'required|integer|min:1|max:12',
+            'campus'                => 'required|string|max:20',
+            'generation_id'         => 'required|integer|exists:generations,id',
             'page'          => 'nullable|integer|min:1',
             'per_page'      => 'nullable|integer|min:1|max:500',
         ]);
@@ -282,8 +281,8 @@ class ScholarshipRefrendController extends Controller
         $result = $service->buildTable(
             $data['year'],
             $data['month'],
-            $data['campus'] ?? null,
-            isset($data['generation_id']) ? (int) $data['generation_id'] : null,
+            $data['campus'],
+            (int) $data['generation_id'],
             $data['page'] ?? 1,
             $data['per_page'] ?? 200,
         );
@@ -296,6 +295,30 @@ class ScholarshipRefrendController extends Controller
     }
 
     // ── New workflow endpoints ─────────────────────────────────────────────────
+
+    /** Advances to LISTO_PARA_PAGO without modifying the current final_amount. */
+    public function approveAsIs(ScholarshipRefrend $refrend): JsonResponse
+    {
+        try {
+            $updated = app(ApproveAsIsAction::class)->execute($refrend, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /** Removes all auto-discounts, forces final = base, advances to LISTO_PARA_PAGO. */
+    public function approveFullPayment(ScholarshipRefrend $refrend): JsonResponse
+    {
+        try {
+            $updated = app(ApproveFullPaymentAction::class)->execute($refrend, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
 
     /**
      * Records the payment situation for a refrend, advancing it to LISTO_PARA_PAGO.
@@ -384,15 +407,13 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Pedagogía resolves a CON_INCIDENCIA refrend.
-     * notify_student=true  → PENDIENTE_NOTIFICACION (Atención notifies the student)
-     * notify_student=false → LISTO_PARA_PAGO
+     * Pedagogía adds a comment to a CON_INCIDENCIA refrend.
+     * Does not change workflow_status — action is decided via the situation buttons.
      */
     public function pedagogiaResolve(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
         $data = $request->validate([
-            'comment'        => 'nullable|string|max:2000',
-            'notify_student' => 'required|boolean',
+            'comment' => 'nullable|string|max:2000',
         ]);
 
         try {

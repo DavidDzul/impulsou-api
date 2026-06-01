@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class RefrendBulkQueryService
@@ -75,6 +76,7 @@ class RefrendBulkQueryService
                 'r.notified_by_id',
                 'r.notified_at',
                 'r.notification_method',
+                'r.attendance_penalty_override',
                 'r.created_at',
                 'r.updated_at',
             ]);
@@ -93,13 +95,18 @@ class RefrendBulkQueryService
 
         $userIds = $refrends->pluck('user_id')->unique()->values()->all();
 
-        // ── Attendance aggregates for the period ───────────────────────────
-        // Join attendances with classes filtered to the period month/year
+        // ── Attendance aggregates ──────────────────────────────────────────
+        // Semester-level: from semester start to today (for lates + totals).
+        // Month-level: from period month start to today (for absence penalty trigger).
+        $semesterStart  = $month <= 7 ? "{$year}-01-01" : "{$year}-08-01";
+        $monthPadded    = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
+        $periodMonthStart = "{$year}-{$monthPadded}-01";
+
         $attendanceRows = DB::table('attendances as a')
             ->join('classes as c', 'c.id', '=', 'a.class_id')
             ->whereIn('a.user_id', $userIds)
-            ->whereYear('c.date', $year)
-            ->whereMonth('c.date', $month)
+            ->where('c.date', '>=', $semesterStart)
+            ->where('c.date', '<=', DB::raw('CURDATE()'))
             ->select([
                 'a.user_id',
                 DB::raw("SUM(CASE WHEN a.status = 'PRESENT' THEN 1 ELSE 0 END) as present_count"),
@@ -110,10 +117,13 @@ class RefrendBulkQueryService
                 DB::raw("SUM(CASE WHEN a.status = 'ABSENT' THEN 1 ELSE 0 END) as absent_count"),
                 DB::raw("SUM(CASE WHEN a.status = 'JUSTIFIED_ABSENCE' THEN 1 ELSE 0 END) as absent_justified_count"),
                 DB::raw("COUNT(*) as total_count"),
+                // Month-level unjustified absences — direct payment suspension trigger.
+                DB::raw("SUM(CASE WHEN a.status = 'ABSENT' AND c.date >= '{$periodMonthStart}' THEN 1 ELSE 0 END) as month_absent_count"),
             ])
             ->groupBy('a.user_id')
             ->get()
             ->keyBy('user_id');
+
 
         // ── Latest semester grade per user ─────────────────────────────────
         // Pick the most recent semester grade (highest year, then period desc)
@@ -126,8 +136,19 @@ class RefrendBulkQueryService
             ->groupBy('user_id')
             ->map(fn ($rows) => $rows->first());
 
-        // ── Incidents from the incidents table ─────────────────────────────
+        // ── Attendance discounts already applied to each refrend ──────────
+        // Used by the frontend Impacto column — more accurate than live counts
+        // because lates get consumed (flagged) after the penalty is applied.
         $refrendIds = $refrends->pluck('id')->all();
+
+        $attendanceDiscounts = DB::table('scholarship_refrend_discounts')
+            ->whereIn('scholarship_refrend_id', $refrendIds)
+            ->whereIn('discount_type', ['RETARDOS', 'FALTA_INJUSTIFICADA'])
+            ->select(['scholarship_refrend_id', 'discount_type'])
+            ->get()
+            ->groupBy('scholarship_refrend_id');
+
+        // ── Incidents from the incidents table ─────────────────────────────
 
         $incidentCounts = DB::table('scholarship_refrend_incidents')
             ->whereIn('scholarship_refrend_id', $refrendIds)
@@ -147,11 +168,12 @@ class RefrendBulkQueryService
             ->map(fn($rows) => $rows->first());
 
         // ── Assemble rows ──────────────────────────────────────────────────
-        $rows = $refrends->map(function ($r) use ($attendanceRows, $gradeRows, $incidentCounts, $firstIncidents) {
+        $rows = $refrends->map(function ($r) use ($attendanceRows, $gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts) {
             $att          = $attendanceRows->get($r->user_id);
             $gradeRecord  = $gradeRows->get($r->user_id);
             $incident     = $firstIncidents->get($r->id);
-            $grade       = $gradeRecord ? (float) $gradeRecord->grade : null;
+            $grade        = $gradeRecord ? (float) $gradeRecord->grade : null;
+            $discTypes    = $attendanceDiscounts->get($r->id)?->pluck('discount_type') ?? collect();
 
             $academicStatus = $this->resolveAcademicStatus($grade, $gradeRecord !== null);
 
@@ -218,6 +240,10 @@ class RefrendBulkQueryService
                 'incident_description'          => $incident?->description,
                 'incident_category'             => $incident?->incident_category,
                 'incident_type'                 => $incident?->incident_type,
+                'semester_lates_unconsumed'     => (int) ($att->late_unconsumed_count ?? 0),
+                'month_absent'                  => (int) ($att->month_absent_count ?? 0),
+                'has_retardos_discount'         => $discTypes->contains('RETARDOS'),
+                'has_falta_discount'            => $discTypes->contains('FALTA_INJUSTIFICADA'),
             ];
         })->values()->all();
 

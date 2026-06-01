@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class RecordPaymentSituationAction
 {
-    private const ALLOWED_WORKFLOW_STATUSES = ['DRAFT', 'LISTO_PARA_PAGO'];
+    private const ALLOWED_WORKFLOW_STATUSES = ['DRAFT', 'CON_INCIDENCIA', 'LISTO_PARA_PAGO'];
 
     public function __construct(private ScholarshipLoggingService $logging) {}
 
@@ -17,7 +17,7 @@ class RecordPaymentSituationAction
     {
         if (!in_array($refrend->workflow_status, self::ALLOWED_WORKFLOW_STATUSES)) {
             throw new \DomainException(
-                'Solo se puede registrar la situación en refrendos en estado DRAFT o LISTO_PARA_PAGO.'
+                'Solo se puede registrar la situación en refrendos en estado DRAFT, CON_INCIDENCIA o LISTO_PARA_PAGO.'
             );
         }
 

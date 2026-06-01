@@ -77,15 +77,19 @@ class RecalculateRefrendService
                 $discount->delete();
             }
 
-            // 3. Remove PROMEDIO_BAJO discount
+            // 3. Remove academic and absence discounts
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
-                ->where('discount_type', DiscountType::PROMEDIO_BAJO->value)
+                ->whereIn('discount_type', [
+                    DiscountType::PROMEDIO_BAJO->value,
+                    DiscountType::FALTA_INJUSTIFICADA->value,
+                ])
                 ->delete();
 
             // 4. Re-apply automatic discounts on a fresh instance
             $fresh = $refrend->fresh();
             $this->calculationService->applyAcademicDiscount($fresh, $profile);
-            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 25.0, $referenceDate);
+            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $referenceDate);
+            $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $year, $month);
 
             // 5. Recalculate final amount from all remaining discounts
             $fresh = $this->calculationService->recalculate($fresh);
@@ -114,13 +118,15 @@ class RecalculateRefrendService
 
     private function getAttendanceSummaryForPeriod(int $userId, int $year, int $month): array
     {
-        $start = Carbon::create($year, $month, 1)->toDateString();
-        $end   = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+        $start = $month <= 7
+            ? Carbon::create($year, 1, 1)->toDateString()
+            : Carbon::create($year, 8, 1)->toDateString();
 
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
-            ->whereBetween('classes.date', [$start, $end])
+            ->where('classes.date', '>=', $start)
+            ->where('classes.date', '<=', DB::raw('CURDATE()'))
             ->selectRaw('attendances.status, attendances.late_penalty_consumed, COUNT(*) as cnt')
             ->groupBy('attendances.status', 'attendances.late_penalty_consumed')
             ->get();

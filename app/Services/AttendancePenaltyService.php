@@ -89,7 +89,7 @@ class AttendancePenaltyService
             'scholarship_refrend_id' => $refrend->id,
             'discount_type'          => DiscountType::RETARDOS->value,
             'discount_percentage'    => $penaltyPercentage,
-            'description'            => '2 retardos acumulados sin justificar en el semestre actual.',
+            'description'            => 'Suspensión del mes por 2 retardos semestrales acumulados sin justificar.',
         ]);
 
         foreach ($toConsume as $attendance) {
@@ -116,13 +116,40 @@ class AttendancePenaltyService
         int $year,
         int $month
     ): Collection {
-        $start = Carbon::create($year, $month, 1)->startOfDay()->toDateString();
-        $end   = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+        $start = Carbon::create($year, $month, 1)->toDateString();
+        $today = Carbon::today()->toDateString();
 
         return Attendance::with('class')
             ->where('user_id', $user->id)
             ->where('status', 'ABSENT')
-            ->whereHas('class', fn($q) => $q->whereBetween('date', [$start, $end]))
+            ->whereHas('class', fn($q) => $q
+                ->where('date', '>=', $start)
+                ->where('date', '<=', $today)
+            )
             ->get();
+    }
+
+    /**
+     * Aplica suspensión 100% si el becario tuvo al menos una falta injustificada
+     * en el mes del refrendo. Retorna el discount creado o null si no aplica.
+     */
+    public function applyAbsencePenaltyIfDue(
+        ScholarshipRefrend $refrend,
+        User $user,
+        int $year,
+        int $month
+    ): ?ScholarshipRefrendDiscount {
+        $absences = $this->getUnjustifiedAbsencesInPeriod($user, $year, $month);
+
+        if ($absences->isEmpty()) {
+            return null;
+        }
+
+        return ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $refrend->id,
+            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
+            'discount_percentage'    => 100.0,
+            'description'            => 'Suspensión del mes por falta injustificada en el periodo.',
+        ]);
     }
 }

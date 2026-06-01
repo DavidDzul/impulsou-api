@@ -59,6 +59,7 @@ class ScholarshipRefrend extends Model
         'suspension_scope',
         'pedagogia_resolved_at',
         'pedagogia_resolved_by_id',
+        'attendance_penalty_override',
     ];
 
     protected $casts = [
@@ -73,7 +74,8 @@ class ScholarshipRefrend extends Model
         'carryover_amount'             => 'decimal:2',
         'average_grade_snapshot'       => 'decimal:2',
         'missing_subjects_snapshot'    => 'integer',
-        'attendance_summary_snapshot'  => 'array',
+        'attendance_summary_snapshot'   => 'array',
+        'attendance_penalty_override'   => 'boolean',
         'snapshot_generation_id'       => 'integer',
         'atencion_labels'              => 'array',
         'atencion_reviewed_at'         => 'datetime',

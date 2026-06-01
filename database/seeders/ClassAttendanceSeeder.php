@@ -13,6 +13,14 @@ class ClassAttendanceSeeder extends Seeder
     private const START    = '2026-01-05'; // first Monday Jan 2026
     private const END      = '2026-07-31';
 
+    /**
+     * Set to an integer to distribute N classes evenly across the semester.
+     * Useful for dev/testing: some classes land before today, some after,
+     * so the date <= CURDATE() boundary can be verified.
+     * Null = full MWF schedule (~90 classes).
+     */
+    private ?int $maxClasses = 10;
+
     /** Weighted status pool: keys = status, values = relative weight */
     private const STATUS_WEIGHTS = [
         'PRESENT'           => 68,
@@ -26,54 +34,115 @@ class ClassAttendanceSeeder extends Seeder
     {
         $generationId = $this->resolveGeneration();
         $pool         = $this->buildStatusPool();
-        $poolIndex    = 0;
 
-        $current  = Carbon::parse(self::START);
-        $end      = Carbon::parse(self::END);
+        if ($this->maxClasses !== null) {
+            $this->runLimited($generationId, $pool);
+        } else {
+            $this->runFull($generationId, $pool);
+        }
+    }
+
+    /**
+     * Distribute $maxClasses evenly from START to END so that some fall
+     * before today and some after — ideal for testing the CURDATE() cutoff.
+     */
+    private function runLimited(int $generationId, array $pool): void
+    {
+        $start     = Carbon::parse(self::START);
+        $end       = Carbon::parse(self::END);
+        $totalDays = (int) $start->diffInDays($end);
+        $step      = (int) floor($totalDays / max($this->maxClasses - 1, 1));
+
+        $classCount      = 0;
+        $attendanceCount = 0;
+
+        for ($i = 0; $i < $this->maxClasses; $i++) {
+            $date = $start->copy()->addDays($i * $step);
+
+            // Advance to next weekday if the calculated date lands on a weekend.
+            while ($date->isWeekend()) {
+                $date->addDay();
+            }
+
+            // Stop if we've gone past the semester end.
+            if ($date->gt($end)) {
+                break;
+            }
+
+            $classId = $this->insertClass($date, $generationId);
+            $classCount++;
+
+            $status = $pool[$i % count($pool)];
+            $this->insertAttendance($classId, $status);
+            $attendanceCount++;
+
+            $label = $date->toDateString() <= now()->toDateString() ? '[past]' : '[future]';
+            $this->command->line("  {$date->toDateString()} {$label} — {$status}");
+        }
+
+        $this->command->info("Seeded {$classCount} classes and {$attendanceCount} attendances (limited mode) for user_id " . self::USER_ID . '.');
+    }
+
+    /** Full MWF schedule across the entire semester. */
+    private function runFull(int $generationId, array $pool): void
+    {
+        $current   = Carbon::parse(self::START);
+        $end       = Carbon::parse(self::END);
         $classDays = [Carbon::MONDAY, Carbon::WEDNESDAY, Carbon::FRIDAY];
+        $poolIndex = 0;
 
         $classCount      = 0;
         $attendanceCount = 0;
 
         while ($current->lte($end)) {
             if (in_array($current->dayOfWeek, $classDays)) {
-                $classId = DB::table('classes')->insertGetId([
-                    'name'          => 'Formación Integral — ' . $current->translatedFormat('d \d\e F Y'),
-                    'date'          => $current->format('Y-m-d'),
-                    'start_time'    => '09:00:00',
-                    'end_time'      => '11:00:00',
-                    'campus'        => self::CAMPUS,
-                    'generation_id' => $generationId,
-                    'created_at'    => now(),
-                    'updated_at'    => now(),
-                ]);
+                $classId = $this->insertClass($current, $generationId);
                 $classCount++;
 
                 $status = $pool[$poolIndex % count($pool)];
                 $poolIndex++;
 
-                [$checkIn, $checkOut, $latePenaltyConsumed] = $this->checkInOutFor($status);
-
-                DB::table('attendances')->insert([
-                    'user_id'                          => self::USER_ID,
-                    'class_id'                         => $classId,
-                    'check_in'                         => $checkIn,
-                    'check_out'                        => $checkOut,
-                    'status'                           => $status,
-                    'class_status'                     => 'COMPLETED',
-                    'observations'                     => null,
-                    'late_penalty_consumed'            => $latePenaltyConsumed,
-                    'late_penalty_consumed_refrend_id' => null,
-                    'created_at'                       => now(),
-                    'updated_at'                       => now(),
-                ]);
+                $this->insertAttendance($classId, $status);
                 $attendanceCount++;
             }
 
             $current->addDay();
         }
 
-        $this->command->info("Seeded {$classCount} classes and {$attendanceCount} attendances for user_id " . self::USER_ID . '.');
+        $this->command->info("Seeded {$classCount} classes and {$attendanceCount} attendances (full mode) for user_id " . self::USER_ID . '.');
+    }
+
+    private function insertClass(Carbon $date, int $generationId): int
+    {
+        return DB::table('classes')->insertGetId([
+            'name'          => 'Formación Integral — ' . $date->translatedFormat('d \d\e F Y'),
+            'date'          => $date->format('Y-m-d'),
+            'start_time'    => '09:00:00',
+            'end_time'      => '11:00:00',
+            'campus'        => self::CAMPUS,
+            'generation_id' => $generationId,
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+    }
+
+    private function insertAttendance(int $classId, string $status): void
+    {
+        [$checkIn, $checkOut, $latePenaltyConsumed] = $this->checkInOutFor($status);
+
+        DB::table('attendances')->insert([
+            'user_id'                          => self::USER_ID,
+            'class_id'                         => $classId,
+            'check_in'                         => $checkIn,
+            'check_out'                        => $checkOut,
+            'status'                           => $status,
+            'class_status'                     => 'COMPLETED',
+            'observations'                     => null,
+            'late_penalty_consumed'            => $latePenaltyConsumed,
+            'late_penalty_consumed_refrend_id' => null,
+            'created_at'                       => now(),
+            'updated_at'                       => now(),
+        ]);
     }
 
     private function resolveGeneration(): int
@@ -113,8 +182,8 @@ class ClassAttendanceSeeder extends Seeder
 
     private function checkInOutFor(string $status): array
     {
-        $checkIn  = null;
-        $checkOut = null;
+        $checkIn             = null;
+        $checkOut            = null;
         $latePenaltyConsumed = false;
 
         switch ($status) {
@@ -127,7 +196,6 @@ class ClassAttendanceSeeder extends Seeder
                 $minutes  = rand(10, 45);
                 $checkIn  = sprintf('09:%02d:00', $minutes);
                 $checkOut = '11:00:00';
-                // Randomly mark ~half of LATE records as already consumed
                 $latePenaltyConsumed = (bool) rand(0, 1);
                 break;
 
@@ -136,8 +204,6 @@ class ClassAttendanceSeeder extends Seeder
                 $checkIn  = sprintf('09:%02d:00', $minutes);
                 $checkOut = '11:00:00';
                 break;
-
-            // ABSENT and JUSTIFIED_ABSENCE: no check-in/out
         }
 
         return [$checkIn, $checkOut, $latePenaltyConsumed];

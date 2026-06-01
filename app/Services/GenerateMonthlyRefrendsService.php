@@ -31,8 +31,12 @@ class GenerateMonthlyRefrendsService
      *
      * @return array{created: int, skipped: int, errors: int}
      */
-    public function generateForPeriod(int $year, int $month, ?string $campus = null, ?int $generationId = null): array
-    {
+    public function generateForPeriod(
+        int $year,
+        int $month,
+        ?string $campus = null,
+        ?int $generationId = null
+    ): array {
         $stats = ['created' => 0, 'skipped' => 0, 'errors' => 0];
 
         /** @var \Illuminate\Support\Collection<int, ScholarshipProfile> $profiles */
@@ -68,8 +72,11 @@ class GenerateMonthlyRefrendsService
      * Retorna el refrendo creado o null si ya existía.
      * Lanza DomainException si el periodo está fuera del rango de la retícula.
      */
-    public function generateForUser(ScholarshipProfile $profile, int $year, int $month): ?ScholarshipRefrend
-    {
+    public function generateForUser(
+        ScholarshipProfile $profile,
+        int $year,
+        int $month
+    ): ?ScholarshipRefrend {
         // Verificar si ya existe el refrendo NORMAL para ese periodo
         $exists = ScholarshipRefrend::where('user_id', $profile->user_id)
             ->where('period_year', $year)
@@ -92,7 +99,11 @@ class GenerateMonthlyRefrendsService
 
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
-        $attendanceSummary = $this->getAttendanceSummaryForPeriod($profile->user_id, $year, $month, $referenceDate);
+        $attendanceSummary = $this->getAttendanceSummaryForPeriod(
+            $profile->user_id,
+            $year,
+            $month
+        );
 
         return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious, $lastGrade, $attendanceSummary) {
             $refrend = ScholarshipRefrend::create([
@@ -121,9 +132,10 @@ class GenerateMonthlyRefrendsService
             // Aplicar descuento académico vigente si corresponde
             $this->calculationService->applyAcademicDiscount($refrend, $profile);
 
-            // Evaluar penalización por 2 retardos acumulados en el semestre
+            // Evaluar penalizaciones automáticas de asistencia
             $user = $profile->user;
-            $this->penaltyService->applyPenaltyIfDue($refrend, $user, 25.0, $referenceDate);
+            $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $referenceDate);
+            $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $year, $month);
 
             // Recalcular montos finales
             $this->calculationService->recalculate($refrend);
@@ -172,15 +184,20 @@ class GenerateMonthlyRefrendsService
      *
      * @return array{present: int, late: int, absent: int, late_unconsumed: int}
      */
-    private function getAttendanceSummaryForPeriod(int $userId, int $year, int $month, Carbon $referenceDate): array
-    {
-        $start = Carbon::create($year, $month, 1)->toDateString();
-        $end   = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+    private function getAttendanceSummaryForPeriod(
+        int $userId,
+        int $year,
+        int $month
+    ): array {
+        $start = $month <= 7
+            ? Carbon::create($year, 1, 1)->toDateString()
+            : Carbon::create($year, 8, 1)->toDateString();
 
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
-            ->whereBetween('classes.date', [$start, $end])
+            ->where('classes.date', '>=', $start)
+            ->where('classes.date', '<=', DB::raw('CURDATE()'))
             ->selectRaw('attendances.status, attendances.late_penalty_consumed, COUNT(*) as cnt')
             ->groupBy('attendances.status', 'attendances.late_penalty_consumed')
             ->get();

@@ -13,17 +13,13 @@ class ResolvePedagogiaAction
     public function execute(ScholarshipRefrend $refrend, array $data, int $userId): ScholarshipRefrend
     {
         if ($refrend->workflow_status !== 'CON_INCIDENCIA') {
-            throw new \DomainException('Solo se pueden resolver refrendos en estado CON_INCIDENCIA.');
+            throw new \DomainException('Solo se puede agregar comentario de pedagogía en refrendos CON_INCIDENCIA.');
         }
 
-        $notifyStudent = (bool) $data['notify_student'];
-        $old           = $this->logging->snapshotRefrend($refrend);
+        $old = $this->logging->snapshotRefrend($refrend);
 
-        return DB::transaction(function () use ($refrend, $data, $userId, $notifyStudent, $old) {
+        return DB::transaction(function () use ($refrend, $data, $userId, $old) {
             $updates = [
-                'workflow_status'          => $notifyStudent ? 'PENDIENTE_NOTIFICACION' : 'LISTO_PARA_PAGO',
-                'pedagogia_resolved_by_id' => $userId,
-                'pedagogia_resolved_at'    => now(),
                 'pedagogia_reviewed_by_id' => $userId,
                 'pedagogia_reviewed_at'    => now(),
             ];
@@ -36,10 +32,9 @@ class ResolvePedagogiaAction
 
             $this->logging->log(
                 $refrend,
-                'PEDAGOGIA_RESOLVED',
+                'PEDAGOGIA_COMMENTED',
                 $old,
-                $this->logging->snapshotRefrend($refrend->fresh()),
-                $notifyStudent ? 'notify_required' : 'direct_approval'
+                $this->logging->snapshotRefrend($refrend->fresh())
             );
 
             return $refrend->fresh();
