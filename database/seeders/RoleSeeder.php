@@ -72,5 +72,9 @@ class RoleSeeder extends Seeder
         Permission::create(['name' => 'PS_GENERATIONS'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
         Permission::create(['name' => 'PS_ROLES'])->syncRoles([$rootRole, $rootJobRole]);
         Permission::create(['name' => 'PS_NOTICES'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
+
+        Permission::create(['name' => 'PS_GROUP_SCHOLARSHIPS'])->syncRoles([$rootRole]);
+        Permission::create(['name' => 'PS_SCHOLARSHIPS_ATENCION'])->syncRoles([$rootRole]);
+        Permission::create(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'])->syncRoles([$rootRole]);
     }
 }
