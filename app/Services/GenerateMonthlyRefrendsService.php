@@ -115,6 +115,8 @@ class GenerateMonthlyRefrendsService
                 'workflow_status'              => 'DRAFT',
                 'resolution_type'              => null,
                 'base_amount'                  => $snapshot['base_amount'],
+                'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
+                'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
                 'discount_percentage'          => 0,
                 'discount_amount'              => 0,
                 'final_amount'                 => $snapshot['base_amount'],
@@ -128,9 +130,6 @@ class GenerateMonthlyRefrendsService
                 'missing_subjects_snapshot'    => 0,
                 'attendance_summary_snapshot'  => $attendanceSummary,
             ]);
-
-            // Aplicar descuento académico vigente si corresponde
-            $this->calculationService->applyAcademicDiscount($refrend, $profile);
 
             // Evaluar penalizaciones automáticas de asistencia
             $user = $profile->user;

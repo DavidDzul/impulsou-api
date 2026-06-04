@@ -73,11 +73,16 @@ class ScholarshipCalculationService
             return null;
         }
 
+        $baseDesc    = 'Descuento por promedio académico vigente.';
+        $description = $profile->discount_reason
+            ? $baseDesc . ' Motivo: ' . $profile->discount_reason
+            : $baseDesc;
+
         return ScholarshipRefrendDiscount::create([
             'scholarship_refrend_id' => $refrend->id,
             'discount_type'          => DiscountType::PROMEDIO_BAJO->value,
             'discount_percentage'    => $profile->active_discount_percentage,
-            'description'            => 'Descuento por promedio académico vigente.',
+            'description'            => $description,
         ]);
     }
 
@@ -98,6 +103,8 @@ class ScholarshipCalculationService
 
     /**
      * Construye el snapshot de datos históricos del becario al momento de generar el refrendo.
+     * Si el perfil tiene un descuento base vigente, lo aplica directamente sobre monthly_amount
+     * para que los descuentos mensuales posteriores operen sobre el monto ya reducido.
      */
     public function buildSnapshot(ScholarshipProfile $profile): array
     {
@@ -106,13 +113,27 @@ class ScholarshipCalculationService
             ? \App\Models\Generation::find($user->generation_id)
             : null;
 
+        $monthlyAmount = (float) $profile->monthly_amount;
+        $discountPct   = $profile->active_discount_percentage !== null
+            ? (float) $profile->active_discount_percentage
+            : 0.0;
+
+        $discountActive = $discountPct > 0
+            && ($profile->discount_valid_until === null || ! $profile->discount_valid_until->isPast());
+
+        $baseAmount = $discountActive
+            ? round($monthlyAmount * (1 - $discountPct / 100), 2)
+            : $monthlyAmount;
+
         return [
-            'snapshot_name'             => trim("{$user->first_name} {$user->last_name}"),
-            'snapshot_generation'       => $generation?->generation_name,
-            'snapshot_generation_id'    => $generation?->id,
-            'snapshot_campus'           => $user->campus,
-            'snapshot_scholarship_type' => $profile->scholarship_type->value,
-            'base_amount'               => (float) $profile->monthly_amount,
+            'snapshot_name'                => trim("{$user->first_name} {$user->last_name}"),
+            'snapshot_generation'          => $generation?->generation_name,
+            'snapshot_generation_id'       => $generation?->id,
+            'snapshot_campus'              => $user->campus,
+            'snapshot_scholarship_type'    => $profile->scholarship_type->value,
+            'base_amount'                  => $baseAmount,
+            'snapshot_discount_percentage' => $discountActive ? $discountPct : null,
+            'snapshot_discount_reason'     => $discountActive ? $profile->discount_reason : null,
         ];
     }
 }

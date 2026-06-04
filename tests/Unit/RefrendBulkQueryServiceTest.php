@@ -190,4 +190,45 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertSame(1, $result['rows'][0]['incidents_count'],
             'A low grade should add 1 to incidents_count.');
     }
+
+    // ── S-BULK-01: total_to_pay includes carryover ────────────────────────────
+
+    /** @test */
+    public function total_to_pay_equals_final_amount_plus_amount_pending_from_previous(): void
+    {
+        $this->makeRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+        ]);
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame(
+            1200.0,
+            $result['rows'][0]['refrend']['total_to_pay'],
+            'total_to_pay must be final_amount + amount_pending_from_previous.'
+        );
+    }
+
+    // ── S-BULK-02: total_to_pay when carryover is zero ───────────────────────
+
+    /** @test */
+    public function total_to_pay_equals_final_amount_when_amount_pending_is_zero(): void
+    {
+        // amount_pending_from_previous defaults to 0 (NOT NULL column) — no carryover.
+        $this->makeRefrend([
+            'final_amount'                 => 800.00,
+            'amount_pending_from_previous' => 0,
+        ]);
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame(
+            800.0,
+            $result['rows'][0]['refrend']['total_to_pay'],
+            'total_to_pay must equal final_amount when there is no pending carryover.'
+        );
+    }
 }

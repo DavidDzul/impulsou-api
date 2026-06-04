@@ -51,8 +51,10 @@ class RecalculateRefrendService
                 'snapshot_generation_id'      => $snapshot['snapshot_generation_id'] ?? null,
                 'snapshot_campus'             => $snapshot['snapshot_campus'],
                 'snapshot_scholarship_type'   => $snapshot['snapshot_scholarship_type'],
-                'base_amount'                 => $snapshot['base_amount'],
-                'average_grade_snapshot'      => $lastGrade,
+                'base_amount'                  => $snapshot['base_amount'],
+                'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
+                'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
+                'average_grade_snapshot'       => $lastGrade,
                 'attendance_summary_snapshot' => $attendanceSummary,
                 // Reset any manual amount override so recalculation starts clean
                 'discount_percentage'         => 0,
@@ -87,7 +89,6 @@ class RecalculateRefrendService
 
             // 4. Re-apply automatic discounts on a fresh instance
             $fresh = $refrend->fresh();
-            $this->calculationService->applyAcademicDiscount($fresh, $profile);
             $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $referenceDate);
             $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $year, $month);
 

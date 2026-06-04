@@ -21,9 +21,7 @@ class StoreScholarshipProfileRequest extends FormRequest
             'monthly_amount'             => 'required|numeric|min:0',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_valid_until'       => 'nullable|date',
-            'suspension_percentage'      => 'nullable|numeric|in:100,75,65,50,30,25',
-            'suspension_until'           => 'nullable|date',
-            'suspension_cause'           => 'nullable|string|max:200',
+            'discount_reason'            => 'nullable|string|max:200',
         ];
     }
 }
