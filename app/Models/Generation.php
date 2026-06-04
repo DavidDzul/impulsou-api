@@ -15,6 +15,10 @@ class Generation extends Model
         'generation_active',
     ];
 
+    protected $casts = [
+        'generation_active' => 'boolean'
+    ];
+
     public static $createRules = [
         'generation_name' => 'required|string|max:255',
         'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
