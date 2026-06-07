@@ -40,10 +40,9 @@ class RecalculateRefrendService
         return DB::transaction(function () use ($refrend, $profile, $user, $year, $month, $referenceDate) {
             $old = $this->loggingService->snapshotRefrend($refrend);
 
-            // 1. Refresh all snapshots
-            $snapshot          = $this->calculationService->buildSnapshot($profile);
-            $lastGrade         = $this->getLastSemesterGrade($refrend->user_id);
-            $attendanceSummary = $this->getAttendanceSummaryForPeriod($refrend->user_id, $year, $month);
+            // 1. Refresh non-attendance snapshots
+            $snapshot  = $this->calculationService->buildSnapshot($profile);
+            $lastGrade = $this->getLastSemesterGrade($refrend->user_id);
 
             $refrend->update([
                 'snapshot_name'               => $snapshot['snapshot_name'],
@@ -55,29 +54,30 @@ class RecalculateRefrendService
                 'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
                 'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
                 'average_grade_snapshot'       => $lastGrade,
-                'attendance_summary_snapshot' => $attendanceSummary,
                 // Reset any manual amount override so recalculation starts clean
                 'discount_percentage'         => 0,
                 'discount_amount'             => 0,
                 'final_amount'                => $snapshot['base_amount'],
             ]);
 
-            // 2. Remove RETARDOS discounts and unmark consumed attendances
-            $retardosDiscounts = ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
+            // 2. Remove RETARDOS discounts and unmark consumed attendances.
+            // Reset directly by refrend_id first so orphaned flags (pivot deleted manually)
+            // are always cleared regardless of pivot state.
+            Attendance::where('user_id', $refrend->user_id)
+                ->where('late_penalty_consumed_refrend_id', $refrend->id)
+                ->update([
+                    'late_penalty_consumed'            => false,
+                    'late_penalty_consumed_refrend_id' => null,
+                ]);
+
+            ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
                 ->where('discount_type', DiscountType::RETARDOS->value)
                 ->with('lateConsumptions')
-                ->get();
-
-            foreach ($retardosDiscounts as $discount) {
-                foreach ($discount->lateConsumptions as $consumption) {
-                    Attendance::where('id', $consumption->attendance_id)->update([
-                        'late_penalty_consumed'            => false,
-                        'late_penalty_consumed_refrend_id' => null,
-                    ]);
-                }
-                $discount->lateConsumptions()->delete();
-                $discount->delete();
-            }
+                ->get()
+                ->each(function ($discount) {
+                    $discount->lateConsumptions()->delete();
+                    $discount->delete();
+                });
 
             // 3. Remove academic and absence discounts
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
@@ -91,6 +91,11 @@ class RecalculateRefrendService
             $fresh = $refrend->fresh();
             $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $referenceDate);
             $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $year, $month);
+
+            // 4.5 Compute attendance snapshot AFTER penalties are re-applied so
+            // late_unconsumed reflects the actual post-recalculation state.
+            $attendanceSummary = $this->getAttendanceSummaryForPeriod($refrend->user_id, $year, $month);
+            $fresh->update(['attendance_summary_snapshot' => $attendanceSummary]);
 
             // 5. Recalculate final amount from all remaining discounts
             $fresh = $this->calculationService->recalculate($fresh);

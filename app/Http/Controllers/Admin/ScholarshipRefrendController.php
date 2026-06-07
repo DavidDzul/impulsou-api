@@ -494,6 +494,7 @@ class ScholarshipRefrendController extends Controller
 
         $refrends = ScholarshipRefrend::whereIn('id', $request->ids)
             ->where('workflow_status', 'LISTO_PARA_PAGO')
+            ->where('status', '!=', RefrendStatus::WITHHELD->value)
             ->get();
 
         foreach ($refrends as $refrend) {
@@ -609,7 +610,7 @@ class ScholarshipRefrendController extends Controller
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }
 
-        return response()->json(['res' => true, 'data' => $updated]);
+        return response()->json(['res' => true, 'data' => $updated->load('discounts')]);
     }
 
     // ── Discharge ─────────────────────────────────────────────────────────────

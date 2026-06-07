@@ -50,6 +50,7 @@ class RecordPaymentSituationAction
                 $updates['final_amount']        = '0.00';
                 $updates['discount_percentage'] = '100.00';
                 $updates['discount_amount']     = number_format($baseAmount, 2, '.', '');
+                $updates['status']              = RefrendStatus::WITHHELD->value;
                 break;
 
             case 'SUSPENDIDA':

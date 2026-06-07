@@ -262,7 +262,7 @@ class GenerateMonthlyRefrendsService
             })
             ->sum('amount_pending_from_previous');
 
-        $totalWithheld = $withheld->sum(fn($r) => (float) $r->final_amount);
+        $totalWithheld = $withheld->sum(fn($r) => (float) $r->base_amount);
         $pending = max(0.0, round($totalWithheld - (float) $alreadyCovered, 2));
 
         return $pending;
