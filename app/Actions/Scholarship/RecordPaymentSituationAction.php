@@ -77,17 +77,20 @@ class RecordPaymentSituationAction
         }
 
         // Stack catch-up carryover payment on top of the primary situation amount.
+        // Also zero out amount_pending_from_previous so total_to_pay doesn't
+        // double-count the pending that is already incorporated here.
         $carryoverCount = (int) ($data['carryover_months_count'] ?? 0);
         if ($carryoverCount > 0) {
-            $currentFinal               = isset($updates['final_amount'])
+            $currentFinal = isset($updates['final_amount'])
                 ? (float) $updates['final_amount']
                 : (float) $refrend->final_amount;
-            $updates['final_amount']          = number_format(
+            $updates['final_amount']                = number_format(
                 round($currentFinal + $baseAmount * $carryoverCount, 2),
                 2, '.', ''
             );
-            $updates['carryover_months_count']  = $carryoverCount;
-            $updates['carryover_months_detail'] = $data['carryover_months_detail'] ?? null;
+            $updates['carryover_months_count']      = $carryoverCount;
+            $updates['carryover_months_detail']     = $data['carryover_months_detail'] ?? null;
+            $updates['amount_pending_from_previous'] = '0.00';
         }
 
         $old = $this->logging->snapshotRefrend($refrend);
