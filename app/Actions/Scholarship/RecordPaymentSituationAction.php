@@ -74,22 +74,32 @@ class RecordPaymentSituationAction
                 $updates['discount_percentage'] = '0.00';
                 $updates['discount_amount']     = '0.00';
                 break;
+
+            case 'REEMBOLSO_PARCIAL':
+                $updates['final_amount']                = number_format($baseAmount, 2, '.', '');
+                $updates['discount_percentage']         = '0.00';
+                $updates['discount_amount']             = '0.00';
+                $updates['refund_amount_from_previous'] = number_format((float) ($data['refund_amount'] ?? 0), 2, '.', '');
+                break;
         }
 
         // Stack catch-up carryover payment on top of the primary situation amount.
         // Also zero out amount_pending_from_previous so total_to_pay doesn't
         // double-count the pending that is already incorporated here.
+        // REEMBOLSO_PARCIAL is purely additive — carryover stacking must not run for it.
         $carryoverCount = (int) ($data['carryover_months_count'] ?? 0);
         if ($carryoverCount > 0) {
+            $pct          = min(100.0, max(1.0, (float) ($data['carryover_percentage'] ?? 100)));
             $currentFinal = isset($updates['final_amount'])
                 ? (float) $updates['final_amount']
                 : (float) $refrend->final_amount;
             $updates['final_amount']                = number_format(
-                round($currentFinal + $baseAmount * $carryoverCount, 2),
+                round($currentFinal + $baseAmount * $carryoverCount * ($pct / 100), 2),
                 2, '.', ''
             );
             $updates['carryover_months_count']      = $carryoverCount;
             $updates['carryover_months_detail']     = $data['carryover_months_detail'] ?? null;
+            $updates['carryover_percentage']        = $pct;
             $updates['amount_pending_from_previous'] = '0.00';
         }
 

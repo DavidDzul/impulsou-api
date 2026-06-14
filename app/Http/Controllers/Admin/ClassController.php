@@ -52,7 +52,8 @@ class ClassController extends Controller
      */
     public function store(Request $request)
     {
-        $data = $request->validate(ClassModel::createRules());
+        // $data = $request->validate(ClassModel::createRules());
+        $data = $request->validate(ClassModel::createRules($request));
 
         $data['start_time'] = Carbon::createFromFormat('H:i:s', $data['start_time'])->toTimeString();
         $data['end_time']   = Carbon::createFromFormat('H:i:s', $data['end_time'])->toTimeString();

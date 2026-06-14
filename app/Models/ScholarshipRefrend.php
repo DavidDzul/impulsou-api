@@ -34,6 +34,7 @@ class ScholarshipRefrend extends Model
         'discount_amount',
         'final_amount',
         'amount_pending_from_previous',
+        'refund_amount_from_previous',
         'carryover_amount',
         'carryover_from_refrend_id',
         'snapshot_name',
@@ -58,6 +59,7 @@ class ScholarshipRefrend extends Model
         'locked_by_id',
         'carryover_months_count',
         'carryover_months_detail',
+        'carryover_percentage',
         'suspension_scope',
         'pedagogia_resolved_at',
         'pedagogia_resolved_by_id',
@@ -74,7 +76,8 @@ class ScholarshipRefrend extends Model
         'discount_amount'              => 'decimal:2',
         'final_amount'                 => 'decimal:2',
         'amount_pending_from_previous' => 'decimal:2',
-        'carryover_amount'             => 'decimal:2',
+        'refund_amount_from_previous'   => 'decimal:2',
+        'carryover_amount'              => 'decimal:2',
         'average_grade_snapshot'       => 'decimal:2',
         'missing_subjects_snapshot'    => 'integer',
         'attendance_summary_snapshot'   => 'array',
@@ -85,6 +88,7 @@ class ScholarshipRefrend extends Model
         'pedagogia_reviewed_at'        => 'datetime',
         'pedagogia_resolved_at'        => 'datetime',
         'carryover_months_count'       => 'integer',
+        'carryover_percentage'         => 'decimal:2',
         'notified_at'                  => 'datetime',
         'locked_at'                    => 'datetime',
     ];
@@ -94,7 +98,9 @@ class ScholarshipRefrend extends Model
     public function getTotalToPayAttribute(): string
     {
         return number_format(
-            (float) $this->final_amount + (float) $this->amount_pending_from_previous,
+            (float) $this->final_amount
+            + (float) $this->amount_pending_from_previous
+            + (float) ($this->refund_amount_from_previous ?? 0),
             2,
             '.',
             ''
