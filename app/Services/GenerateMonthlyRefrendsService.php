@@ -120,7 +120,7 @@ class GenerateMonthlyRefrendsService
                 'discount_percentage'          => 0,
                 'discount_amount'              => 0,
                 'final_amount'                 => $snapshot['base_amount'],
-                'amount_pending_from_previous' => $pendingFromPrevious,
+                'amount_pending_from_previous'  => $pendingFromPrevious,
                 'snapshot_name'                => $snapshot['snapshot_name'],
                 'snapshot_generation'          => $snapshot['snapshot_generation'],
                 'snapshot_generation_id'       => $snapshot['snapshot_generation_id'] ?? null,
@@ -178,10 +178,10 @@ class GenerateMonthlyRefrendsService
     }
 
     /**
-     * Builds a light attendance summary for the given period month.
-     * Used for freezing the snapshot at generation time.
+     * Builds an attendance summary snapshot for the given period.
+     * Frozen at generation time — only updated on explicit recalculate.
      *
-     * @return array{present: int, late: int, absent: int, late_unconsumed: int}
+     * @return array{present: int, late: int, absent: int, late_unconsumed: int, total: int, month_absent: int}
      */
     private function getAttendanceSummaryForPeriod(
         int $userId,
@@ -192,45 +192,59 @@ class GenerateMonthlyRefrendsService
             ? Carbon::create($year, 1, 1)->toDateString()
             : Carbon::create($year, 8, 1)->toDateString();
 
+        $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
+        $periodMonthStart = "{$year}-{$monthPadded}-01";
+
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
             ->where('classes.date', '>=', $start)
             ->where('classes.date', '<=', DB::raw('CURDATE()'))
-            ->selectRaw('attendances.status, attendances.late_penalty_consumed, COUNT(*) as cnt')
-            ->groupBy('attendances.status', 'attendances.late_penalty_consumed')
+            ->selectRaw('attendances.status, COUNT(*) as cnt')
+            ->groupBy('attendances.status')
             ->get();
 
-        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_consumed' => 0];
+        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_unjustified' => 0];
 
         foreach ($rows as $row) {
             $cnt = (int) $row->cnt;
             match ($row->status) {
                 'PRESENT'           => $summary['present'] += $cnt,
-                'LATE'              => $summary['late'] += $cnt,
+                'LATE'              => [$summary['late'] += $cnt, $summary['late_unjustified'] += $cnt],
                 'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
                 'ABSENT'            => $summary['absent'] += $cnt,
                 'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
                 default             => null,
             };
-            if ($row->late_penalty_consumed) {
-                $summary['late_consumed'] += $cnt;
-            }
         }
 
+        $lateConsumed = DB::table('attendances')
+            ->join('classes', 'attendances.class_id', '=', 'classes.id')
+            ->join('scholarship_late_consumptions', 'scholarship_late_consumptions.attendance_id', '=', 'attendances.id')
+            ->where('attendances.user_id', $userId)
+            ->where('attendances.status', 'LATE')
+            ->where('classes.date', '>=', $start)
+            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->count();
+
+        $monthAbsent = DB::table('attendances')
+            ->join('classes', 'attendances.class_id', '=', 'classes.id')
+            ->where('attendances.user_id', $userId)
+            ->where('attendances.status', 'ABSENT')
+            ->where('classes.date', '>=', $periodMonthStart)
+            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->count();
+
         return [
-            'present'        => $summary['present'],
-            'late'           => $summary['late'],
-            'absent'         => $summary['absent'],
-            'late_unconsumed' => max(0, $summary['late'] - $summary['late_consumed']),
+            'present'         => $summary['present'],
+            'late'            => $summary['late'],
+            'absent'          => $summary['absent'],
+            'late_unconsumed' => max(0, $summary['late_unjustified'] - $lateConsumed),
+            'total'           => $summary['present'] + $summary['late'] + $summary['absent'],
+            'month_absent'    => (int) $monthAbsent,
         ];
     }
 
-    /**
-     * Suma los montos finales de todos los refrendos WITHHELD previos del becario
-     * que aún no han sido liberados (no tienen un refrendo PAID posterior).
-     * Retorna el total acumulado pendiente.
-     */
     private function calculatePendingCarryover(int $userId, int $year, int $month): float
     {
         // Obtener refrendos WITHHELD anteriores al periodo actual

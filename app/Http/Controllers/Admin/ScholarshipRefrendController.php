@@ -17,6 +17,7 @@ use App\Enums\RefrendStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
 use App\Models\Attendance;
+use App\Models\ScholarshipLateConsumption;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendIncident;
@@ -242,12 +243,18 @@ class ScholarshipRefrendController extends Controller
             Carbon::create($year, $month, 1)
         );
 
+        $consumedSet = array_flip(
+            ScholarshipLateConsumption::whereIn('attendance_id', $attendances->pluck('id')->all())
+                ->pluck('attendance_id')
+                ->all()
+        );
+
         $summary = [
             'total'               => $attendances->count(),
             'present'             => $attendances->where('status', 'PRESENT')->count(),
             'late'                => $attendances->where('status', 'LATE')->count(),
             'late_justified'      => $attendances->where('status', 'JUSTIFIED_LATE')->count(),
-            'late_consumed'       => $attendances->where('late_penalty_consumed', true)->count(),
+            'late_consumed'       => count($consumedSet),
             'late_unconsumed'     => $unconsumedLates->count(),
             'absent_unjustified'  => $attendances->where('status', 'ABSENT')->count(),
             'absent_justified'    => $attendances->whereIn('status', ['JUSTIFIED', 'JUSTIFIED_ABSENCE'])->count(),
@@ -257,7 +264,7 @@ class ScholarshipRefrendController extends Controller
                 'id'                    => $a->id,
                 'class_date'            => $a->class?->date,
                 'status'                => $a->status,
-                'late_penalty_consumed' => $a->late_penalty_consumed,
+                'late_penalty_consumed' => array_key_exists($a->id, $consumedSet),
             ])->sortBy('class_date')->values(),
         ];
 
@@ -327,12 +334,14 @@ class ScholarshipRefrendController extends Controller
     public function recordSituation(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
         $data = $request->validate([
-            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO',
+            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL',
             'resolution_cause'        => 'nullable|string|max:200',
-            'resolution_notes'        => 'nullable|string|max:1000',
+            'resolution_notes'        => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|string|max:1000',
             'suspension_percentage'   => 'required_if:resolution_type,SUSPENDIDA|nullable|numeric|in:25,30,50,65,75,100',
-            'carryover_months_count'  => 'nullable|integer|min:1|max:12',
-            'carryover_months_detail' => 'nullable|string|max:500',
+            'refund_amount'           => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|numeric|min:0.01',
+            'carryover_months_count'   => 'nullable|integer|min:1|max:12',
+            'carryover_months_detail'  => 'nullable|string|max:500',
+            'carryover_percentage'     => 'nullable|numeric|min:1|max:100',
         ]);
 
         try {

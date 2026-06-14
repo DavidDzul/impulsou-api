@@ -27,7 +27,6 @@ class User2AttendanceSeeder extends Seeder
                 'class_id'     => $classId,
                 'status'       => $status,
                 'class_status' => 'COMPLETED',
-                'late_penalty_consumed' => false,
                 'created_at'   => now(),
                 'updated_at'   => now(),
             ];

@@ -98,11 +98,6 @@ class AttendancePenaltyService
                 'attendance_id'                   => $attendance->id,
                 'created_at'                      => now(),
             ]);
-
-            $attendance->update([
-                'late_penalty_consumed'              => true,
-                'late_penalty_consumed_refrend_id'   => $refrend->id,
-            ]);
         }
 
         return $discount;

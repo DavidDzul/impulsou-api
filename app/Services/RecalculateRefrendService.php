@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Enums\DiscountType;
-use App\Models\Attendance;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendDiscount;
@@ -60,24 +59,10 @@ class RecalculateRefrendService
                 'final_amount'                => $snapshot['base_amount'],
             ]);
 
-            // 2. Remove RETARDOS discounts and unmark consumed attendances.
-            // Reset directly by refrend_id first so orphaned flags (pivot deleted manually)
-            // are always cleared regardless of pivot state.
-            Attendance::where('user_id', $refrend->user_id)
-                ->where('late_penalty_consumed_refrend_id', $refrend->id)
-                ->update([
-                    'late_penalty_consumed'            => false,
-                    'late_penalty_consumed_refrend_id' => null,
-                ]);
-
+            // 2. Remove RETARDOS discounts (cascade removes late consumptions automatically).
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
                 ->where('discount_type', DiscountType::RETARDOS->value)
-                ->with('lateConsumptions')
-                ->get()
-                ->each(function ($discount) {
-                    $discount->lateConsumptions()->delete();
-                    $discount->delete();
-                });
+                ->delete();
 
             // 3. Remove academic and absence discounts
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
@@ -128,37 +113,56 @@ class RecalculateRefrendService
             ? Carbon::create($year, 1, 1)->toDateString()
             : Carbon::create($year, 8, 1)->toDateString();
 
+        $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
+        $periodMonthStart = "{$year}-{$monthPadded}-01";
+
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
             ->where('classes.date', '>=', $start)
             ->where('classes.date', '<=', DB::raw('CURDATE()'))
-            ->selectRaw('attendances.status, attendances.late_penalty_consumed, COUNT(*) as cnt')
-            ->groupBy('attendances.status', 'attendances.late_penalty_consumed')
+            ->selectRaw('attendances.status, COUNT(*) as cnt')
+            ->groupBy('attendances.status')
             ->get();
 
-        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_consumed' => 0];
+        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_unjustified' => 0];
 
         foreach ($rows as $row) {
             $cnt = (int) $row->cnt;
             match ($row->status) {
                 'PRESENT'           => $summary['present'] += $cnt,
-                'LATE'              => $summary['late'] += $cnt,
+                'LATE'              => [$summary['late'] += $cnt, $summary['late_unjustified'] += $cnt],
                 'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
                 'ABSENT'            => $summary['absent'] += $cnt,
                 'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
                 default             => null,
             };
-            if ($row->late_penalty_consumed) {
-                $summary['late_consumed'] += $cnt;
-            }
         }
+
+        $lateConsumed = DB::table('attendances')
+            ->join('classes', 'attendances.class_id', '=', 'classes.id')
+            ->join('scholarship_late_consumptions', 'scholarship_late_consumptions.attendance_id', '=', 'attendances.id')
+            ->where('attendances.user_id', $userId)
+            ->where('attendances.status', 'LATE')
+            ->where('classes.date', '>=', $start)
+            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->count();
+
+        $monthAbsent = DB::table('attendances')
+            ->join('classes', 'attendances.class_id', '=', 'classes.id')
+            ->where('attendances.user_id', $userId)
+            ->where('attendances.status', 'ABSENT')
+            ->where('classes.date', '>=', $periodMonthStart)
+            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->count();
 
         return [
             'present'         => $summary['present'],
             'late'            => $summary['late'],
             'absent'          => $summary['absent'],
-            'late_unconsumed' => max(0, $summary['late'] - $summary['late_consumed']),
+            'late_unconsumed' => max(0, $summary['late_unjustified'] - $lateConsumed),
+            'total'           => $summary['present'] + $summary['late'] + $summary['absent'],
+            'month_absent'    => (int) $monthAbsent,
         ];
     }
 }

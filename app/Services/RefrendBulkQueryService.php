@@ -61,6 +61,7 @@ class RefrendBulkQueryService
                 'r.discount_amount',
                 'r.final_amount',
                 'r.amount_pending_from_previous',
+                'r.refund_amount_from_previous',
                 'r.snapshot_name',
                 'r.snapshot_generation',
                 'r.snapshot_generation_id',
@@ -79,6 +80,7 @@ class RefrendBulkQueryService
                 'r.notified_at',
                 'r.notification_method',
                 'r.attendance_penalty_override',
+                'r.attendance_summary_snapshot',
                 'r.created_at',
                 'r.updated_at',
             ]);
@@ -96,36 +98,6 @@ class RefrendBulkQueryService
         }
 
         $userIds = $refrends->pluck('user_id')->unique()->values()->all();
-
-        // ── Attendance aggregates ──────────────────────────────────────────
-        // Semester-level: from semester start to today (for lates + totals).
-        // Month-level: from period month start to today (for absence penalty trigger).
-        $semesterStart  = $month <= 7 ? "{$year}-01-01" : "{$year}-08-01";
-        $monthPadded    = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
-        $periodMonthStart = "{$year}-{$monthPadded}-01";
-
-        $attendanceRows = DB::table('attendances as a')
-            ->join('classes as c', 'c.id', '=', 'a.class_id')
-            ->whereIn('a.user_id', $userIds)
-            ->where('c.date', '>=', $semesterStart)
-            ->where('c.date', '<=', DB::raw('CURDATE()'))
-            ->select([
-                'a.user_id',
-                DB::raw("SUM(CASE WHEN a.status = 'PRESENT' THEN 1 ELSE 0 END) as present_count"),
-                DB::raw("SUM(CASE WHEN a.status = 'LATE' THEN 1 ELSE 0 END) as late_count"),
-                DB::raw("SUM(CASE WHEN a.status = 'JUSTIFIED_LATE' THEN 1 ELSE 0 END) as late_justified_count"),
-                DB::raw("SUM(CASE WHEN a.status = 'LATE' AND a.late_penalty_consumed = 1 THEN 1 ELSE 0 END) as late_consumed_count"),
-                DB::raw("SUM(CASE WHEN a.status = 'LATE' AND a.late_penalty_consumed = 0 THEN 1 ELSE 0 END) as late_unconsumed_count"),
-                DB::raw("SUM(CASE WHEN a.status = 'ABSENT' THEN 1 ELSE 0 END) as absent_count"),
-                DB::raw("SUM(CASE WHEN a.status = 'JUSTIFIED_ABSENCE' THEN 1 ELSE 0 END) as absent_justified_count"),
-                DB::raw("COUNT(*) as total_count"),
-                // Month-level unjustified absences — direct payment suspension trigger.
-                DB::raw("SUM(CASE WHEN a.status = 'ABSENT' AND c.date >= '{$periodMonthStart}' THEN 1 ELSE 0 END) as month_absent_count"),
-            ])
-            ->groupBy('a.user_id')
-            ->get()
-            ->keyBy('user_id');
-
 
         // ── Latest semester grade per user ─────────────────────────────────
         // Pick the most recent semester grade (highest year, then period desc)
@@ -170,8 +142,8 @@ class RefrendBulkQueryService
             ->map(fn($rows) => $rows->first());
 
         // ── Assemble rows ──────────────────────────────────────────────────
-        $rows = $refrends->map(function ($r) use ($attendanceRows, $gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts) {
-            $att          = $attendanceRows->get($r->user_id);
+        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts) {
+            $snap         = $r->attendance_summary_snapshot ? json_decode($r->attendance_summary_snapshot, true) : null;
             $gradeRecord  = $gradeRows->get($r->user_id);
             $incident     = $firstIncidents->get($r->id);
             $grade        = $gradeRecord ? (float) $gradeRecord->grade : null;
@@ -204,7 +176,8 @@ class RefrendBulkQueryService
                 'discount_amount'          => $r->discount_amount,
                 'final_amount'             => $r->final_amount,
                 'amount_pending_from_previous' => $r->amount_pending_from_previous,
-                'total_to_pay'             => (float) $r->final_amount + (float) ($r->amount_pending_from_previous ?? 0),
+                'refund_amount_from_previous'   => $r->refund_amount_from_previous ?? '0.00',
+                'total_to_pay'             => (float) $r->final_amount + (float) ($r->amount_pending_from_previous ?? 0) + (float) ($r->refund_amount_from_previous ?? 0),
                 'snapshot_name'            => $r->snapshot_name,
                 'snapshot_generation'      => $r->snapshot_generation,
                 'snapshot_generation_id'   => $r->snapshot_generation_id,
@@ -228,14 +201,14 @@ class RefrendBulkQueryService
 
             return [
                 'refrend'                       => $refrend,
-                'attendance_present'            => (int) ($att->present_count ?? 0),
-                'attendance_late'               => (int) ($att->late_count ?? 0),
-                'attendance_late_justified'     => (int) ($att->late_justified_count ?? 0),
-                'attendance_late_consumed'      => (int) ($att->late_consumed_count ?? 0),
-                'attendance_late_unconsumed'    => (int) ($att->late_unconsumed_count ?? 0),
-                'attendance_absent'             => (int) ($att->absent_count ?? 0),
-                'attendance_absent_justified'   => (int) ($att->absent_justified_count ?? 0),
-                'attendance_total'              => (int) ($att->total_count ?? 0),
+                'attendance_present'            => (int) ($snap['present'] ?? 0),
+                'attendance_late'               => (int) ($snap['late'] ?? 0),
+                'attendance_late_justified'     => 0,
+                'attendance_late_consumed'      => 0,
+                'attendance_late_unconsumed'    => (int) ($snap['late_unconsumed'] ?? 0),
+                'attendance_absent'             => (int) ($snap['absent'] ?? 0),
+                'attendance_absent_justified'   => 0,
+                'attendance_total'              => (int) ($snap['total'] ?? 0),
                 'last_grade'                    => $grade !== null ? number_format($grade, 2) : null,
                 'academic_status'               => $academicStatus,
                 'active_discount_pct'           => $r->discount_percentage,
@@ -244,8 +217,8 @@ class RefrendBulkQueryService
                 'incident_description'          => $incident?->description,
                 'incident_category'             => $incident?->incident_category,
                 'incident_type'                 => $incident?->incident_type,
-                'semester_lates_unconsumed'     => (int) ($att->late_unconsumed_count ?? 0),
-                'month_absent'                  => (int) ($att->month_absent_count ?? 0),
+                'semester_lates_unconsumed'     => (int) ($snap['late_unconsumed'] ?? 0),
+                'month_absent'                  => (int) ($snap['month_absent'] ?? 0),
                 'has_retardos_discount'         => $discTypes->contains('RETARDOS'),
                 'has_falta_discount'            => $discTypes->contains('FALTA_INJUSTIFICADA'),
             ];

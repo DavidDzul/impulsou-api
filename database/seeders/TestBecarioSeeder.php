@@ -120,7 +120,7 @@ class TestBecarioSeeder extends Seeder
 
                 if ($exists) continue;
 
-                [$status, $checkIn, $checkOut, $latePenaltyConsumed] = $this->resolveCode($code);
+                [$status, $checkIn, $checkOut] = $this->resolveCode($code);
 
                 DB::table('attendances')->insert([
                     'user_id'                          => $userId,
@@ -128,11 +128,9 @@ class TestBecarioSeeder extends Seeder
                     'check_in'                         => $checkIn,
                     'check_out'                        => $checkOut,
                     'status'                           => $status,
-                    'class_status'                     => 'COMPLETED',
-                    'observations'                     => null,
-                    'late_penalty_consumed'            => $latePenaltyConsumed,
-                    'late_penalty_consumed_refrend_id' => null,
-                    'created_at'                       => now(),
+                    'class_status' => 'COMPLETED',
+                    'observations' => null,
+                    'created_at'   => now(),
                     'updated_at'                       => now(),
                 ]);
             }
@@ -146,12 +144,12 @@ class TestBecarioSeeder extends Seeder
     private function resolveCode(string $code): array
     {
         return match ($code) {
-            'P'  => ['PRESENT',           '09:02:00', '11:00:00', false],
-            'A'  => ['ABSENT',            null,       null,       false],
-            'AJ' => ['JUSTIFIED_ABSENCE', null,       null,       false],
-            'L'  => ['LATE',              '09:20:00', '11:00:00', false],
-            'LJ' => ['JUSTIFIED_LATE',    '09:15:00', '11:00:00', false],
-            default => ['PRESENT',        '09:02:00', '11:00:00', false],
+            'P'  => ['PRESENT',           '09:02:00', '11:00:00'],
+            'A'  => ['ABSENT',            null,       null      ],
+            'AJ' => ['JUSTIFIED_ABSENCE', null,       null      ],
+            'L'  => ['LATE',              '09:20:00', '11:00:00'],
+            'LJ' => ['JUSTIFIED_LATE',    '09:15:00', '11:00:00'],
+            default => ['PRESENT',        '09:02:00', '11:00:00'],
         };
     }
 

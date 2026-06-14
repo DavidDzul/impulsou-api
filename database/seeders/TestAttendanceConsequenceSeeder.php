@@ -164,8 +164,6 @@ class TestAttendanceConsequenceSeeder extends Seeder
                 'status'                => $status,
                 'class_status'          => 'COMPLETED',
                 'observations'          => null,
-                'late_penalty_consumed' => false,
-                'late_penalty_consumed_refrend_id' => null,
                 'created_at'            => now(),
                 'updated_at'            => now(),
             ]);

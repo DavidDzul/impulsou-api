@@ -128,20 +128,18 @@ class ClassAttendanceSeeder extends Seeder
 
     private function insertAttendance(int $classId, string $status): void
     {
-        [$checkIn, $checkOut, $latePenaltyConsumed] = $this->checkInOutFor($status);
+        [$checkIn, $checkOut] = $this->checkInOutFor($status);
 
         DB::table('attendances')->insert([
-            'user_id'                          => self::USER_ID,
-            'class_id'                         => $classId,
-            'check_in'                         => $checkIn,
-            'check_out'                        => $checkOut,
-            'status'                           => $status,
-            'class_status'                     => 'COMPLETED',
-            'observations'                     => null,
-            'late_penalty_consumed'            => $latePenaltyConsumed,
-            'late_penalty_consumed_refrend_id' => null,
-            'created_at'                       => now(),
-            'updated_at'                       => now(),
+            'user_id'      => self::USER_ID,
+            'class_id'     => $classId,
+            'check_in'     => $checkIn,
+            'check_out'    => $checkOut,
+            'status'       => $status,
+            'class_status' => 'COMPLETED',
+            'observations' => null,
+            'created_at'   => now(),
+            'updated_at'   => now(),
         ]);
     }
 
@@ -182,9 +180,8 @@ class ClassAttendanceSeeder extends Seeder
 
     private function checkInOutFor(string $status): array
     {
-        $checkIn             = null;
-        $checkOut            = null;
-        $latePenaltyConsumed = false;
+        $checkIn  = null;
+        $checkOut = null;
 
         switch ($status) {
             case 'PRESENT':
@@ -196,7 +193,6 @@ class ClassAttendanceSeeder extends Seeder
                 $minutes  = rand(10, 45);
                 $checkIn  = sprintf('09:%02d:00', $minutes);
                 $checkOut = '11:00:00';
-                $latePenaltyConsumed = (bool) rand(0, 1);
                 break;
 
             case 'JUSTIFIED_LATE':
@@ -206,6 +202,6 @@ class ClassAttendanceSeeder extends Seeder
                 break;
         }
 
-        return [$checkIn, $checkOut, $latePenaltyConsumed];
+        return [$checkIn, $checkOut];
     }
 }

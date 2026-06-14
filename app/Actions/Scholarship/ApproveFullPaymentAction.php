@@ -3,7 +3,6 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\DiscountType;
-use App\Models\Attendance;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendDiscount;
 use App\Services\ScholarshipCalculationService;
@@ -31,22 +30,7 @@ class ApproveFullPaymentAction
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $userId, $old) {
-            // 1. Un-consume any lates linked to RETARDOS discounts.
-            $retardosDiscounts = ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
-                ->where('discount_type', DiscountType::RETARDOS->value)
-                ->with('lateConsumptions')
-                ->get();
-
-            foreach ($retardosDiscounts as $discount) {
-                foreach ($discount->lateConsumptions as $consumption) {
-                    Attendance::where('id', $consumption->attendance_id)->update([
-                        'late_penalty_consumed'            => false,
-                        'late_penalty_consumed_refrend_id' => null,
-                    ]);
-                }
-            }
-
-            // 2. Delete all automatic discounts (cascade removes late consumptions).
+            // 1. Delete all automatic discounts (cascade removes late consumptions).
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
                 ->whereIn('discount_type', [
                     DiscountType::RETARDOS->value,
@@ -55,10 +39,10 @@ class ApproveFullPaymentAction
                 ])
                 ->delete();
 
-            // 3. Recalculate (final_amount = base_amount with no discounts left).
+            // 2. Recalculate (final_amount = base_amount with no discounts left).
             $fresh = $this->calculator->recalculate($refrend->fresh());
 
-            // 4. Advance to LISTO_PARA_PAGO.
+            // 3. Advance to LISTO_PARA_PAGO.
             $fresh->update([
                 'workflow_status'         => 'LISTO_PARA_PAGO',
                 'resolution_type'         => 'BECA_MES',
