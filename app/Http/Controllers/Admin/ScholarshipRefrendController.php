@@ -263,7 +263,9 @@ class ScholarshipRefrendController extends Controller
             'records'             => $attendances->map(fn($a) => [
                 'id'                    => $a->id,
                 'class_date'            => $a->class?->date,
+                'class_name'            => $a->class?->name,
                 'status'                => $a->status,
+                'observations'          => $a->observations,
                 'late_penalty_consumed' => array_key_exists($a->id, $consumedSet),
             ])->sortBy('class_date')->values(),
         ];
