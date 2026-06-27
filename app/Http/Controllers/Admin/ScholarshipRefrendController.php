@@ -282,7 +282,7 @@ class ScholarshipRefrendController extends Controller
             'year'                  => 'required|integer|min:2020|max:2100',
             'month'                 => 'required|integer|min:1|max:12',
             'campus'                => 'required|string|max:20',
-            'generation_id'         => 'required|integer|exists:generations,id',
+            'generation_id'         => 'nullable|integer|exists:generations,id',
             'page'          => 'nullable|integer|min:1',
             'per_page'      => 'nullable|integer|min:1|max:500',
         ]);
@@ -291,7 +291,7 @@ class ScholarshipRefrendController extends Controller
             $data['year'],
             $data['month'],
             $data['campus'],
-            (int) $data['generation_id'],
+            isset($data['generation_id']) ? (int) $data['generation_id'] : null,
             $data['page'] ?? 1,
             $data['per_page'] ?? 200,
         );
