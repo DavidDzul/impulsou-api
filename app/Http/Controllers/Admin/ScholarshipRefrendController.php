@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Actions\Scholarship\ApproveAsIsAction;
 use App\Actions\Scholarship\ApproveFullPaymentAction;
 use App\Actions\Scholarship\ApproveRefrendAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
@@ -304,18 +303,6 @@ class ScholarshipRefrendController extends Controller
     }
 
     // ── New workflow endpoints ─────────────────────────────────────────────────
-
-    /** Advances to LISTO_PARA_PAGO without modifying the current final_amount. */
-    public function approveAsIs(ScholarshipRefrend $refrend): JsonResponse
-    {
-        try {
-            $updated = app(ApproveAsIsAction::class)->execute($refrend, auth()->id());
-        } catch (\DomainException $e) {
-            return response()->json(['res' => false, 'message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['res' => true, 'data' => $updated]);
-    }
 
     /** Removes all auto-discounts, forces final = base, advances to LISTO_PARA_PAGO. */
     public function approveFullPayment(ScholarshipRefrend $refrend): JsonResponse

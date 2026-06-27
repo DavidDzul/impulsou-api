@@ -23,8 +23,8 @@ class ApproveFullPaymentAction
      */
     public function execute(ScholarshipRefrend $refrend, int $userId): ScholarshipRefrend
     {
-        if ($refrend->workflow_status !== 'DRAFT') {
-            throw new \DomainException('Solo se puede aplicar "Pago al 100%" en estado DRAFT.');
+        if (!in_array($refrend->workflow_status, ['DRAFT', 'CON_INCIDENCIA'])) {
+            throw new \DomainException('Solo se puede aplicar "Pago al 100%" en estado DRAFT o CON_INCIDENCIA.');
         }
 
         $old = $this->logging->snapshotRefrend($refrend);
