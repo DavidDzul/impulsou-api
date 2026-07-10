@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ScholarshipType;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,7 @@ class ScholarshipProfile extends Model
         'user_id',
         'scholarship_type',
         'monthly_amount',
+        'monto_apoyo',
         'active_discount_percentage',
         'discount_reason',
         'discount_valid_until',
@@ -33,11 +35,25 @@ class ScholarshipProfile extends Model
     protected $casts = [
         'scholarship_type'           => ScholarshipType::class,
         'monthly_amount'             => 'decimal:2',
+        'monto_apoyo'                => 'decimal:2',
         'active_discount_percentage' => 'decimal:2',
         'discount_valid_until'       => 'date',
         'reticula_start_date'        => 'date',
         'reticula_end_date'          => 'date',
     ];
+
+    protected $appends = ['egreso_administrativo'];
+
+    /**
+     * Fecha límite administrativa: fin de retícula + 2 meses de gracia.
+     * Null si no hay fecha de fin de retícula. No es columna de BD.
+     */
+    public function getEgresoAdministrativoAttribute(): ?string
+    {
+        return $this->reticula_end_date
+            ? Carbon::parse($this->reticula_end_date)->addMonths(2)->toDateString()
+            : null;
+    }
 
     public static function createRules(): array
     {

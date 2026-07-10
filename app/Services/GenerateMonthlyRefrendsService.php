@@ -105,15 +105,41 @@ class GenerateMonthlyRefrendsService
             $month
         );
 
-        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious, $lastGrade, $attendanceSummary) {
+        $hasProfileDiscount = isset($snapshot['snapshot_discount_percentage'])
+            && $snapshot['snapshot_discount_percentage'] !== null
+            && (float) $snapshot['snapshot_discount_percentage'] > 0;
+
+        $initialWorkflowStatus = $hasProfileDiscount ? 'CON_INCIDENCIA' : 'DRAFT';
+        $incidentDescription   = null;
+
+        if ($hasProfileDiscount) {
+            $pct        = $snapshot['snapshot_discount_percentage'];
+            $reason     = $snapshot['snapshot_discount_reason'] ?? null;
+            $validUntil = $profile->discount_valid_until
+                ? Carbon::parse($profile->discount_valid_until)->format('d/m/Y')
+                : null;
+
+            $parts = ["Descuento académico del {$pct}%"];
+            if ($validUntil) {
+                $parts[] = "vigente hasta {$validUntil}";
+            }
+            if ($reason) {
+                $parts[] = "Motivo: {$reason}";
+            }
+            $incidentDescription = implode(', ', $parts) . '.';
+        }
+
+        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,
                 'period_month'                 => $month,
                 'refrend_type'                 => RefrendType::NORMAL->value,
                 'status'                       => RefrendStatus::DRAFT->value,
-                'workflow_status'              => 'DRAFT',
+                'workflow_status'              => $initialWorkflowStatus,
                 'resolution_type'              => null,
+                'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
+                'snapshot_monto_apoyo'         => $snapshot['snapshot_monto_apoyo'],
                 'base_amount'                  => $snapshot['base_amount'],
                 'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
                 'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
@@ -130,6 +156,16 @@ class GenerateMonthlyRefrendsService
                 'missing_subjects_snapshot'    => 0,
                 'attendance_summary_snapshot'  => $attendanceSummary,
             ]);
+
+            if ($hasProfileDiscount && $incidentDescription !== null) {
+                $refrend->incidents()->create([
+                    'incident_category' => 'ACADEMICO',
+                    'incident_type'     => 'DESCUENTO_PERFIL',
+                    'description'       => $incidentDescription,
+                    'priority'          => 'LOW',
+                    'created_by_id'     => null,
+                ]);
+            }
 
             // Evaluar penalizaciones automáticas de asistencia
             $user = $profile->user;
@@ -157,9 +193,13 @@ class GenerateMonthlyRefrendsService
             );
         }
 
-        if ($profile->reticula_end_date && $periodStart->gt($profile->reticula_end_date)) {
+        $egresoAdministrativo = $profile->reticula_end_date
+            ? Carbon::parse($profile->reticula_end_date)->addMonths(2)
+            : null;
+
+        if ($egresoAdministrativo && $periodStart->gt($egresoAdministrativo)) {
             throw new \DomainException(
-                "El periodo {$month}/{$year} está fuera del periodo académico. La retícula finalizó el {$profile->reticula_end_date->toDateString()}."
+                "El periodo {$month}/{$year} está fuera del periodo académico. El egreso administrativo (fin de retícula + 2 meses) venció el {$egresoAdministrativo->toDateString()}."
             );
         }
     }

@@ -24,6 +24,7 @@ class RefrendBulkQueryService
     ): array {
         // ── Base query: fetch refrends for the period ──────────────────────
         $query = DB::table('scholarship_refrends as r')
+            ->leftJoin('scholarship_profiles as sp', 'sp.user_id', '=', 'r.user_id')
             ->where('r.period_year', $year)
             ->where('r.period_month', $month);
 
@@ -54,6 +55,8 @@ class RefrendBulkQueryService
                 'r.resolution_cause',
                 'r.resolution_notes',
                 'r.suspension_percentage',
+                'r.snapshot_gross_amount',
+                'r.snapshot_monto_apoyo',
                 'r.base_amount',
                 'r.snapshot_discount_percentage',
                 'r.snapshot_discount_reason',
@@ -83,6 +86,9 @@ class RefrendBulkQueryService
                 'r.attendance_summary_snapshot',
                 'r.created_at',
                 'r.updated_at',
+                'sp.active_discount_percentage as profile_discount_pct',
+                'sp.discount_valid_until as profile_discount_valid_until',
+                'sp.discount_reason as profile_discount_reason',
             ]);
 
         if ($refrends->isEmpty()) {
@@ -169,6 +175,8 @@ class RefrendBulkQueryService
                 'resolution_cause'         => $r->resolution_cause ?? null,
                 'resolution_notes'         => $r->resolution_notes ?? null,
                 'suspension_percentage'    => $r->suspension_percentage ?? null,
+                'snapshot_gross_amount'        => $r->snapshot_gross_amount,
+                'snapshot_monto_apoyo'         => $r->snapshot_monto_apoyo,
                 'base_amount'                  => $r->base_amount,
                 'snapshot_discount_percentage' => $r->snapshot_discount_percentage ?? null,
                 'snapshot_discount_reason'     => $r->snapshot_discount_reason ?? null,
@@ -221,6 +229,9 @@ class RefrendBulkQueryService
                 'month_absent'                  => (int) ($snap['month_absent'] ?? 0),
                 'has_retardos_discount'         => $discTypes->contains('RETARDOS'),
                 'has_falta_discount'            => $discTypes->contains('FALTA_INJUSTIFICADA'),
+                'profile_discount_pct'          => $r->profile_discount_pct,
+                'profile_discount_valid_until'  => $r->profile_discount_valid_until,
+                'profile_discount_reason'       => $r->profile_discount_reason,
             ];
         })->values()->all();
 

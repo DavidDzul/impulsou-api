@@ -16,19 +16,19 @@ class ScholarshipCalculationService
      */
     public function calculateFinalAmount(ScholarshipRefrend $refrend): array
     {
-        $base = (float) $refrend->base_amount;
+        $gross       = (float) $refrend->snapshot_gross_amount;
+        $academicPct = (float) ($refrend->snapshot_discount_percentage ?? 0);
+        $base        = round($gross * (1 - $academicPct / 100), 2);
 
         $discounts = ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)->get();
 
         $totalDiscountPercentage = 0.0;
-
         foreach ($discounts as $discount) {
             if ($discount->discount_percentage !== null) {
                 $totalDiscountPercentage += (float) $discount->discount_percentage;
             }
         }
 
-        // Máximo 100% de descuento (retención total)
         $totalDiscountPercentage = min($totalDiscountPercentage, 100.0);
 
         $discountAmount = round($base * ($totalDiscountPercentage / 100), 2);
@@ -114,6 +114,7 @@ class ScholarshipCalculationService
             : null;
 
         $monthlyAmount = (float) $profile->monthly_amount;
+        $totalMonthly  = $monthlyAmount + (float) ($profile->monto_apoyo ?? 0);
         $discountPct   = $profile->active_discount_percentage !== null
             ? (float) $profile->active_discount_percentage
             : 0.0;
@@ -122,8 +123,8 @@ class ScholarshipCalculationService
             && ($profile->discount_valid_until === null || ! $profile->discount_valid_until->isPast());
 
         $baseAmount = $discountActive
-            ? round($monthlyAmount * (1 - $discountPct / 100), 2)
-            : $monthlyAmount;
+            ? round($totalMonthly * (1 - $discountPct / 100), 2)
+            : $totalMonthly;
 
         return [
             'snapshot_name'                => trim("{$user->first_name} {$user->last_name}"),
@@ -131,7 +132,9 @@ class ScholarshipCalculationService
             'snapshot_generation_id'       => $generation?->id,
             'snapshot_campus'              => $user->campus,
             'snapshot_scholarship_type'    => $profile->scholarship_type->value,
-            'base_amount'                  => $baseAmount,
+            'snapshot_gross_amount'        => $totalMonthly,
+            'snapshot_monto_apoyo'         => (float) ($profile->monto_apoyo ?? 0),
+            'base_amount'                  => $monthlyAmount,
             'snapshot_discount_percentage' => $discountActive ? $discountPct : null,
             'snapshot_discount_reason'     => $discountActive ? $profile->discount_reason : null,
         ];

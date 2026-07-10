@@ -43,21 +43,58 @@ class RecalculateRefrendService
             $snapshot  = $this->calculationService->buildSnapshot($profile);
             $lastGrade = $this->getLastSemesterGrade($refrend->user_id);
 
+            $hasProfileDiscount = isset($snapshot['snapshot_discount_percentage'])
+                && $snapshot['snapshot_discount_percentage'] !== null
+                && (float) $snapshot['snapshot_discount_percentage'] > 0;
+
+            $newWorkflowStatus   = $hasProfileDiscount ? 'CON_INCIDENCIA' : 'DRAFT';
+            $incidentDescription = null;
+
+            if ($hasProfileDiscount) {
+                $pct        = $snapshot['snapshot_discount_percentage'];
+                $reason     = $snapshot['snapshot_discount_reason'] ?? null;
+                $validUntil = $profile->discount_valid_until
+                    ? Carbon::parse($profile->discount_valid_until)->format('d/m/Y')
+                    : null;
+
+                $parts = ["Descuento académico del {$pct}%"];
+                if ($validUntil) {
+                    $parts[] = "vigente hasta {$validUntil}";
+                }
+                if ($reason) {
+                    $parts[] = "Motivo: {$reason}";
+                }
+                $incidentDescription = implode(', ', $parts) . '.';
+            }
+
             $refrend->update([
                 'snapshot_name'               => $snapshot['snapshot_name'],
                 'snapshot_generation'         => $snapshot['snapshot_generation'],
                 'snapshot_generation_id'      => $snapshot['snapshot_generation_id'] ?? null,
                 'snapshot_campus'             => $snapshot['snapshot_campus'],
                 'snapshot_scholarship_type'   => $snapshot['snapshot_scholarship_type'],
+                'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
+                'snapshot_monto_apoyo'         => $snapshot['snapshot_monto_apoyo'],
                 'base_amount'                  => $snapshot['base_amount'],
                 'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
                 'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
                 'average_grade_snapshot'       => $lastGrade,
+                'workflow_status'             => $newWorkflowStatus,
                 // Reset any manual amount override so recalculation starts clean
                 'discount_percentage'         => 0,
                 'discount_amount'             => 0,
                 'final_amount'                => $snapshot['base_amount'],
             ]);
+
+            if ($hasProfileDiscount && $incidentDescription !== null) {
+                $refrend->incidents()->create([
+                    'incident_category' => 'ACADEMICO',
+                    'incident_type'     => 'DESCUENTO_PERFIL',
+                    'description'       => $incidentDescription,
+                    'priority'          => 'LOW',
+                    'created_by_id'     => null,
+                ]);
+            }
 
             // 2. Remove RETARDOS discounts (cascade removes late consumptions automatically).
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
