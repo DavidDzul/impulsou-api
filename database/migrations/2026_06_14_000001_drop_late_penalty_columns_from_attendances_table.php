@@ -9,7 +9,12 @@ class DropLatePenaltyColumnsFromAttendancesTable extends Migration
     public function up(): void
     {
         Schema::table('attendances', function (Blueprint $table) {
-            $table->dropForeign(['late_penalty_consumed_refrend_id']);
+            // SQLite has no ALTER TABLE DROP CONSTRAINT; dropColumn() below
+            // already recreates the table via doctrine/dbal, which drops the
+            // constraint along with the column, so this step is MySQL/Postgres-only.
+            if (Schema::getConnection()->getDriverName() !== 'sqlite') {
+                $table->dropForeign(['late_penalty_consumed_refrend_id']);
+            }
             $table->dropColumn(['late_penalty_consumed', 'late_penalty_consumed_refrend_id']);
         });
     }
