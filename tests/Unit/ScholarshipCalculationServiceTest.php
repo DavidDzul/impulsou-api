@@ -119,4 +119,55 @@ class ScholarshipCalculationServiceTest extends TestCase
 
         $this->assertNull($discount);
     }
+
+    // ── S-DESC-04: active_discount_percentage set but discount_valid_until null ──
+    //
+    // Regression guard: a discount is a TEMPORARY retention. Historically, a
+    // null discount_valid_until was treated as "no expiry" (always active)
+    // instead of invalid/inactive data — this must never apply indefinitely.
+
+    /** @test */
+    public function no_discount_created_when_discount_valid_until_is_null(): void
+    {
+        $profile = $this->makeProfile([
+            'discount_reason'      => 'Baja calificación',
+            'discount_valid_until' => null,
+        ]);
+        $refrend = $this->makeRefrend($profile->user_id);
+
+        $discount = $this->service->applyAcademicDiscount($refrend, $profile);
+
+        $this->assertNull($discount);
+    }
+
+    // ── S-DESC-05: buildSnapshot mirrors the same rule ────────────────────────
+
+    /** @test */
+    public function snapshot_discount_is_inactive_when_discount_valid_until_is_null(): void
+    {
+        $profile = $this->makeProfile([
+            'discount_reason'      => 'Baja calificación',
+            'discount_valid_until' => null,
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile);
+
+        $this->assertNull($snapshot['snapshot_discount_percentage']);
+        $this->assertNull($snapshot['snapshot_discount_reason']);
+    }
+
+    /** @test */
+    public function snapshot_discount_is_active_when_discount_valid_until_is_in_the_future(): void
+    {
+        $profile = $this->makeProfile([
+            'active_discount_percentage' => 15.00,
+            'discount_reason'            => 'Baja calificación',
+            'discount_valid_until'       => Carbon::tomorrow()->toDateString(),
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile);
+
+        $this->assertSame(15.0, $snapshot['snapshot_discount_percentage']);
+        $this->assertSame('Baja calificación', $snapshot['snapshot_discount_reason']);
+    }
 }

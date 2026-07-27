@@ -21,7 +21,7 @@ class StoreScholarshipProfileRequest extends FormRequest
             'monthly_amount'             => 'required|numeric|min:0',
             'monto_apoyo'                => 'nullable|numeric|min:0|max:99999.99',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
-            'discount_valid_until'       => 'nullable|date',
+            'discount_valid_until'       => 'nullable|date|required_with:active_discount_percentage',
             'discount_reason'            => 'nullable|string|max:200',
         ];
     }

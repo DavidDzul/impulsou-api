@@ -59,7 +59,9 @@ class ScholarshipCalculationService
 
     /**
      * Aplica el descuento por promedio académico vigente del perfil del becario.
-     * Si el perfil tiene active_discount_percentage y discount_valid_until >= hoy, aplica.
+     * Es una retención TEMPORAL: requiere active_discount_percentage y una
+     * discount_valid_until presente y no vencida. Sin fecha registrada se
+     * trata como dato inválido/inactivo, nunca como "sin vencimiento".
      */
     public function applyAcademicDiscount(
         ScholarshipRefrend $refrend,
@@ -69,7 +71,7 @@ class ScholarshipCalculationService
             return null;
         }
 
-        if ($profile->discount_valid_until !== null && $profile->discount_valid_until->isPast()) {
+        if ($profile->discount_valid_until === null || $profile->discount_valid_until->isPast()) {
             return null;
         }
 
@@ -120,7 +122,8 @@ class ScholarshipCalculationService
             : 0.0;
 
         $discountActive = $discountPct > 0
-            && ($profile->discount_valid_until === null || ! $profile->discount_valid_until->isPast());
+            && $profile->discount_valid_until !== null
+            && ! $profile->discount_valid_until->isPast();
 
         $baseAmount = $discountActive
             ? round($totalMonthly * (1 - $discountPct / 100), 2)
