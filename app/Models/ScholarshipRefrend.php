@@ -27,6 +27,8 @@ class ScholarshipRefrend extends Model
         'resolution_cause',
         'resolution_notes',
         'suspension_percentage',
+        'withholding_mode',
+        'withholding_value',
         'snapshot_gross_amount',
         'snapshot_monto_apoyo',
         'base_amount',
@@ -37,8 +39,6 @@ class ScholarshipRefrend extends Model
         'final_amount',
         'amount_pending_from_previous',
         'refund_amount_from_previous',
-        'carryover_amount',
-        'carryover_from_refrend_id',
         'snapshot_name',
         'snapshot_generation',
         'snapshot_generation_id',
@@ -81,7 +81,7 @@ class ScholarshipRefrend extends Model
         'final_amount'                 => 'decimal:2',
         'amount_pending_from_previous' => 'decimal:2',
         'refund_amount_from_previous'   => 'decimal:2',
-        'carryover_amount'              => 'decimal:2',
+        'withholding_value'             => 'decimal:2',
         'average_grade_snapshot'       => 'decimal:2',
         'missing_subjects_snapshot'    => 'integer',
         'attendance_summary_snapshot'   => 'array',
@@ -156,11 +156,6 @@ class ScholarshipRefrend extends Model
     public function incidents(): HasMany
     {
         return $this->hasMany(ScholarshipRefrendIncident::class, 'scholarship_refrend_id');
-    }
-
-    public function carryoverSource(): BelongsTo
-    {
-        return $this->belongsTo(ScholarshipRefrend::class, 'carryover_from_refrend_id');
     }
 
     public function notifiedBy(): BelongsTo

@@ -47,9 +47,18 @@ class RecordPaymentSituationAction
                 break;
 
             case 'RETENIDA':
-                $updates['final_amount']        = '0.00';
-                $updates['discount_percentage'] = '100.00';
-                $updates['discount_amount']     = number_format($baseAmount, 2, '.', '');
+                $mode  = $data['withholding_mode'] ?? 'percentage';
+                $value = (float) ($data['withholding_value'] ?? 100);
+                $withheld = $mode === 'fixed'
+                    ? min($baseAmount, round($value, 2))
+                    : round($baseAmount * (min(100.0, max(0.0, $value)) / 100), 2);
+                $pct = $baseAmount > 0 ? round($withheld / $baseAmount * 100, 2) : 0.0;
+
+                $updates['withholding_mode']    = $mode;
+                $updates['withholding_value']   = number_format($value, 2, '.', '');
+                $updates['discount_amount']     = number_format($withheld, 2, '.', '');
+                $updates['discount_percentage'] = number_format($pct, 2, '.', '');
+                $updates['final_amount']        = number_format(round($baseAmount - $withheld, 2), 2, '.', '');
                 $updates['status']              = RefrendStatus::WITHHELD->value;
                 break;
 

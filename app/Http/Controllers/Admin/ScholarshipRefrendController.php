@@ -322,12 +322,33 @@ class ScholarshipRefrendController extends Controller
      */
     public function recordSituation(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
+        $baseAmount = (float) $refrend->base_amount;
+
         $data = $request->validate([
             'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL',
             'resolution_cause'        => 'nullable|string|max:200',
             'resolution_notes'        => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|string|max:1000',
             'suspension_percentage'   => 'required_if:resolution_type,SUSPENDIDA|nullable|numeric|in:25,30,50,65,75,100',
             'refund_amount'           => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|numeric|min:0.01',
+            'withholding_mode'        => 'required_if:resolution_type,RETENIDA|nullable|in:percentage,fixed',
+            'withholding_value'       => [
+                'required_if:resolution_type,RETENIDA',
+                'nullable',
+                'numeric',
+                'min:0.01',
+                function ($attribute, $value, $fail) use ($request, $baseAmount) {
+                    if ($request->input('resolution_type') !== 'RETENIDA' || $value === null) {
+                        return;
+                    }
+                    $mode = $request->input('withholding_mode');
+                    if ($mode === 'percentage' && (float) $value > 100) {
+                        $fail('El porcentaje de retención no puede superar 100.');
+                    }
+                    if ($mode === 'fixed' && (float) $value > $baseAmount) {
+                        $fail('El monto fijo de retención no puede superar el monto base.');
+                    }
+                },
+            ],
             'carryover_months_count'   => 'nullable|integer|min:1|max:12',
             'carryover_months_detail'  => 'nullable|string|max:500',
             'carryover_percentage'     => 'nullable|numeric|min:1|max:100',
@@ -492,7 +513,10 @@ class ScholarshipRefrendController extends Controller
 
         $refrends = ScholarshipRefrend::whereIn('id', $request->ids)
             ->where('workflow_status', 'LISTO_PARA_PAGO')
-            ->where('status', '!=', RefrendStatus::WITHHELD->value)
+            ->where(function ($q) {
+                $q->where('status', '!=', RefrendStatus::WITHHELD->value)
+                    ->orWhere('final_amount', '>', 0);
+            })
             ->get();
 
         foreach ($refrends as $refrend) {
