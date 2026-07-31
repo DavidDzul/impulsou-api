@@ -129,6 +129,59 @@ class RecordPaymentSituationActionRetenidaTest extends TestCase
     }
 
     /** @test */
+    public function withholds_from_the_profile_discounted_amount_not_raw_base_amount(): void
+    {
+        // Simulates a refrend generated with an active profile discount: gross 1000,
+        // 20% profile discount snapshotted -> the amount actually due is 800.
+        // RETENIDA must withhold from that 800, not the raw base_amount (1000).
+        $refrend = $this->makeRefrend(1000.00, [
+            'final_amount'                 => 800.00,
+            'snapshot_gross_amount'        => 1000.00,
+            'snapshot_discount_percentage' => 20.00,
+        ]);
+
+        $result = $this->action->execute($refrend, [
+            'resolution_type'    => 'RETENIDA',
+            'withholding_mode'   => 'percentage',
+            'withholding_value'  => 25,
+            'resolution_cause'   => 'BAJO_PROMEDIO',
+        ], $refrend->user_id);
+
+        $this->assertSame('200.00', $result->discount_amount);
+        $this->assertSame('600.00', $result->final_amount);
+        $this->assertSame('1000.00', $result->base_amount);
+    }
+
+    /** @test */
+    public function re_resolving_as_beca_mes_after_retenida_restores_the_discounted_amount_not_the_raw_base(): void
+    {
+        // Regression guard: once a refrend is WITHHELD, final_amount no longer
+        // reflects "amount due with only the profile discount" — it reflects the
+        // withholding outcome. Re-resolving to BECA_MES must recompute from the
+        // stable snapshot reference, not from the already-mutated final_amount,
+        // and must NOT fall back to the raw base_amount either.
+        $refrend = $this->makeRefrend(1000.00, [
+            'final_amount'                 => 800.00,
+            'snapshot_gross_amount'        => 1000.00,
+            'snapshot_discount_percentage' => 20.00,
+        ]);
+
+        $this->action->execute($refrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 25,
+            'resolution_cause'  => 'BAJO_PROMEDIO',
+        ], $refrend->user_id);
+
+        $result = $this->action->execute($refrend->fresh(), [
+            'resolution_type' => 'BECA_MES',
+        ], $refrend->user_id);
+
+        $this->assertSame('800.00', $result->final_amount);
+        $this->assertSame('0.00', $result->discount_amount);
+    }
+
+    /** @test */
     public function defaults_to_full_percentage_retention_for_backward_compatibility(): void
     {
         $refrend = $this->makeRefrend(1000.00);

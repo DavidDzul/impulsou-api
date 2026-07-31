@@ -21,8 +21,17 @@ class RecordPaymentSituationAction
             );
         }
 
-        $type       = $data['resolution_type'];
-        $baseAmount = (float) $refrend->base_amount;
+        $type = $data['resolution_type'];
+
+        // Amount actually due this month: gross snapshot with the active profile
+        // discount applied — mirrors ScholarshipCalculationService::calculateFinalAmount's
+        // $base. NOT the raw base_amount (ignores the profile discount) and NOT
+        // $refrend->final_amount (may already carry a previous resolution's effect on
+        // this same refrend, which would compound errors on re-resolution). Falls back
+        // to base_amount when snapshot_gross_amount isn't set (legacy rows).
+        $gross       = (float) ($refrend->snapshot_gross_amount ?? $refrend->base_amount);
+        $academicPct = (float) ($refrend->snapshot_discount_percentage ?? 0);
+        $dueAmount   = round($gross * (1 - $academicPct / 100), 2);
 
         $updates = [
             'workflow_status'         => 'LISTO_PARA_PAGO',
@@ -35,7 +44,7 @@ class RecordPaymentSituationAction
 
         switch ($type) {
             case 'BECA_MES':
-                $updates['final_amount']        = number_format($baseAmount, 2, '.', '');
+                $updates['final_amount']        = number_format($dueAmount, 2, '.', '');
                 $updates['discount_percentage'] = '0.00';
                 $updates['discount_amount']     = '0.00';
                 break;
@@ -43,49 +52,49 @@ class RecordPaymentSituationAction
             case 'SIN_PAGO':
                 $updates['final_amount']        = '0.00';
                 $updates['discount_percentage'] = '100.00';
-                $updates['discount_amount']     = number_format($baseAmount, 2, '.', '');
+                $updates['discount_amount']     = number_format($dueAmount, 2, '.', '');
                 break;
 
             case 'RETENIDA':
                 $mode  = $data['withholding_mode'] ?? 'percentage';
                 $value = (float) ($data['withholding_value'] ?? 100);
                 $withheld = $mode === 'fixed'
-                    ? min($baseAmount, round($value, 2))
-                    : round($baseAmount * (min(100.0, max(0.0, $value)) / 100), 2);
-                $pct = $baseAmount > 0 ? round($withheld / $baseAmount * 100, 2) : 0.0;
+                    ? min($dueAmount, round($value, 2))
+                    : round($dueAmount * (min(100.0, max(0.0, $value)) / 100), 2);
+                $pct = $dueAmount > 0 ? round($withheld / $dueAmount * 100, 2) : 0.0;
 
                 $updates['withholding_mode']    = $mode;
                 $updates['withholding_value']   = number_format($value, 2, '.', '');
                 $updates['discount_amount']     = number_format($withheld, 2, '.', '');
                 $updates['discount_percentage'] = number_format($pct, 2, '.', '');
-                $updates['final_amount']        = number_format(round($baseAmount - $withheld, 2), 2, '.', '');
+                $updates['final_amount']        = number_format(round($dueAmount - $withheld, 2), 2, '.', '');
                 $updates['status']              = RefrendStatus::WITHHELD->value;
                 break;
 
             case 'SUSPENDIDA':
                 $pct     = (float) ($data['suspension_percentage'] ?? 0);
-                $reduced = round($baseAmount * (1 - $pct / 100), 2);
+                $reduced = round($dueAmount * (1 - $pct / 100), 2);
                 $updates['suspension_percentage'] = $pct;
                 $updates['final_amount']          = number_format($reduced, 2, '.', '');
                 $updates['discount_percentage']   = number_format($pct, 2, '.', '');
-                $updates['discount_amount']       = number_format(round($baseAmount * $pct / 100, 2), 2, '.', '');
+                $updates['discount_amount']       = number_format(round($dueAmount * $pct / 100, 2), 2, '.', '');
                 break;
 
             case 'BAJA_DEFINITIVA':
                 $updates['final_amount']        = '0.00';
                 $updates['discount_percentage'] = '100.00';
-                $updates['discount_amount']     = number_format($baseAmount, 2, '.', '');
+                $updates['discount_amount']     = number_format($dueAmount, 2, '.', '');
                 $updates['status']              = RefrendStatus::CANCELLED->value;
                 break;
 
             case 'EGRESADO':
-                $updates['final_amount']        = number_format($baseAmount, 2, '.', '');
+                $updates['final_amount']        = number_format($dueAmount, 2, '.', '');
                 $updates['discount_percentage'] = '0.00';
                 $updates['discount_amount']     = '0.00';
                 break;
 
             case 'REEMBOLSO_PARCIAL':
-                $updates['final_amount']                = number_format($baseAmount, 2, '.', '');
+                $updates['final_amount']                = number_format($dueAmount, 2, '.', '');
                 $updates['discount_percentage']         = '0.00';
                 $updates['discount_amount']             = '0.00';
                 $updates['refund_amount_from_previous'] = number_format((float) ($data['refund_amount'] ?? 0), 2, '.', '');
@@ -103,7 +112,7 @@ class RecordPaymentSituationAction
                 ? (float) $updates['final_amount']
                 : (float) $refrend->final_amount;
             $updates['final_amount']                = number_format(
-                round($currentFinal + $baseAmount * $carryoverCount * ($pct / 100), 2),
+                round($currentFinal + $dueAmount * $carryoverCount * ($pct / 100), 2),
                 2, '.', ''
             );
             $updates['carryover_months_count']      = $carryoverCount;

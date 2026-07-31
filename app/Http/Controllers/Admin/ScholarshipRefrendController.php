@@ -322,7 +322,11 @@ class ScholarshipRefrendController extends Controller
      */
     public function recordSituation(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
-        $baseAmount = (float) $refrend->base_amount;
+        // Same reference amount RecordPaymentSituationAction uses: gross snapshot with
+        // the active profile discount applied, not the raw base_amount.
+        $gross       = (float) ($refrend->snapshot_gross_amount ?? $refrend->base_amount);
+        $academicPct = (float) ($refrend->snapshot_discount_percentage ?? 0);
+        $dueAmount   = round($gross * (1 - $academicPct / 100), 2);
 
         $data = $request->validate([
             'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL',
@@ -336,7 +340,7 @@ class ScholarshipRefrendController extends Controller
                 'nullable',
                 'numeric',
                 'min:0.01',
-                function ($attribute, $value, $fail) use ($request, $baseAmount) {
+                function ($attribute, $value, $fail) use ($request, $dueAmount) {
                     if ($request->input('resolution_type') !== 'RETENIDA' || $value === null) {
                         return;
                     }
@@ -344,8 +348,8 @@ class ScholarshipRefrendController extends Controller
                     if ($mode === 'percentage' && (float) $value > 100) {
                         $fail('El porcentaje de retención no puede superar 100.');
                     }
-                    if ($mode === 'fixed' && (float) $value > $baseAmount) {
-                        $fail('El monto fijo de retención no puede superar el monto base.');
+                    if ($mode === 'fixed' && (float) $value > $dueAmount) {
+                        $fail('El monto fijo de retención no puede superar el monto a pagar.');
                     }
                 },
             ],
