@@ -94,9 +94,6 @@ class GenerateMonthlyRefrendsService
         $snapshot      = $this->calculationService->buildSnapshot($profile);
         $referenceDate = Carbon::create($year, $month, 1);
 
-        // Calcular monto arrastrado de refrendos WITHHELD previos no liberados
-        $pendingFromPrevious = $this->calculatePendingCarryover($profile->user_id, $year, $month);
-
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
         $attendanceSummary = $this->getAttendanceSummaryForPeriod(
@@ -129,7 +126,7 @@ class GenerateMonthlyRefrendsService
             $incidentDescription = implode(', ', $parts) . '.';
         }
 
-        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $pendingFromPrevious, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
+        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,
@@ -146,7 +143,11 @@ class GenerateMonthlyRefrendsService
                 'discount_percentage'          => 0,
                 'discount_amount'              => 0,
                 'final_amount'                 => $snapshot['base_amount'],
-                'amount_pending_from_previous'  => $pendingFromPrevious,
+                // Replaced by the retention ledger (scholarship_withholdings):
+                // recalculating this here on every generation reinjected debt
+                // already represented by ledger rows. New refrends always start
+                // at 0; liquidation happens exclusively via withholding_payments[].
+                'amount_pending_from_previous'  => 0,
                 'snapshot_name'                => $snapshot['snapshot_name'],
                 'snapshot_generation'          => $snapshot['snapshot_generation'],
                 'snapshot_generation_id'       => $snapshot['snapshot_generation_id'] ?? null,
@@ -285,40 +286,4 @@ class GenerateMonthlyRefrendsService
         ];
     }
 
-    private function calculatePendingCarryover(int $userId, int $year, int $month): float
-    {
-        // Obtener refrendos WITHHELD anteriores al periodo actual
-        $withheld = ScholarshipRefrend::where('user_id', $userId)
-            ->where('status', RefrendStatus::WITHHELD->value)
-            ->where(function ($q) use ($year, $month) {
-                $q->where('period_year', '<', $year)
-                  ->orWhere(function ($q2) use ($year, $month) {
-                      $q2->where('period_year', $year)->where('period_month', '<', $month);
-                  });
-            })
-            ->get();
-
-        if ($withheld->isEmpty()) {
-            return 0.0;
-        }
-
-        // Descontar los que ya fueron incluidos en un refrendo anterior como arrastre
-        // (si ya existe un refrendo PAID o AUTHORIZED con amount_pending_from_previous > 0,
-        // ese arrastre ya fue cubierto).
-        $alreadyCovered = ScholarshipRefrend::where('user_id', $userId)
-            ->whereIn('status', [RefrendStatus::PAID->value, RefrendStatus::AUTHORIZED->value])
-            ->where('amount_pending_from_previous', '>', 0)
-            ->where(function ($q) use ($year, $month) {
-                $q->where('period_year', '<', $year)
-                  ->orWhere(function ($q2) use ($year, $month) {
-                      $q2->where('period_year', $year)->where('period_month', '<', $month);
-                  });
-            })
-            ->sum('amount_pending_from_previous');
-
-        $totalWithheld = $withheld->sum(fn($r) => (float) $r->base_amount);
-        $pending = max(0.0, round($totalWithheld - (float) $alreadyCovered, 2));
-
-        return $pending;
-    }
 }

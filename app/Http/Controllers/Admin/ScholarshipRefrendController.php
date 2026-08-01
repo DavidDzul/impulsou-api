@@ -353,9 +353,9 @@ class ScholarshipRefrendController extends Controller
                     }
                 },
             ],
-            'carryover_months_count'   => 'nullable|integer|min:1|max:12',
-            'carryover_months_detail'  => 'nullable|string|max:500',
-            'carryover_percentage'     => 'nullable|numeric|min:1|max:100',
+            'withholding_payments'                  => 'nullable|array|min:1',
+            'withholding_payments.*.withholding_id'  => 'required|integer|distinct|exists:scholarship_withholdings,id',
+            'withholding_payments.*.amount'          => 'required|numeric|min:0.01',
         ]);
 
         try {

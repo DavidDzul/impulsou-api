@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ScholarshipRefrend extends Model
 {
@@ -156,6 +157,18 @@ class ScholarshipRefrend extends Model
     public function incidents(): HasMany
     {
         return $this->hasMany(ScholarshipRefrendIncident::class, 'scholarship_refrend_id');
+    }
+
+    /** The retention ledger row created by THIS refrend when resolved RETENIDA. */
+    public function withholding(): HasOne
+    {
+        return $this->hasOne(ScholarshipWithholding::class, 'origin_refrend_id');
+    }
+
+    /** Ledger payments applied ON this refrend (BECA_MES liquidating retained months). */
+    public function withholdingPayments(): HasMany
+    {
+        return $this->hasMany(ScholarshipWithholdingPayment::class, 'applied_refrend_id');
     }
 
     public function notifiedBy(): BelongsTo
