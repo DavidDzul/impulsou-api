@@ -147,13 +147,36 @@ class RefrendBulkQueryService
             ->groupBy('scholarship_refrend_id')
             ->map(fn($rows) => $rows->first());
 
+        // ── Retenciones pendientes acumuladas por becario ──────────────────
+        // Agregado por lote (O(1) queries): usa el índice ['user_id','status'].
+        // El monto se emite como string decimal en el armado de la fila para no
+        // depender del tipo que devuelva el driver (MySQL: string, SQLite: float).
+        $pendingWithholdings = DB::table('scholarship_withholdings')
+            ->whereIn('user_id', $userIds)
+            ->where('status', 'PENDING')
+            ->whereColumn('paid_amount', '<', 'withheld_amount')
+            ->select(
+                'user_id',
+                DB::raw('COUNT(*) as cnt'),
+                DB::raw('SUM(withheld_amount - paid_amount) as pending_amount')
+            )
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
         // ── Assemble rows ──────────────────────────────────────────────────
-        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts) {
+        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings) {
             $snap         = $r->attendance_summary_snapshot ? json_decode($r->attendance_summary_snapshot, true) : null;
             $gradeRecord  = $gradeRows->get($r->user_id);
             $incident     = $firstIncidents->get($r->id);
             $grade        = $gradeRecord ? (float) $gradeRecord->grade : null;
             $discTypes    = $attendanceDiscounts->get($r->id)?->pluck('discount_type') ?? collect();
+
+            $withholding   = $pendingWithholdings->get($r->user_id);
+            $pendingCount  = (int) ($withholding->cnt ?? 0);
+            $pendingAmount = $pendingCount > 0
+                ? number_format(max(0, (float) $withholding->pending_amount), 2, '.', '')
+                : null;
 
             $academicStatus = $this->resolveAcademicStatus($grade, $gradeRecord !== null);
 
@@ -232,6 +255,8 @@ class RefrendBulkQueryService
                 'profile_discount_pct'          => $r->profile_discount_pct,
                 'profile_discount_valid_until'  => $r->profile_discount_valid_until,
                 'profile_discount_reason'       => $r->profile_discount_reason,
+                'pending_withholding_count'     => $pendingCount,
+                'pending_withholding_amount'    => $pendingAmount,
             ];
         })->values()->all();
 
