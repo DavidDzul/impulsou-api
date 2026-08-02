@@ -6,6 +6,7 @@ use App\Enums\RefrendStatus;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
+use App\Services\Scholarship\RefrendPaymentTotalsSyncer;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
 
@@ -13,7 +14,10 @@ class RecordPaymentSituationAction
 {
     private const ALLOWED_WORKFLOW_STATUSES = ['DRAFT', 'CON_INCIDENCIA', 'LISTO_PARA_PAGO'];
 
-    public function __construct(private ScholarshipLoggingService $logging) {}
+    public function __construct(
+        private ScholarshipLoggingService $logging,
+        private RefrendPaymentTotalsSyncer $totalsSyncer
+    ) {}
 
     public function execute(ScholarshipRefrend $refrend, array $data, int $userId): ScholarshipRefrend
     {
@@ -192,42 +196,12 @@ class RecordPaymentSituationAction
                     $withholding->recomputePaidAmount();
                 }
 
-                $this->syncRefrendPaymentTotals($refrend);
+                $this->totalsSyncer->sync($refrend);
             }
 
             $fresh = $refrend->fresh();
             $this->logging->log($refrend, 'SITUATION_RECORDED', $old, $this->logging->snapshotRefrend($fresh));
             return $fresh;
         });
-    }
-
-    /**
-     * Derives amount_pending_from_previous / carryover_months_count /
-     * carryover_months_detail from the refrend's active (non-voided)
-     * withholding-payment children. Shared by application (here) and
-     * reversal (PR4's VoidWithholdingPaymentAction) so both leave the
-     * refrend in an identically consistent state.
-     */
-    private function syncRefrendPaymentTotals(ScholarshipRefrend $refrend): void
-    {
-        $rows = ScholarshipWithholdingPayment::with('withholding')
-            ->where('applied_refrend_id', $refrend->id)
-            ->where('is_voided', false)
-            ->get();
-
-        $refrend->amount_pending_from_previous = number_format(
-            round($rows->sum(fn ($p) => (float) $p->amount), 2),
-            2,
-            '.',
-            ''
-        );
-        $refrend->carryover_months_count  = $rows->count();
-        $refrend->carryover_months_detail = $rows->map(fn ($p) => sprintf(
-            '%02d/%d: %s',
-            $p->withholding->period_month,
-            $p->withholding->period_year,
-            number_format((float) $p->amount, 2)
-        ))->implode('; ');
-        $refrend->save();
     }
 }

@@ -144,6 +144,9 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::get('users/{userId}/scholarship-refrends', [ScholarshipRefrendController::class, 'forUser']);
     Route::get('users/{userId}/attendance-summary', [ScholarshipRefrendController::class, 'attendanceSummary']);
     Route::get('users/{userId}/scholarship-withholdings', [ScholarshipWithholdingController::class, 'index']);
+    Route::prefix('scholarship-withholdings')->group(function () {
+        Route::patch('{withholding}/payments/{payment}/void', [ScholarshipWithholdingController::class, 'voidPayment']);
+    });
 
     // ── Student Documents ─────────────────────────────────────────────────────
     Route::prefix('scholarship-documents')->group(function () {

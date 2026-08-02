@@ -8,6 +8,7 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
+use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -180,5 +181,104 @@ class ScholarshipWithholdingEndpointTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['withholding_payments.0.withholding_id']);
+    }
+
+    // ── Void payment endpoint (PR4) ────────────────────────────────────────────
+
+    /** @test */
+    public function void_endpoint_rejects_missing_void_reason(): void
+    {
+        [$withholding, $payment] = $this->makeWithholdingWithOnePayment();
+
+        $response = $this->actingAs($this->admin)
+            ->patchJson("/api/admin/scholarship-withholdings/{$withholding->id}/payments/{$payment->id}/void", []);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['void_reason']);
+    }
+
+    /** @test */
+    public function void_endpoint_rejects_void_reason_shorter_than_ten_chars(): void
+    {
+        [$withholding, $payment] = $this->makeWithholdingWithOnePayment();
+
+        $response = $this->actingAs($this->admin)
+            ->patchJson("/api/admin/scholarship-withholdings/{$withholding->id}/payments/{$payment->id}/void", [
+                'void_reason' => 'corto',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['void_reason']);
+    }
+
+    /** @test */
+    public function void_endpoint_reverts_the_payment_and_restores_the_balance(): void
+    {
+        [$withholding, $payment] = $this->makeWithholdingWithOnePayment();
+
+        $response = $this->actingAs($this->admin)
+            ->patchJson("/api/admin/scholarship-withholdings/{$withholding->id}/payments/{$payment->id}/void", [
+                'void_reason' => 'Motivo suficientemente largo para pasar la validación.',
+            ]);
+
+        $response->assertStatus(200);
+        $this->assertTrue((bool) $response->json('data.is_voided'));
+
+        $withholding->refresh();
+        $this->assertSame('0.00', $withholding->paid_amount);
+        $this->assertSame('PENDING', $withholding->status);
+    }
+
+    /** @test */
+    public function void_endpoint_returns_404_when_payment_does_not_belong_to_the_url_withholding(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $this->actingAs($this->admin);
+        $action = $this->app->make(RecordPaymentSituationAction::class);
+
+        [$withholdingA, $paymentA] = $this->makeWithholdingWithOnePayment();
+
+        $originB = $this->makeRefrend($user->id, ['period_month' => 5]);
+        $action->execute($originB, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 50, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+        $withholdingB = ScholarshipWithholding::where('origin_refrend_id', $originB->id)->first();
+
+        $response = $this->actingAs($this->admin)
+            ->patchJson("/api/admin/scholarship-withholdings/{$withholdingB->id}/payments/{$paymentA->id}/void", [
+                'void_reason' => 'Motivo suficientemente largo para pasar la validación.',
+            ]);
+
+        $response->assertStatus(404);
+    }
+
+    /**
+     * @return array{0: ScholarshipWithholding, 1: ScholarshipWithholdingPayment}
+     */
+    private function makeWithholdingWithOnePayment(): array
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $this->actingAs($this->admin);
+
+        $action = $this->app->make(RecordPaymentSituationAction::class);
+        $originRefrend = $this->makeRefrend($user->id, ['period_month' => 1]);
+        $action->execute($originRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 150, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+        $withholding = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
+
+        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
+        $action->execute($payingRefrend, [
+            'resolution_type'      => 'BECA_MES',
+            'withholding_payments' => [
+                ['withholding_id' => $withholding->id, 'amount' => 150.00],
+            ],
+        ], $this->admin->id);
+
+        $payment = ScholarshipWithholdingPayment::where('withholding_id', $withholding->id)->first();
+
+        return [$withholding, $payment];
     }
 }

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Scholarship\VoidWithholdingPaymentAction;
 use App\Http\Controllers\Controller;
 use App\Models\ScholarshipWithholding;
+use App\Models\ScholarshipWithholdingPayment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -36,5 +38,33 @@ class ScholarshipWithholdingController extends Controller
             ->get();
 
         return response()->json(['res' => true, 'data' => $withholdings]);
+    }
+
+    /**
+     * Reverts a single withholding-payment child row. Requires the payment
+     * to actually belong to the withholding named in the URL — the two
+     * resource identifiers are independent path params, so a mismatched
+     * combination must not silently operate on the wrong ledger row.
+     */
+    public function voidPayment(
+        Request $request,
+        ScholarshipWithholding $withholding,
+        ScholarshipWithholdingPayment $payment
+    ): JsonResponse {
+        if ((int) $payment->withholding_id !== (int) $withholding->id) {
+            return response()->json(['res' => false, 'msg' => 'Abono no encontrado.'], 404);
+        }
+
+        $data = $request->validate([
+            'void_reason' => 'required|string|min:10|max:500',
+        ]);
+
+        try {
+            $voided = app(VoidWithholdingPaymentAction::class)->execute($payment, $data['void_reason'], auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $voided]);
     }
 }
