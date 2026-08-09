@@ -86,6 +86,19 @@ class RecalculateRefrendService
                 'final_amount'                => $snapshot['base_amount'],
             ]);
 
+            // Idempotency: this incident is machine-generated and re-derived below, so
+            // it must be cleared first — same unconditional-delete-then-reapply contract
+            // as the discount rows in steps 2 and 3. Without this, every recalculation of
+            // a becario with an active profile discount appends a duplicate (reachable via
+            // ClearRefrendResolutionAction, which sets DRAFT then calls us). The
+            // created_by_id IS NULL clause guarantees we only ever delete rows WE created
+            // and never a human-filed incident that happens to share the type.
+            $refrend->incidents()
+                ->where('incident_type', 'DESCUENTO_PERFIL')
+                ->where('is_resolved', false)
+                ->whereNull('created_by_id')
+                ->delete();
+
             if ($hasProfileDiscount && $incidentDescription !== null) {
                 $refrend->incidents()->create([
                     'incident_category' => 'ACADEMICO',
@@ -152,12 +165,18 @@ class RecalculateRefrendService
 
         $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
         $periodMonthStart = "{$year}-{$monthPadded}-01";
+        // Bound parameter instead of DB::raw('CURDATE()') — CURDATE() is MySQL-only
+        // syntax and errors ("no such function: CURDATE") against the SQLite
+        // in-memory connection used by the test suite (phpunit.xml). Same semantics
+        // in production (MySQL): "today", computed once so all three queries below
+        // agree even across a midnight rollover during a slow request.
+        $today = now()->toDateString();
 
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
             ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->where('classes.date', '<=', $today)
             ->selectRaw('attendances.status, COUNT(*) as cnt')
             ->groupBy('attendances.status')
             ->get();
@@ -182,7 +201,7 @@ class RecalculateRefrendService
             ->where('attendances.user_id', $userId)
             ->where('attendances.status', 'LATE')
             ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->where('classes.date', '<=', $today)
             ->count();
 
         $monthAbsent = DB::table('attendances')
@@ -190,7 +209,7 @@ class RecalculateRefrendService
             ->where('attendances.user_id', $userId)
             ->where('attendances.status', 'ABSENT')
             ->where('classes.date', '>=', $periodMonthStart)
-            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->where('classes.date', '<=', $today)
             ->count();
 
         return [

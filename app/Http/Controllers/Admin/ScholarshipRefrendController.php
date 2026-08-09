@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ApproveFullPaymentAction;
 use App\Actions\Scholarship\ApproveRefrendAction;
+use App\Actions\Scholarship\ClearRefrendResolutionAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
 use App\Actions\Scholarship\BulkApproveAction;
@@ -360,6 +361,22 @@ class ScholarshipRefrendController extends Controller
 
         try {
             $updated = app(RecordPaymentSituationAction::class)->execute($refrend, $data, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /**
+     * Reverts an applied payment resolution → back to DRAFT (or CON_INCIDENCIA
+     * when a profile discount is still active), re-deriving every amount and
+     * attendance penalty from live data.
+     */
+    public function clearResolution(ScholarshipRefrend $refrend): JsonResponse
+    {
+        try {
+            $updated = app(ClearRefrendResolutionAction::class)->execute($refrend, auth()->id());
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }

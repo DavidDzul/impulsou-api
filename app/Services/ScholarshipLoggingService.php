@@ -25,6 +25,9 @@ class ScholarshipLoggingService
             'pedagogia_observations'  => $refrend->pedagogia_observations,
             'notification_method' => $refrend->notification_method,
             'notified_at'         => $refrend->notified_at,
+            'resolution_type'     => $refrend->resolution_type,
+            'resolution_cause'    => $refrend->resolution_cause,
+            'resolution_notes'    => $refrend->resolution_notes,
         ];
     }
 
