@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ApproveFullPaymentAction;
-use App\Actions\Scholarship\ApproveRefrendAction;
 use App\Actions\Scholarship\ClearRefrendResolutionAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
@@ -377,20 +376,6 @@ class ScholarshipRefrendController extends Controller
     {
         try {
             $updated = app(ClearRefrendResolutionAction::class)->execute($refrend, auth()->id());
-        } catch (\DomainException $e) {
-            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['res' => true, 'data' => $updated]);
-    }
-
-    /**
-     * Atención approves a DRAFT refrend → LISTO_PARA_PAGO (no incidents).
-     */
-    public function atencionApprove(ScholarshipRefrend $refrend): JsonResponse
-    {
-        try {
-            $updated = app(ApproveRefrendAction::class)->execute($refrend, auth()->id());
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }
