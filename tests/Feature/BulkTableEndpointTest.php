@@ -7,6 +7,7 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\Generation;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipWithholding;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -259,5 +260,100 @@ class BulkTableEndpointTest extends TestCase
         $this->assertArrayHasKey('current_page', $meta);
         $this->assertArrayHasKey('last_page', $meta);
         $this->assertSame(2, $meta['total']);
+    }
+
+    // ── Pending withholding indicator (Pedagogía/Atención) ─────────────────────
+
+    /** @test */
+    public function pending_withholding_count_and_amount_are_aggregated_across_all_periods_including_current(): void
+    {
+        $user = User::factory()->create([
+            'user_type' => 'BEC_ACTIVE',
+            'campus'    => 'MERIDA',
+            'active'    => true,
+        ]);
+
+        // Refrend for the queried period (May 2026) — this is the row the
+        // bulk-table endpoint returns for this test.
+        $mayRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 5]);
+        // Two older refrends outside the queried period; their withholdings
+        // must still count toward the accumulated total (design ADR D1/D2).
+        $marRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 3]);
+        $aprRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 4]);
+
+        // 3 PENDING withholdings with a pending balance, one of them
+        // originated in the current (May) refrend itself — design ADR D2:
+        // the total includes it, it is not excluded.
+        ScholarshipWithholding::create([
+            'user_id' => $user->id, 'origin_refrend_id' => $mayRefrend->id,
+            'period_year' => 2026, 'period_month' => 5,
+            'withheld_amount' => 300.00, 'paid_amount' => 0, 'status' => 'PENDING',
+        ]);
+        ScholarshipWithholding::create([
+            'user_id' => $user->id, 'origin_refrend_id' => $marRefrend->id,
+            'period_year' => 2026, 'period_month' => 3,
+            'withheld_amount' => 150.00, 'paid_amount' => 50.00, 'status' => 'PENDING',
+        ]);
+        ScholarshipWithholding::create([
+            'user_id' => $user->id, 'origin_refrend_id' => $aprRefrend->id,
+            'period_year' => 2026, 'period_month' => 4,
+            'withheld_amount' => 200.00, 'paid_amount' => 0, 'status' => 'PENDING',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson($this->url(['campus' => 'MERIDA']));
+
+        $response->assertStatus(200);
+        $rows = $response->json('data');
+        $this->assertCount(1, $rows);
+
+        $this->assertSame(3, $rows[0]['pending_withholding_count']);
+        $this->assertSame('600.00', $rows[0]['pending_withholding_amount']);
+        $this->assertIsString($rows[0]['pending_withholding_amount']);
+    }
+
+    /** @test */
+    public function settled_withholdings_are_excluded_and_becarios_without_any_get_null_amount(): void
+    {
+        $user = User::factory()->create([
+            'user_type' => 'BEC_ACTIVE',
+            'campus'    => 'MERIDA',
+            'active'    => true,
+        ]);
+        $refrend           = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 5]);
+        $paidOriginRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 1]);
+
+        // Fully settled (status PAID, no remaining balance) — must not count.
+        ScholarshipWithholding::create([
+            'user_id' => $user->id, 'origin_refrend_id' => $paidOriginRefrend->id,
+            'period_year' => 2026, 'period_month' => 1,
+            'withheld_amount' => 100.00, 'paid_amount' => 100.00, 'status' => 'PAID',
+        ]);
+
+        $userWithoutWithholding = User::factory()->create([
+            'user_type' => 'BEC_ACTIVE',
+            'campus'    => 'MERIDA',
+            'active'    => true,
+        ]);
+        $this->makeRefrend(['user_id' => $userWithoutWithholding->id, 'period_month' => 5]);
+
+        DB::enableQueryLog();
+        $response = $this->actingAs($this->admin)
+            ->getJson($this->url(['campus' => 'MERIDA']));
+        $queryLog = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $response->assertStatus(200);
+        $rows = collect($response->json('data'))->keyBy(fn ($r) => $r['refrend']['user_id']);
+
+        $this->assertSame(0, $rows[$user->id]['pending_withholding_count']);
+        $this->assertNull($rows[$user->id]['pending_withholding_amount']);
+        $this->assertSame(0, $rows[$userWithoutWithholding->id]['pending_withholding_count']);
+        $this->assertNull($rows[$userWithoutWithholding->id]['pending_withholding_amount']);
+
+        // Aggregate is one query per batch, not one per row — bounded, not
+        // scaling with the number of becarios in the response.
+        $this->assertLessThanOrEqual(10, count($queryLog),
+            'Query count exceeded 10 — the withholding aggregate must not add a per-row query.');
     }
 }

@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\ScholarshipDocumentController;
 use App\Http\Controllers\Admin\ScholarshipProfileController;
 use App\Http\Controllers\Admin\ScholarshipRefrendController;
 use App\Http\Controllers\Admin\ScholarshipSemesterGradeController;
+use App\Http\Controllers\Admin\ScholarshipWithholdingController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
@@ -142,6 +143,10 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
 
     Route::get('users/{userId}/scholarship-refrends', [ScholarshipRefrendController::class, 'forUser']);
     Route::get('users/{userId}/attendance-summary', [ScholarshipRefrendController::class, 'attendanceSummary']);
+    Route::get('users/{userId}/scholarship-withholdings', [ScholarshipWithholdingController::class, 'index']);
+    Route::prefix('scholarship-withholdings')->group(function () {
+        Route::patch('{withholding}/payments/{payment}/void', [ScholarshipWithholdingController::class, 'voidPayment']);
+    });
 
     // ── Student Documents ─────────────────────────────────────────────────────
     Route::prefix('scholarship-documents')->group(function () {

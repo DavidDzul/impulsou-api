@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ScholarshipRefrend extends Model
 {
@@ -27,6 +28,8 @@ class ScholarshipRefrend extends Model
         'resolution_cause',
         'resolution_notes',
         'suspension_percentage',
+        'withholding_mode',
+        'withholding_value',
         'snapshot_gross_amount',
         'snapshot_monto_apoyo',
         'base_amount',
@@ -37,8 +40,6 @@ class ScholarshipRefrend extends Model
         'final_amount',
         'amount_pending_from_previous',
         'refund_amount_from_previous',
-        'carryover_amount',
-        'carryover_from_refrend_id',
         'snapshot_name',
         'snapshot_generation',
         'snapshot_generation_id',
@@ -81,7 +82,7 @@ class ScholarshipRefrend extends Model
         'final_amount'                 => 'decimal:2',
         'amount_pending_from_previous' => 'decimal:2',
         'refund_amount_from_previous'   => 'decimal:2',
-        'carryover_amount'              => 'decimal:2',
+        'withholding_value'             => 'decimal:2',
         'average_grade_snapshot'       => 'decimal:2',
         'missing_subjects_snapshot'    => 'integer',
         'attendance_summary_snapshot'   => 'array',
@@ -158,9 +159,16 @@ class ScholarshipRefrend extends Model
         return $this->hasMany(ScholarshipRefrendIncident::class, 'scholarship_refrend_id');
     }
 
-    public function carryoverSource(): BelongsTo
+    /** The retention ledger row created by THIS refrend when resolved RETENIDA. */
+    public function withholding(): HasOne
     {
-        return $this->belongsTo(ScholarshipRefrend::class, 'carryover_from_refrend_id');
+        return $this->hasOne(ScholarshipWithholding::class, 'origin_refrend_id');
+    }
+
+    /** Ledger payments applied ON this refrend (BECA_MES liquidating retained months). */
+    public function withholdingPayments(): HasMany
+    {
+        return $this->hasMany(ScholarshipWithholdingPayment::class, 'applied_refrend_id');
     }
 
     public function notifiedBy(): BelongsTo

@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Actions\Scholarship\VoidWithholdingPaymentAction;
+use App\Http\Controllers\Controller;
+use App\Models\ScholarshipWithholding;
+use App\Models\ScholarshipWithholdingPayment;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class ScholarshipWithholdingController extends Controller
+{
+    /**
+     * Lists a becario's retention ledger. Defaults to pending rows with a
+     * balance > 0 (what "Pago meses retenidos" needs to offer), ordered
+     * oldest period first — the order an operator expects to liquidate them.
+     */
+    public function index(Request $request, int $userId): JsonResponse
+    {
+        $status = $request->validate([
+            'status' => 'nullable|in:pending,all',
+        ])['status'] ?? 'pending';
+
+        $query = ScholarshipWithholding::with([
+            'payments' => fn ($q) => $q->where('is_voided', false)
+                ->with('createdBy:id,first_name,last_name')
+                ->orderByDesc('created_at'),
+        ])->where('user_id', $userId);
+
+        if ($status === 'pending') {
+            $query->pending();
+        }
+
+        $withholdings = $query
+            ->orderBy('period_year')
+            ->orderBy('period_month')
+            ->get();
+
+        return response()->json(['res' => true, 'data' => $withholdings]);
+    }
+
+    /**
+     * Reverts a single withholding-payment child row. Requires the payment
+     * to actually belong to the withholding named in the URL — the two
+     * resource identifiers are independent path params, so a mismatched
+     * combination must not silently operate on the wrong ledger row.
+     */
+    public function voidPayment(
+        Request $request,
+        ScholarshipWithholding $withholding,
+        ScholarshipWithholdingPayment $payment
+    ): JsonResponse {
+        if ((int) $payment->withholding_id !== (int) $withholding->id) {
+            return response()->json(['res' => false, 'msg' => 'Abono no encontrado.'], 404);
+        }
+
+        $data = $request->validate([
+            'void_reason' => 'required|string|min:10|max:500',
+        ]);
+
+        try {
+            $voided = app(VoidWithholdingPaymentAction::class)->execute($payment, $data['void_reason'], auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $voided]);
+    }
+}
