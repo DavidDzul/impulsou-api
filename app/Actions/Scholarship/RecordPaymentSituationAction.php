@@ -6,6 +6,7 @@ use App\Enums\RefrendStatus;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
+use App\Services\AttendancePenaltyService;
 use App\Services\Scholarship\RefrendPaymentTotalsSyncer;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,8 @@ class RecordPaymentSituationAction
 
     public function __construct(
         private ScholarshipLoggingService $logging,
-        private RefrendPaymentTotalsSyncer $totalsSyncer
+        private RefrendPaymentTotalsSyncer $totalsSyncer,
+        private AttendancePenaltyService $attendancePenalty
     ) {}
 
     public function execute(ScholarshipRefrend $refrend, array $data, int $userId): ScholarshipRefrend
@@ -52,11 +54,19 @@ class RecordPaymentSituationAction
         // (case RETENIDA). Materialized inside the transaction below.
         $ledgerAmount = null;
 
+        // Set true for full-amount resolution types (final_amount = $dueAmount
+        // with no stored discount) so active RETARDOS/FALTA_INJUSTIFICADA rows
+        // don't survive orphaned against a final_amount that no longer reflects
+        // them (D7). SIN_PAGO/RETENIDA/SUSPENDIDA/BAJA_DEFINITIVA are excluded:
+        // their stored amount is intentionally reduced by those rows.
+        $neutralizePenalties = false;
+
         switch ($type) {
             case 'BECA_MES':
                 $updates['final_amount']        = number_format($dueAmount, 2, '.', '');
                 $updates['discount_percentage'] = '0.00';
                 $updates['discount_amount']     = '0.00';
+                $neutralizePenalties            = true;
                 break;
 
             case 'SIN_PAGO':
@@ -102,6 +112,7 @@ class RecordPaymentSituationAction
                 $updates['final_amount']        = number_format($dueAmount, 2, '.', '');
                 $updates['discount_percentage'] = '0.00';
                 $updates['discount_amount']     = '0.00';
+                $neutralizePenalties            = true;
                 break;
 
             case 'REEMBOLSO_PARCIAL':
@@ -109,6 +120,7 @@ class RecordPaymentSituationAction
                 $updates['discount_percentage']         = '0.00';
                 $updates['discount_amount']             = '0.00';
                 $updates['refund_amount_from_previous'] = number_format((float) ($data['refund_amount'] ?? 0), 2, '.', '');
+                $neutralizePenalties                    = true;
                 break;
         }
 
@@ -121,7 +133,7 @@ class RecordPaymentSituationAction
 
         $old = $this->logging->snapshotRefrend($refrend);
 
-        return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $paymentInputs) {
+        return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $paymentInputs, $neutralizePenalties) {
             // Re-classification guard: a retention that already has payments applied
             // against it (paid_amount > 0) cannot be silently overwritten or
             // cancelled by re-registering the situation — the amounts already
@@ -137,6 +149,10 @@ class RecordPaymentSituationAction
             }
 
             $refrend->update($updates);
+
+            if ($neutralizePenalties) {
+                $this->attendancePenalty->neutralizeAttendancePenalties($refrend);
+            }
 
             if ($ledgerAmount !== null && $ledgerAmount > 0) {
                 ScholarshipWithholding::updateOrCreate(

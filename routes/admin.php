@@ -128,7 +128,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('{refrend}', [ScholarshipRefrendController::class, 'show']);
         Route::post('{refrend}/approve-full', [ScholarshipRefrendController::class, 'approveFullPayment']);
         Route::post('{refrend}/situation', [ScholarshipRefrendController::class, 'recordSituation']);
-        Route::post('{refrend}/atencion-approve', [ScholarshipRefrendController::class, 'atencionApprove']);
+        Route::post('{refrend}/clear-resolution', [ScholarshipRefrendController::class, 'clearResolution']);
         Route::post('{refrend}/atencion-flag', [ScholarshipRefrendController::class, 'atencionFlag']);
         Route::post('{refrend}/atencion-clear', [ScholarshipRefrendController::class, 'atencionClearFlag']);
         Route::post('{refrend}/pedagogia-resolve', [ScholarshipRefrendController::class, 'pedagogiaResolve']);

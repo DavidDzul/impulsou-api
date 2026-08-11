@@ -147,4 +147,37 @@ class AttendancePenaltyService
             'description'            => 'Suspensión del mes por falta injustificada en el periodo.',
         ]);
     }
+
+    /**
+     * Neutralizes (zeroes out) active RETARDOS/FALTA_INJUSTIFICADA discount
+     * rows for a refrend instead of deleting them. Deleting cascades to
+     * scholarship_late_consumptions (onDelete('cascade')), which would
+     * un-consume the underlying lates and let the same RETARDOS penalty
+     * re-fire the following month. Zeroing the percentage neutralizes the
+     * amount while keeping the row (and its consumptions) intact.
+     *
+     * Iterates + saves rather than a mass update with a raw SQL CONCAT,
+     * because tests run against SQLite in-memory and MySQL-only functions
+     * break there (see RecalculateRefrendService's CURDATE() fix).
+     *
+     * Returns the number of rows neutralized.
+     */
+    public function neutralizeAttendancePenalties(ScholarshipRefrend $refrend): int
+    {
+        $discounts = ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
+            ->whereIn('discount_type', [
+                DiscountType::RETARDOS->value,
+                DiscountType::FALTA_INJUSTIFICADA->value,
+            ])
+            ->where('discount_percentage', '>', 0)
+            ->get();
+
+        foreach ($discounts as $discount) {
+            $discount->discount_percentage = 0;
+            $discount->description = trim(($discount->description ?? '') . ' Condonado.');
+            $discount->save();
+        }
+
+        return $discounts->count();
+    }
 }

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ApproveFullPaymentAction;
-use App\Actions\Scholarship\ApproveRefrendAction;
+use App\Actions\Scholarship\ClearRefrendResolutionAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
 use App\Actions\Scholarship\BulkApproveAction;
@@ -368,12 +368,14 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Atención approves a DRAFT refrend → LISTO_PARA_PAGO (no incidents).
+     * Reverts an applied payment resolution → back to DRAFT (or CON_INCIDENCIA
+     * when a profile discount is still active), re-deriving every amount and
+     * attendance penalty from live data.
      */
-    public function atencionApprove(ScholarshipRefrend $refrend): JsonResponse
+    public function clearResolution(ScholarshipRefrend $refrend): JsonResponse
     {
         try {
-            $updated = app(ApproveRefrendAction::class)->execute($refrend, auth()->id());
+            $updated = app(ClearRefrendResolutionAction::class)->execute($refrend, auth()->id());
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }
