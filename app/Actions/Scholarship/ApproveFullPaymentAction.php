@@ -2,9 +2,8 @@
 
 namespace App\Actions\Scholarship;
 
-use App\Enums\DiscountType;
 use App\Models\ScholarshipRefrend;
-use App\Models\ScholarshipRefrendDiscount;
+use App\Services\AttendancePenaltyService;
 use App\Services\ScholarshipCalculationService;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
@@ -13,33 +12,38 @@ class ApproveFullPaymentAction
 {
     public function __construct(
         private ScholarshipCalculationService $calculator,
-        private ScholarshipLoggingService $logging
+        private ScholarshipLoggingService $logging,
+        private AttendancePenaltyService $attendancePenalty
     ) {}
 
     /**
-     * Removes all automatic discounts, forces final_amount = base_amount,
-     * then advances to LISTO_PARA_PAGO with resolution_type BECA_MES.
-     * Use when the encargado wants to override auto-penalties and pay in full.
+     * Forgives active RETARDOS/FALTA_INJUSTIFICADA attendance discounts for
+     * the refrend (neutralized, not deleted — see
+     * AttendancePenaltyService::neutralizeAttendancePenalties), then
+     * advances to LISTO_PARA_PAGO with resolution_type BECA_MES. Does NOT
+     * touch the academic discount (snapshot_discount_percentage), which
+     * remains authoritative through recalculate().
      */
     public function execute(ScholarshipRefrend $refrend, int $userId): ScholarshipRefrend
     {
+        // GUARD — lock. Mirrors ClearRefrendResolutionAction:27: isLocked()
+        // alone is insufficient (short-circuits to false for LISTO_PARA_PAGO
+        // before reaching its locked_at and legacy-enum branches).
+        if ($refrend->isLocked() || $refrend->locked_at !== null || $refrend->status->isLocked()) {
+            throw new \DomainException('El refrendo está bloqueado y no admite cambios.');
+        }
+
         if (!in_array($refrend->workflow_status, ['DRAFT', 'CON_INCIDENCIA'])) {
-            throw new \DomainException('Solo se puede aplicar "Pago al 100%" en estado DRAFT o CON_INCIDENCIA.');
+            throw new \DomainException('Solo se puede aplicar "Pagar sin descuento por faltas" en estado DRAFT o CON_INCIDENCIA.');
         }
 
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $userId, $old) {
-            // 1. Delete all automatic discounts (cascade removes late consumptions).
-            ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
-                ->whereIn('discount_type', [
-                    DiscountType::RETARDOS->value,
-                    DiscountType::FALTA_INJUSTIFICADA->value,
-                    DiscountType::PROMEDIO_BAJO->value,
-                ])
-                ->delete();
+            // 1. Neutralize active attendance discounts (RETARDOS/FALTA_INJUSTIFICADA).
+            $this->attendancePenalty->neutralizeAttendancePenalties($refrend);
 
-            // 2. Recalculate (final_amount = base_amount with no discounts left).
+            // 2. Recalculate (final_amount reflects the remaining academic discount, if any).
             $fresh = $this->calculator->recalculate($refrend->fresh());
 
             // 3. Advance to LISTO_PARA_PAGO.

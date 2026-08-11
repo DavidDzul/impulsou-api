@@ -124,6 +124,7 @@ class RefrendBulkQueryService
         $attendanceDiscounts = DB::table('scholarship_refrend_discounts')
             ->whereIn('scholarship_refrend_id', $refrendIds)
             ->whereIn('discount_type', ['RETARDOS', 'FALTA_INJUSTIFICADA'])
+            ->where('discount_percentage', '>', 0)
             ->select(['scholarship_refrend_id', 'discount_type'])
             ->get()
             ->groupBy('scholarship_refrend_id');

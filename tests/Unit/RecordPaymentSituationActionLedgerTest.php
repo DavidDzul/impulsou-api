@@ -7,6 +7,7 @@ use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendDiscount;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
@@ -331,5 +332,85 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
                 ['withholding_id' => $ledger->id, 'amount' => 50.00],
             ],
         ], $this->admin->id);
+    }
+
+    // ── D7: full-amount resolution types neutralize attendance discounts ────
+
+    private function makeActiveRetardosDiscount(int $refrendId): ScholarshipRefrendDiscount
+    {
+        return ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $refrendId,
+            'discount_type'          => 'RETARDOS',
+            'discount_percentage'    => 25.0,
+            'description'            => 'Suspensión del mes por 2 retardos semestrales acumulados sin justificar.',
+        ]);
+    }
+
+    /** @test */
+    public function full_amount_resolution_types_neutralize_active_attendance_discounts(): void
+    {
+        foreach (['BECA_MES', 'EGRESADO', 'REEMBOLSO_PARCIAL'] as $type) {
+            $user    = $this->makeBecario();
+            $refrend = $this->makeRefrend($user->id);
+            $discount = $this->makeActiveRetardosDiscount($refrend->id);
+
+            $data = ['resolution_type' => $type];
+            if ($type === 'REEMBOLSO_PARCIAL') {
+                $data['refund_amount'] = 0;
+            }
+
+            $result = $this->action->execute($refrend, $data, $this->admin->id);
+
+            $discount->refresh();
+            $this->assertSame(
+                '0.00',
+                $discount->discount_percentage,
+                "$type must neutralize the active RETARDOS row instead of leaving it orphaned."
+            );
+            $this->assertSame(
+                0,
+                ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
+                    ->where('discount_percentage', '>', 0)
+                    ->count()
+            );
+            $this->assertSame('1000.00', $result->final_amount, "$type's final_amount must equal the due amount.");
+        }
+    }
+
+    /** @test */
+    public function sin_pago_and_retenida_do_not_neutralize_attendance_discounts(): void
+    {
+        // SIN_PAGO — negative case.
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user->id);
+        $discount = $this->makeActiveRetardosDiscount($refrend->id);
+
+        $this->action->execute($refrend, ['resolution_type' => 'SIN_PAGO'], $this->admin->id);
+
+        $discount->refresh();
+        $this->assertSame(
+            '25.00',
+            $discount->discount_percentage,
+            'SIN_PAGO must not touch attendance discount rows — its amount is intentionally reduced by them.'
+        );
+
+        // RETENIDA — negative case.
+        $userB    = $this->makeBecario();
+        $refrendB = $this->makeRefrend($userB->id, ['period_month' => 2]);
+        $discountB = $this->makeActiveRetardosDiscount($refrendB->id);
+
+        $this->action->execute($refrendB, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 30,
+            'resolution_cause'  => 'BAJO_PROMEDIO',
+        ], $this->admin->id);
+
+        $discountB->refresh();
+        $this->assertSame(
+            '25.00',
+            $discountB->discount_percentage,
+            'RETENIDA must not touch attendance discount rows — its amount is intentionally reduced by them.'
+        );
     }
 }
