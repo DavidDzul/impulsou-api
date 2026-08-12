@@ -21,6 +21,35 @@ class RecordPaymentSituationAction
         private AttendancePenaltyService $attendancePenalty
     ) {}
 
+    /**
+     * Percentage-or-fixed-amount discount math shared by RETENIDA and
+     * DESCUENTO_DEFINITIVO. Returns the refrend field updates plus the raw
+     * withheld amount (callers decide whether it feeds the withholding
+     * ledger / status side effects — this method has none).
+     *
+     * @return array{updates: array<string, string>, withheld: float}
+     */
+    private function applyWithholdingDiscount(array $data, float $dueAmount): array
+    {
+        $mode  = $data['withholding_mode'] ?? 'percentage';
+        $value = (float) ($data['withholding_value'] ?? 100);
+        $withheld = $mode === 'fixed'
+            ? min($dueAmount, round($value, 2))
+            : round($dueAmount * (min(100.0, max(0.0, $value)) / 100), 2);
+        $pct = $dueAmount > 0 ? round($withheld / $dueAmount * 100, 2) : 0.0;
+
+        return [
+            'updates' => [
+                'withholding_mode'    => $mode,
+                'withholding_value'   => number_format($value, 2, '.', ''),
+                'discount_amount'     => number_format($withheld, 2, '.', ''),
+                'discount_percentage' => number_format($pct, 2, '.', ''),
+                'final_amount'        => number_format(round($dueAmount - $withheld, 2), 2, '.', ''),
+            ],
+            'withheld' => $withheld,
+        ];
+    }
+
     public function execute(ScholarshipRefrend $refrend, array $data, int $userId): ScholarshipRefrend
     {
         if (!in_array($refrend->workflow_status, self::ALLOWED_WORKFLOW_STATUSES)) {
@@ -76,20 +105,15 @@ class RecordPaymentSituationAction
                 break;
 
             case 'RETENIDA':
-                $mode  = $data['withholding_mode'] ?? 'percentage';
-                $value = (float) ($data['withholding_value'] ?? 100);
-                $withheld = $mode === 'fixed'
-                    ? min($dueAmount, round($value, 2))
-                    : round($dueAmount * (min(100.0, max(0.0, $value)) / 100), 2);
-                $pct = $dueAmount > 0 ? round($withheld / $dueAmount * 100, 2) : 0.0;
+                ['updates' => $withholdingUpdates, 'withheld' => $withheld] = $this->applyWithholdingDiscount($data, $dueAmount);
+                $updates      = array_merge($updates, $withholdingUpdates);
+                $updates['status'] = RefrendStatus::WITHHELD->value;
+                $ledgerAmount       = $withheld;
+                break;
 
-                $updates['withholding_mode']    = $mode;
-                $updates['withholding_value']   = number_format($value, 2, '.', '');
-                $updates['discount_amount']     = number_format($withheld, 2, '.', '');
-                $updates['discount_percentage'] = number_format($pct, 2, '.', '');
-                $updates['final_amount']        = number_format(round($dueAmount - $withheld, 2), 2, '.', '');
-                $updates['status']              = RefrendStatus::WITHHELD->value;
-                $ledgerAmount                    = $withheld;
+            case 'DESCUENTO_DEFINITIVO':
+                ['updates' => $withholdingUpdates] = $this->applyWithholdingDiscount($data, $dueAmount);
+                $updates = array_merge($updates, $withholdingUpdates);
                 break;
 
             case 'SUSPENDIDA':

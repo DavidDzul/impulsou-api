@@ -329,19 +329,19 @@ class ScholarshipRefrendController extends Controller
         $dueAmount   = round($gross * (1 - $academicPct / 100), 2);
 
         $data = $request->validate([
-            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL',
+            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL,DESCUENTO_DEFINITIVO',
             'resolution_cause'        => 'nullable|string|max:200',
             'resolution_notes'        => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|string|max:1000',
             'suspension_percentage'   => 'required_if:resolution_type,SUSPENDIDA|nullable|numeric|in:25,30,50,65,75,100',
             'refund_amount'           => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|numeric|min:0.01',
-            'withholding_mode'        => 'required_if:resolution_type,RETENIDA|nullable|in:percentage,fixed',
+            'withholding_mode'        => 'required_if:resolution_type,RETENIDA,DESCUENTO_DEFINITIVO|nullable|in:percentage,fixed',
             'withholding_value'       => [
-                'required_if:resolution_type,RETENIDA',
+                'required_if:resolution_type,RETENIDA,DESCUENTO_DEFINITIVO',
                 'nullable',
                 'numeric',
                 'min:0.01',
                 function ($attribute, $value, $fail) use ($request, $dueAmount) {
-                    if ($request->input('resolution_type') !== 'RETENIDA' || $value === null) {
+                    if (!in_array($request->input('resolution_type'), ['RETENIDA', 'DESCUENTO_DEFINITIVO']) || $value === null) {
                         return;
                     }
                     $mode = $request->input('withholding_mode');
