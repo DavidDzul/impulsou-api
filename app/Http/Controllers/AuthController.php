@@ -68,9 +68,14 @@ class AuthController extends Controller
                 "workstation" => $user->workstation,
                 "role" => [
                     "name" => $role->name,
+                    "unlimited_jobs" => $config->unlimited_jobs,
+                    "num_job_vacancies" => $config->num_job_vacancies,
+                    "unlimited_professionals" => $config->unlimited_professionals,
+                    "num_professional_vacancies" => $config->num_professional_vacancies,
+                    "unlimited_jr" => $config->unlimited_jr,
+                    "num_jr_vacancies" => $config->num_jr_vacancies,
+                    "unlimited_visualizations" => $config->unlimited_visualizations,
                     "num_visualizations" => $config->num_visualizations,
-                    "num_vacancies" => $config->num_vacancies,
-                    "unlimited" => $config->unlimited,
                 ],
             ]
         ], 200);

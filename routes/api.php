@@ -44,9 +44,14 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
         "workstation" => $user->workstation,
         "role" => $role ? [
             "name" => $role->name,
+            "unlimited_jobs" => $role->configuration->unlimited_jobs ?? false,
+            "unlimited_professionals" => $role->configuration->unlimited_professionals ?? false,
+            "unlimited_jr" => $role->configuration->unlimited_jr ?? false,
+            "unlimited_visualizations" => $role->configuration->unlimited_visualizations ?? false,
+            "num_job_vacancies" => $role->configuration->num_job_vacancies ?? 0,
+            "num_professional_vacancies" => $role->configuration->num_professional_vacancies ?? 0,
+            "num_jr_vacancies" => $role->configuration->num_jr_vacancies ?? 0,
             "num_visualizations" => $role->configuration->num_visualizations ?? 0,
-            "num_vacancies" => $role->configuration->num_vacancies ?? 0,
-            "unlimited" => $role->configuration->unlimited ?? false,
         ] : null
     ]);
 });

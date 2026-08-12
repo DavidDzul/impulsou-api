@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\RoleResource;
 use Illuminate\Http\Request;
 use App\Models\Role;
 use Spatie\Permission\Models\Permission;
@@ -34,23 +35,25 @@ class RoleController extends Controller
     public function update(Request $request, $id)
     {
         $role = Role::findOrFail($id);
-        $data = $request->validate(Role::updateRules());
+        $data = $request->validate(Role::createOrUpdateRules());
 
 
         $role->configuration()->updateOrCreate(
             ['role_id' => $role->id],
-            [
-                'num_visualizations' => $data['num_visualizations'],
-                'num_vacancies'      => $data['num_vacancies'],
-                'unlimited'          => $data['unlimited'] ?? false,
-            ]
+            $request->only([
+                'unlimited_jobs',
+                'num_job_vacancies',
+                'unlimited_professionals',
+                'num_professional_vacancies',
+                'unlimited_jr',
+                'num_jr_vacancies',
+                'unlimited_visualizations',
+                'num_visualizations'
+            ])
         );
 
         $role->syncPermissions($data['permissions_ids'] ?? []);
 
-        return response()->json([
-            'res' => true,
-            'data' => $role->load(['configuration', 'permissions'])
-        ]);
+        return new RoleResource($role->load(['configuration', 'permissions']));
     }
 }
