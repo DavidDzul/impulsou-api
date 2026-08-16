@@ -7,9 +7,11 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipSemesterGrade;
+use App\Models\ScholarshipWithholding;
 use App\Models\User;
 use App\Services\RefrendBulkQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -90,6 +92,8 @@ class RefrendBulkQueryServiceTest extends TestCase
             month:        5,
             campus:       null,
             generationId: $generationId,
+            page:         1,
+            perPage:      200,
         );
     }
 
@@ -105,7 +109,7 @@ class RefrendBulkQueryServiceTest extends TestCase
 
         $this->assertCount(1, $result['rows']);
         $this->assertSame('ok', $result['rows'][0]['academic_status']);
-        $this->assertSame(9.5, $result['rows'][0]['average_grade']);
+        $this->assertSame('9.50', $result['rows'][0]['last_grade']);
     }
 
     /** @test */
@@ -143,7 +147,7 @@ class RefrendBulkQueryServiceTest extends TestCase
 
         $this->assertCount(1, $result['rows']);
         $this->assertSame('missing_subjects', $result['rows'][0]['academic_status']);
-        $this->assertNull($result['rows'][0]['average_grade']);
+        $this->assertNull($result['rows'][0]['last_grade']);
     }
 
     // ── buildTable() structure assertions ─────────────────────────────────────
@@ -229,6 +233,104 @@ class RefrendBulkQueryServiceTest extends TestCase
             800.0,
             $result['rows'][0]['refrend']['total_to_pay'],
             'total_to_pay must equal final_amount when there is no pending carryover.'
+        );
+    }
+
+    // ── B5: chip reflects the payable (window 3 months / top-2) subset only ───
+
+    private function makeWithholdingForUser(int $userId, int $periodYear, int $periodMonth, float $withheld = 100.00): ScholarshipWithholding
+    {
+        $originRefrend = $this->makeRefrend([
+            'user_id'      => $userId,
+            'period_year'  => $periodYear,
+            'period_month' => $periodMonth,
+            'status'       => 'WITHHELD',
+        ]);
+
+        return ScholarshipWithholding::create([
+            'user_id'           => $userId,
+            'origin_refrend_id' => $originRefrend->id,
+            'period_year'       => $periodYear,
+            'period_month'      => $periodMonth,
+            'withheld_amount'   => number_format($withheld, 2, '.', ''),
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+    }
+
+    /** @test */
+    public function chip_counts_and_sums_only_payable_rows(): void
+    {
+        // Page/current period is 2026-05 (the makeRefrend()/buildTable() default).
+        $refrend = $this->makeRefrend();
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 4, 100.00); // offset 1, payable
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 3, 150.00); // offset 2, payable
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 2, 999.00); // offset 3, in-window but rank 3rd — excluded
+
+        $result = $this->buildTable();
+
+        $this->assertSame(2, $result['rows'][0]['pending_withholding_count']);
+        $this->assertSame('250.00', $result['rows'][0]['pending_withholding_amount']);
+    }
+
+    /** @test */
+    public function chip_excludes_stale_out_of_window_rows(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 1, 500.00); // offset 4, out of window
+
+        $result = $this->buildTable();
+
+        $this->assertSame(0, $result['rows'][0]['pending_withholding_count']);
+        $this->assertNull($result['rows'][0]['pending_withholding_amount']);
+    }
+
+    /** @test */
+    public function chip_count_has_parity_with_the_withholding_list_endpoint_eligible_count(): void
+    {
+        $admin   = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $refrend = $this->makeRefrend();
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 4, 100.00); // offset 1, payable
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 3, 150.00); // offset 2, payable
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 2, 999.00); // offset 3, rank-excluded
+        $this->makeWithholdingForUser($refrend->user_id, 2025, 12, 999.00); // offset 5, window-excluded
+
+        $chipResult = $this->buildTable();
+
+        $endpointResponse = $this->actingAs($admin)->getJson(
+            "/api/admin/users/{$refrend->user_id}/scholarship-withholdings?relative_year=2026&relative_month=5"
+        );
+        $endpointResponse->assertOk();
+
+        $this->assertSame(
+            $endpointResponse->json('meta.eligible_count'),
+            $chipResult['rows'][0]['pending_withholding_count'],
+            'The bulk-table chip count must match the withholding list endpoint eligible_count for the same period.'
+        );
+    }
+
+    /** @test */
+    public function chip_computation_issues_exactly_one_withholdings_query_regardless_of_user_count(): void
+    {
+        $refrendA = $this->makeRefrend();
+        $refrendB = $this->makeRefrend();
+        $this->makeWithholdingForUser($refrendA->user_id, 2026, 4, 100.00);
+        $this->makeWithholdingForUser($refrendB->user_id, 2026, 3, 200.00);
+
+        DB::enableQueryLog();
+        $this->buildTable();
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $withholdingQueries = array_filter(
+            $queries,
+            fn ($q) => str_contains($q['query'], 'scholarship_withholdings')
+        );
+
+        $this->assertCount(
+            1,
+            $withholdingQueries,
+            'Exactly one query against scholarship_withholdings must be issued for N users (no N+1).'
         );
     }
 }

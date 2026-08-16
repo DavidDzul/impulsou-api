@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Scholarship\PayableWithholdingWindow;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -148,22 +149,28 @@ class RefrendBulkQueryService
             ->groupBy('scholarship_refrend_id')
             ->map(fn($rows) => $rows->first());
 
-        // ── Retenciones pendientes acumuladas por becario ──────────────────
-        // Agregado por lote (O(1) queries): usa el índice ['user_id','status'].
-        // El monto se emite como string decimal en el armado de la fila para no
-        // depender del tipo que devuelva el driver (MySQL: string, SQLite: float).
+        // ── Retenciones pagables (ventana 3 meses / top-2) por becario ──────
+        // El chip refleja solo el subconjunto pagable, no el histórico crudo
+        // (mismo set-operation D2 que el endpoint de listado y las
+        // validaciones — evita reimplementar el ranking). SUM/COUNT GROUP BY
+        // no puede expresar top-N-por-grupo, y las funciones de ventana de
+        // MySQL 8 no son portables al driver SQLite de pruebas, así que se
+        // trae un fetch acotado (≤4 filas/becario: ventana de 4 periodos y
+        // unique(origin_refrend_id) + un refrendo por user/periodo ⇒ ≤1 fila
+        // por periodo) en una sola query (O(1), usa el índice
+        // ['user_id','status']) y se rankea/suma en PHP. El monto se emite
+        // como string decimal en el armado de la fila para no depender del
+        // tipo que devuelva el driver (MySQL: string, SQLite: float).
+        [$minAbsMonth, $maxAbsMonth] = PayableWithholdingWindow::absoluteBounds($year, $month);
         $pendingWithholdings = DB::table('scholarship_withholdings')
             ->whereIn('user_id', $userIds)
             ->where('status', 'PENDING')
             ->whereColumn('paid_amount', '<', 'withheld_amount')
-            ->select(
-                'user_id',
-                DB::raw('COUNT(*) as cnt'),
-                DB::raw('SUM(withheld_amount - paid_amount) as pending_amount')
-            )
-            ->groupBy('user_id')
+            ->whereRaw('(period_year * 12 + period_month) between ? and ?', [$minAbsMonth, $maxAbsMonth])
+            ->select(['id', 'user_id', 'period_year', 'period_month', 'withheld_amount', 'paid_amount'])
             ->get()
-            ->keyBy('user_id');
+            ->groupBy('user_id')
+            ->map(fn ($rows) => PayableWithholdingWindow::selectPayable($rows, $year, $month));
 
         // ── Assemble rows ──────────────────────────────────────────────────
         $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings) {
@@ -173,10 +180,15 @@ class RefrendBulkQueryService
             $grade        = $gradeRecord ? (float) $gradeRecord->grade : null;
             $discTypes    = $attendanceDiscounts->get($r->id)?->pluck('discount_type') ?? collect();
 
-            $withholding   = $pendingWithholdings->get($r->user_id);
-            $pendingCount  = (int) ($withholding->cnt ?? 0);
+            $payable       = $pendingWithholdings->get($r->user_id) ?? collect();
+            $pendingCount  = $payable->count();
             $pendingAmount = $pendingCount > 0
-                ? number_format(max(0, (float) $withholding->pending_amount), 2, '.', '')
+                ? number_format(
+                    $payable->sum(fn ($w) => max(0, (float) $w->withheld_amount - (float) $w->paid_amount)),
+                    2,
+                    '.',
+                    ''
+                )
                 : null;
 
             $academicStatus = $this->resolveAcademicStatus($grade, $gradeRecord !== null);
