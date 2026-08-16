@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ScholarshipWithholding extends Model
 {
     /** Tolerance for float/rounding drift when deciding if a retention is fully settled. */
-    private const SETTLEMENT_EPSILON = 0.005;
+    public const SETTLEMENT_EPSILON = 0.005;
 
     protected $table = 'scholarship_withholdings';
 
@@ -42,6 +42,17 @@ class ScholarshipWithholding extends Model
             '.',
             ''
         );
+    }
+
+    /**
+     * Whether `$amount` is an exact settlement of the current remaining
+     * balance, within the standard float/rounding tolerance. Amount
+     * exactness is a pure per-row predicate — unlike window eligibility
+     * (PayableWithholdingWindow), it needs no context beyond this row.
+     */
+    public function isFullSettlementAmount(float $amount): bool
+    {
+        return abs($amount - (float) $this->remaining_amount) <= self::SETTLEMENT_EPSILON;
     }
 
     public function scopePending($query)

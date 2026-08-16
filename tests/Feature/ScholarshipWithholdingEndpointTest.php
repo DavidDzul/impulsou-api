@@ -112,13 +112,24 @@ class ScholarshipWithholdingEndpointTest extends TestCase
         ], $this->admin->id);
         $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
 
+        // Seeded directly (legacy-style partial child rows, bypassing the
+        // now-stricter RecordPaymentSituationAction) so the ledger stays
+        // PENDING with one active and one voided payment to embed.
         $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
-        $action->execute($payingRefrend, [
-            'resolution_type'      => 'BECA_MES',
-            'withholding_payments' => [
-                ['withholding_id' => $ledger->id, 'amount' => 100.00],
-            ],
-        ], $this->admin->id);
+        ScholarshipWithholdingPayment::create([
+            'withholding_id'     => $ledger->id,
+            'applied_refrend_id' => $payingRefrend->id,
+            'amount'             => '100.00',
+            'created_by_id'      => $this->admin->id,
+        ]);
+        ScholarshipWithholdingPayment::create([
+            'withholding_id'     => $ledger->id,
+            'applied_refrend_id' => $payingRefrend->id,
+            'amount'             => '50.00',
+            'created_by_id'      => $this->admin->id,
+            'is_voided'          => true,
+        ]);
+        $ledger->recomputePaidAmount();
 
         $response = $this->actingAs($this->admin)
             ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings?status=pending");
@@ -149,12 +160,12 @@ class ScholarshipWithholdingEndpointTest extends TestCase
             ->postJson("/api/admin/scholarship-refrends/{$payingRefrend->id}/situation", [
                 'resolution_type'      => 'BECA_MES',
                 'withholding_payments' => [
-                    ['withholding_id' => $ledger->id, 'amount' => 150.00],
+                    ['withholding_id' => $ledger->id, 'amount' => 300.00],
                 ],
             ]);
 
         $response->assertStatus(200);
-        $this->assertSame('150.00', $response->json('data.amount_pending_from_previous'));
+        $this->assertSame('300.00', $response->json('data.amount_pending_from_previous'));
     }
 
     /** @test */
@@ -177,8 +188,10 @@ class ScholarshipWithholdingEndpointTest extends TestCase
             ->postJson("/api/admin/scholarship-refrends/{$payingRefrend->id}/situation", [
                 'resolution_type'      => 'BECA_MES',
                 'withholding_payments' => [
-                    ['withholding_id' => $ledger->id, 'amount' => 50.00],
-                    ['withholding_id' => $ledger->id, 'amount' => 50.00],
+                    // Exact-match amounts so this 422 is attributable ONLY to
+                    // the duplicate-id rule.
+                    ['withholding_id' => $ledger->id, 'amount' => 300.00],
+                    ['withholding_id' => $ledger->id, 'amount' => 300.00],
                 ],
             ]);
 

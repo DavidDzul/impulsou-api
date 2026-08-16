@@ -7,11 +7,12 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
+use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class WithholdingPartialAmountTest extends TestCase
+class WithholdingFullSettlementAmountTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -145,7 +146,9 @@ class WithholdingPartialAmountTest extends TestCase
             ->postJson($this->situationUrl($refrend->id), [
                 'resolution_type'      => 'SIN_PAGO',
                 'withholding_payments' => [
-                    ['withholding_id' => $stale->id, 'amount' => 100.00],
+                    // Exact-match amount so this 422 is attributable ONLY to the
+                    // window rule, not the amount rule.
+                    ['withholding_id' => $stale->id, 'amount' => 400.00],
                 ],
             ]);
 
@@ -166,9 +169,11 @@ class WithholdingPartialAmountTest extends TestCase
             ->postJson($this->situationUrl($refrend->id), [
                 'resolution_type'      => 'SIN_PAGO',
                 'withholding_payments' => [
-                    ['withholding_id' => $first->id, 'amount' => 50.00],
-                    ['withholding_id' => $second->id, 'amount' => 50.00],
-                    ['withholding_id' => $third->id, 'amount' => 50.00],
+                    // Exact-match amounts (100.00 == withheld) so this 422 is
+                    // attributable ONLY to the "no more than 2" rule.
+                    ['withholding_id' => $first->id, 'amount' => 100.00],
+                    ['withholding_id' => $second->id, 'amount' => 100.00],
+                    ['withholding_id' => $third->id, 'amount' => 100.00],
                 ],
             ]);
 
@@ -188,13 +193,86 @@ class WithholdingPartialAmountTest extends TestCase
             ->postJson($this->situationUrl($refrend->id), [
                 'resolution_type'      => 'SIN_PAGO',
                 'withholding_payments' => [
-                    ['withholding_id' => $recent->id, 'amount' => 50.00],
-                    ['withholding_id' => $older->id, 'amount' => 50.00],
+                    ['withholding_id' => $recent->id, 'amount' => 100.00],
+                    ['withholding_id' => $older->id, 'amount' => 100.00],
                 ],
             ]);
 
         $response->assertStatus(200);
         $this->assertDatabaseCount('scholarship_withholding_payments', 2);
+    }
+
+    /** @test */
+    public function it_rejects_under_submission_with_422_and_creates_no_payment_rows(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8]);
+        $target  = $this->makeWithholdingForUser($refrend->user_id, 2026, 7, 500.00); // offset 1
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'      => 'SIN_PAGO',
+                'withholding_payments' => [
+                    ['withholding_id' => $target->id, 'amount' => 300.00],
+                ],
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['withholding_payments.0.amount']);
+        $this->assertDatabaseCount('scholarship_withholding_payments', 0);
+    }
+
+    /** @test */
+    public function it_rejects_over_submission_with_422_instead_of_clamping(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8]);
+        $target  = $this->makeWithholdingForUser($refrend->user_id, 2026, 7, 500.00); // offset 1
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'      => 'SIN_PAGO',
+                'withholding_payments' => [
+                    ['withholding_id' => $target->id, 'amount' => 650.00],
+                ],
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['withholding_payments.0.amount']);
+        $this->assertDatabaseCount('scholarship_withholding_payments', 0);
+    }
+
+    /** @test */
+    public function it_settles_a_legacy_grandfathered_entry_for_its_current_remaining_balance(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8]);
+        $target  = $this->makeWithholdingForUser($refrend->user_id, 2026, 7, 500.00); // offset 1
+
+        // Real child payment row seeded directly, simulating a pre-existing
+        // partial payment applied before this rule existed — not a migration,
+        // just how legacy data looks. The row stays payable for its CURRENT
+        // remaining_amount (300.00), no backfill required.
+        $earlierRefrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 6]);
+        ScholarshipWithholdingPayment::create([
+            'withholding_id'     => $target->id,
+            'applied_refrend_id' => $earlierRefrend->id,
+            'amount'             => '200.00',
+            'created_by_id'      => $this->admin->id,
+        ]);
+        $target->recomputePaidAmount();
+        $target->refresh();
+        $this->assertSame('300.00', $target->remaining_amount);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'      => 'SIN_PAGO',
+                'withholding_payments' => [
+                    ['withholding_id' => $target->id, 'amount' => 300.00],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+        $target->refresh();
+        $this->assertSame('PAID', $target->status);
+        $this->assertSame('0.00', $target->remaining_amount);
     }
 
     /** @test */

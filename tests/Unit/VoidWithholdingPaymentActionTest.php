@@ -73,24 +73,26 @@ class VoidWithholdingPaymentActionTest extends TestCase
         ], $this->admin->id);
         $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
 
-        // Three separate refrends each pay off a slice of the same retention.
+        // Three historical/legacy child payments accumulated against a single
+        // retention, seeded directly (bypassing RecordPaymentSituationAction):
+        // under the exact-match rule the application path can no longer
+        // produce this shape (the first exact payment settles the ledger to
+        // PAID), but grandfathered data with multiple partial child rows can
+        // still exist. VoidWithholdingPaymentAction is amount-agnostic and
+        // must keep working against it regardless of how the rows were made.
         $refrend1 = $this->makeRefrend($user->id, ['period_month' => 2]);
-        $this->recordAction->execute($refrend1, [
-            'resolution_type' => 'BECA_MES',
-            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 100.00]],
-        ], $this->admin->id);
-
         $refrend2 = $this->makeRefrend($user->id, ['period_month' => 3]);
-        $this->recordAction->execute($refrend2, [
-            'resolution_type' => 'BECA_MES',
-            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 100.00]],
-        ], $this->admin->id);
-
         $refrend3 = $this->makeRefrend($user->id, ['period_month' => 4]);
-        $this->recordAction->execute($refrend3, [
-            'resolution_type' => 'BECA_MES',
-            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 100.00]],
-        ], $this->admin->id);
+
+        foreach ([$refrend1, $refrend2, $refrend3] as $payingRefrend) {
+            ScholarshipWithholdingPayment::create([
+                'withholding_id'     => $ledger->id,
+                'applied_refrend_id' => $payingRefrend->id,
+                'amount'             => '100.00',
+                'created_by_id'      => $this->admin->id,
+            ]);
+        }
+        $ledger->recomputePaidAmount();
 
         $ledger->refresh();
         $this->assertSame('300.00', $ledger->paid_amount);
@@ -157,7 +159,7 @@ class VoidWithholdingPaymentActionTest extends TestCase
         $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
         $this->recordAction->execute($payingRefrend, [
             'resolution_type' => 'BECA_MES',
-            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 150.00]],
+            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 300.00]],
         ], $this->admin->id);
 
         $payment = ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->first();
@@ -181,7 +183,7 @@ class VoidWithholdingPaymentActionTest extends TestCase
         $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
         $this->recordAction->execute($payingRefrend, [
             'resolution_type' => 'BECA_MES',
-            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 150.00]],
+            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 300.00]],
         ], $this->admin->id);
 
         // Close the refrend where this payment was applied.
@@ -207,7 +209,7 @@ class VoidWithholdingPaymentActionTest extends TestCase
         $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
         $this->recordAction->execute($payingRefrend, [
             'resolution_type' => 'BECA_MES',
-            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 150.00]],
+            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 300.00]],
         ], $this->admin->id);
 
         $ledger->update(['status' => 'CANCELLED']);
@@ -240,11 +242,11 @@ class VoidWithholdingPaymentActionTest extends TestCase
             'resolution_type' => 'BECA_MES',
             'withholding_payments' => [
                 ['withholding_id' => $janLedger->id, 'amount' => 300.00],
-                ['withholding_id' => $marLedger->id, 'amount' => 75.00],
+                ['withholding_id' => $marLedger->id, 'amount' => 150.00],
             ],
         ], $this->admin->id);
 
-        $this->assertSame('375.00', $result->amount_pending_from_previous);
+        $this->assertSame('450.00', $result->amount_pending_from_previous);
         $this->assertSame(2, $result->carryover_months_count);
 
         $marPayment = ScholarshipWithholdingPayment::where('withholding_id', $marLedger->id)->first();
@@ -257,5 +259,45 @@ class VoidWithholdingPaymentActionTest extends TestCase
 
         $marLedger->refresh();
         $this->assertSame('150.00', $marLedger->remaining_amount);
+    }
+
+    /**
+     * Non-regression: VoidWithholdingPaymentAction receives ZERO code changes
+     * as part of the exact-amount settlement change (reversion is
+     * amount-agnostic — recomputePaidAmount() re-derives everything from
+     * child rows regardless of how they got there). Exercises the ordinary
+     * path against a payment created through the now-stricter
+     * RecordPaymentSituationAction, confirming void still works end to end.
+     */
+    /** @test */
+    public function void_still_works_normally_against_a_payment_created_under_the_exact_match_rule(): void
+    {
+        $user          = $this->makeBecario();
+        $originRefrend = $this->makeRefrend($user->id, ['period_month' => 1]);
+        $this->recordAction->execute($originRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'percentage',
+            'withholding_value' => 40, 'resolution_cause' => 'BAJO_PROMEDIO',
+        ], $this->admin->id);
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
+        $this->assertSame('400.00', $ledger->withheld_amount);
+
+        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
+        $this->recordAction->execute($payingRefrend, [
+            'resolution_type' => 'BECA_MES',
+            'withholding_payments' => [['withholding_id' => $ledger->id, 'amount' => 400.00]],
+        ], $this->admin->id);
+
+        $ledger->refresh();
+        $this->assertSame('PAID', $ledger->status);
+        $this->assertSame('0.00', $ledger->remaining_amount);
+
+        $payment = ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->first();
+        $this->voidAction->execute($payment, 'Reversión de regresión: la retención vuelve a estar pendiente.', $this->admin->id);
+
+        $ledger->refresh();
+        $this->assertSame('PENDING', $ledger->status);
+        $this->assertNull($ledger->settled_at);
+        $this->assertSame('400.00', $ledger->remaining_amount);
+        $this->assertTrue($payment->fresh()->is_voided);
     }
 }

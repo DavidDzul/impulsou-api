@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Enums\RefrendStatus;
+use App\Exceptions\WithholdingAmountMismatchException;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
@@ -148,7 +149,10 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
         $this->action->execute($payingRefrend, [
             'resolution_type'       => 'BECA_MES',
             'withholding_payments'  => [
-                ['withholding_id' => $ledger->id, 'amount' => 100.00],
+                // Exact-match so this setup call succeeds instead of tripping
+                // the amount-mismatch exception before expectException() below
+                // is even registered.
+                ['withholding_id' => $ledger->id, 'amount' => 300.00],
             ],
         ], $this->admin->id);
 
@@ -180,22 +184,22 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
         $result = $this->action->execute($payingRefrend, [
             'resolution_type'      => 'BECA_MES',
             'withholding_payments' => [
-                ['withholding_id' => $ledger->id, 'amount' => 150.00],
+                ['withholding_id' => $ledger->id, 'amount' => 300.00],
             ],
         ], $this->admin->id);
 
         $child = ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->first();
         $this->assertNotNull($child);
-        $this->assertSame('150.00', $child->amount);
+        $this->assertSame('300.00', $child->amount);
         $this->assertSame($payingRefrend->id, $child->applied_refrend_id);
         $this->assertSame($this->admin->id, $child->created_by_id);
 
         $ledger->refresh();
-        $this->assertSame('150.00', $ledger->paid_amount);
-        $this->assertSame('PENDING', $ledger->status);
-        $this->assertSame('150.00', $ledger->remaining_amount);
+        $this->assertSame('300.00', $ledger->paid_amount);
+        $this->assertSame('PAID', $ledger->status);
+        $this->assertSame('0.00', $ledger->remaining_amount);
 
-        $this->assertSame('150.00', $result->amount_pending_from_previous);
+        $this->assertSame('300.00', $result->amount_pending_from_previous);
         $this->assertSame(1, $result->carryover_months_count);
     }
 
@@ -229,7 +233,7 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
     }
 
     /** @test */
-    public function amount_greater_than_remaining_is_clamped_to_remaining(): void
+    public function amount_greater_than_remaining_is_rejected(): void
     {
         $user          = $this->makeBecario();
         $originRefrend = $this->makeRefrend($user->id, ['period_month' => 1]);
@@ -244,15 +248,132 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
         $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
 
         $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
+
+        try {
+            $this->action->execute($payingRefrend, [
+                'resolution_type'      => 'BECA_MES',
+                'withholding_payments' => [
+                    ['withholding_id' => $ledger->id, 'amount' => 9999.00],
+                ],
+            ], $this->admin->id);
+            $this->fail('Expected WithholdingAmountMismatchException was not thrown.');
+        } catch (WithholdingAmountMismatchException $e) {
+            // expected — over-submission is rejected, not clamped.
+        }
+
+        $this->assertSame(0, ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->count());
+        $ledger->refresh();
+        $this->assertSame('0.00', $ledger->paid_amount);
+    }
+
+    /** @test */
+    public function partial_amount_is_rejected(): void
+    {
+        $user          = $this->makeBecario();
+        $originRefrend = $this->makeRefrend($user->id, ['period_month' => 1]);
+
+        $this->action->execute($originRefrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'fixed',
+            'withholding_value' => 300,
+            'resolution_cause'  => 'OTRO',
+        ], $this->admin->id);
+
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
+
+        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
+
+        try {
+            $this->action->execute($payingRefrend, [
+                'resolution_type'      => 'BECA_MES',
+                'withholding_payments' => [
+                    ['withholding_id' => $ledger->id, 'amount' => 200.00],
+                ],
+            ], $this->admin->id);
+            $this->fail('Expected WithholdingAmountMismatchException was not thrown.');
+        } catch (WithholdingAmountMismatchException $e) {
+            // expected — a genuine partial payment is no longer accepted.
+        }
+
+        $this->assertSame(0, ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->count());
+    }
+
+    /** @test */
+    public function stale_balance_at_submit_time_is_rejected(): void
+    {
+        $user          = $this->makeBecario();
+        $originRefrend = $this->makeRefrend($user->id, ['period_month' => 1]);
+
+        $this->action->execute($originRefrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'fixed',
+            'withholding_value' => 300,
+            'resolution_cause'  => 'OTRO',
+        ], $this->admin->id);
+
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
+
+        // Another operation covers 100 of the 300 between the dialog loading
+        // (when the submitted amount was computed) and this submission
+        // reaching the server — the remaining balance is now stale at 200.
+        $earlierRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
+        ScholarshipWithholdingPayment::create([
+            'withholding_id'     => $ledger->id,
+            'applied_refrend_id' => $earlierRefrend->id,
+            'amount'             => '100.00',
+            'created_by_id'      => $this->admin->id,
+        ]);
+        $ledger->recomputePaidAmount();
+        $ledger->refresh();
+        $this->assertSame('200.00', $ledger->remaining_amount);
+
+        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 3]);
+
+        try {
+            $this->action->execute($payingRefrend, [
+                'resolution_type'      => 'BECA_MES',
+                'withholding_payments' => [
+                    ['withholding_id' => $ledger->id, 'amount' => 300.00], // stale — the original full amount
+                ],
+            ], $this->admin->id);
+            $this->fail('Expected WithholdingAmountMismatchException was not thrown.');
+        } catch (WithholdingAmountMismatchException $e) {
+            // expected
+        }
+
+        $this->assertSame(1, ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->count());
+    }
+
+    /** @test */
+    public function input_within_epsilon_persists_the_canonical_remaining_amount(): void
+    {
+        $user          = $this->makeBecario();
+        $originRefrend = $this->makeRefrend($user->id, ['period_month' => 1]);
+
+        $this->action->execute($originRefrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'fixed',
+            'withholding_value' => 300,
+            'resolution_cause'  => 'OTRO',
+        ], $this->admin->id);
+
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $originRefrend->id)->first();
+
+        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
         $this->action->execute($payingRefrend, [
             'resolution_type'      => 'BECA_MES',
             'withholding_payments' => [
-                ['withholding_id' => $ledger->id, 'amount' => 9999.00],
+                ['withholding_id' => $ledger->id, 'amount' => 299.998],
             ],
         ], $this->admin->id);
 
         $child = ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->first();
-        $this->assertSame('100.00', $child->amount);
+        $this->assertSame('300.00', $child->amount);
+
+        $ledger->refresh();
+        $this->assertSame('300.00', $ledger->paid_amount);
+        $this->assertSame('0.00', $ledger->remaining_amount);
+        $this->assertSame('PAID', $ledger->status);
     }
 
     /** @test */
@@ -321,7 +442,10 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
         $this->action->execute($payingRefrend, [
             'resolution_type'      => 'BECA_MES',
             'withholding_payments' => [
-                ['withholding_id' => $ledger->id, 'amount' => 100.00],
+                // Exact-match so this setup call succeeds instead of tripping
+                // the amount-mismatch exception before expectException() below
+                // is even registered.
+                ['withholding_id' => $ledger->id, 'amount' => 300.00],
             ],
         ], $this->admin->id);
 
@@ -329,6 +453,9 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
         $this->action->execute($payingRefrend->fresh(), [
             'resolution_type'      => 'BECA_MES',
             'withholding_payments' => [
+                // Ledger is already PAID (settled above) — this second call
+                // fails on the "already liquidated" status guard regardless
+                // of the amount submitted here.
                 ['withholding_id' => $ledger->id, 'amount' => 50.00],
             ],
         ], $this->admin->id);

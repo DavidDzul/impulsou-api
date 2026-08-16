@@ -3,6 +3,7 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
+use App\Exceptions\WithholdingAmountMismatchException;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
@@ -235,15 +236,25 @@ class RecordPaymentSituationAction
                         throw new \DomainException('Retención fuera de la ventana pagable (3 meses / 2 más recientes).');
                     }
 
-                    $amount = round(min((float) $paymentInput['amount'], (float) $withholding->remaining_amount), 2);
+                    $amount = round((float) $paymentInput['amount'], 2);
                     if ($amount <= 0) {
                         throw new \DomainException('Monto a pagar inválido.');
+                    }
+                    // Authoritative under races: re-checked here (inside the lock,
+                    // against the freshly-read row) even though the controller-layer
+                    // closure rule already validated the same predicate on stale data.
+                    if (!$withholding->isFullSettlementAmount($amount)) {
+                        throw new WithholdingAmountMismatchException();
                     }
 
                     ScholarshipWithholdingPayment::create([
                         'withholding_id'     => $withholding->id,
                         'applied_refrend_id' => $refrend->id,
-                        'amount'             => number_format($amount, 2, '.', ''),
+                        // Persist the server's canonical remaining_amount, not the
+                        // client-submitted number: inputs are accepted within
+                        // ±SETTLEMENT_EPSILON, so echoing them back could leave a
+                        // sub-cent residue that never reaches remaining_amount = 0.00.
+                        'amount'             => $withholding->remaining_amount,
                         'created_by_id'      => $userId,
                     ]);
 

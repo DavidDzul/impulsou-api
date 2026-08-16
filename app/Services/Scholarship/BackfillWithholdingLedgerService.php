@@ -128,11 +128,11 @@ class BackfillWithholdingLedgerService
             foreach ($closedRefrends as $closedRefrend) {
                 $toApply = (float) $closedRefrend->amount_pending_from_previous;
 
-                while ($toApply > 0.005 && $ledgerIndex < count($ledgerRowsArray)) {
+                while ($toApply > ScholarshipWithholding::SETTLEMENT_EPSILON && $ledgerIndex < count($ledgerRowsArray)) {
                     $row          = $ledgerRowsArray[$ledgerIndex];
                     $rowRemaining = $remaining[$row->id];
 
-                    if ($rowRemaining <= 0.005) {
+                    if ($rowRemaining <= ScholarshipWithholding::SETTLEMENT_EPSILON) {
                         $ledgerIndex++;
                         continue;
                     }
@@ -149,7 +149,7 @@ class BackfillWithholdingLedgerService
                     $remaining[$row->id] -= $apply;
                     $toApply             -= $apply;
 
-                    if ($remaining[$row->id] <= 0.005) {
+                    if ($remaining[$row->id] <= ScholarshipWithholding::SETTLEMENT_EPSILON) {
                         $ledgerIndex++;
                     }
                 }

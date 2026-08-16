@@ -20,6 +20,7 @@ use App\Models\ScholarshipLateConsumption;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendIncident;
+use App\Models\ScholarshipWithholding;
 use App\Services\AttendancePenaltyService;
 use App\Services\GenerateMonthlyRefrendsService;
 use App\Services\RecalculateRefrendService;
@@ -371,13 +372,45 @@ class ScholarshipRefrendController extends Controller
                     }
                 },
             ],
-            'withholding_payments.*.amount'          => 'required|numeric|min:0.01',
+            'withholding_payments.*.amount'          => [
+                'required',
+                'numeric',
+                'min:0.01',
+                function ($attribute, $value, $fail) use ($request, $refrend, &$payableIds, &$withholdingsById) {
+                    $index         = explode('.', $attribute)[1];
+                    $withholdingId = (int) $request->input("withholding_payments.$index.withholding_id");
+
+                    $payableIds ??= PayableWithholdingWindow::payableIdsForUser(
+                        $refrend->user_id,
+                        $refrend->period_year,
+                        $refrend->period_month
+                    );
+                    if (!in_array($withholdingId, $payableIds, true)) {
+                        // Sibling withholding_id rule is already failing (missing,
+                        // non-existent, or out-of-window) — don't double-report.
+                        return;
+                    }
+
+                    $withholdingsById ??= [];
+                    $withholdingsById[$withholdingId] ??= ScholarshipWithholding::find($withholdingId);
+                    $withholding = $withholdingsById[$withholdingId];
+
+                    if ($withholding && !$withholding->isFullSettlementAmount((float) $value)) {
+                        $fail('El monto debe coincidir exactamente con el saldo pendiente de esta retención.');
+                    }
+                },
+            ],
         ]);
 
         try {
             $updated = app(RecordPaymentSituationAction::class)->execute($refrend, $data, auth()->id());
         } catch (\DomainException $e) {
-            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+            $payload = ['res' => false, 'msg' => $e->getMessage()];
+            if (defined(get_class($e) . '::CODE')) {
+                $payload['code'] = $e::CODE;
+            }
+
+            return response()->json($payload, 422);
         }
 
         return response()->json(['res' => true, 'data' => $updated]);
