@@ -73,9 +73,12 @@ class ScholarshipWithholdingEndpointTest extends TestCase
             'withholding_value' => 200, 'resolution_cause' => 'OTRO',
         ], $this->admin->id);
 
-        // Fully settle january -> must NOT be listed.
+        // Fully settle january -> must NOT be listed. Paying refrend's period must
+        // stay within the 3-month payable window of january (retencion-limite-3-meses
+        // B4 enforces this at the Action layer as defense-in-depth) — month 2 is
+        // offset 1 from january, distinct from the other periods used above (1/3/4).
         $janLedger = ScholarshipWithholding::where('origin_refrend_id', $janRefrend->id)->first();
-        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 5]);
+        $payingRefrend = $this->makeRefrend($user->id, ['period_month' => 2]);
         $action->execute($payingRefrend, [
             'resolution_type'      => 'BECA_MES',
             'withholding_payments' => [

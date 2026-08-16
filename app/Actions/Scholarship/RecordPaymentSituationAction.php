@@ -7,6 +7,7 @@ use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Services\AttendancePenaltyService;
+use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Services\Scholarship\RefrendPaymentTotalsSyncer;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
@@ -208,6 +209,16 @@ class RecordPaymentSituationAction
                     );
                 }
 
+                // Layer-2 re-check (D2 — set operation shared with the controller-layer
+                // validation): a direct API call bypassing HTTP validation could still
+                // reach this Action with an out-of-window/rank-excluded withholding id.
+                // Computed once per call, only when there are payment inputs to process.
+                $payableIds = PayableWithholdingWindow::payableIdsForUser(
+                    $refrend->user_id,
+                    $refrend->period_year,
+                    $refrend->period_month
+                );
+
                 foreach ($paymentInputs as $paymentInput) {
                     $withholding = ScholarshipWithholding::lockForUpdate()->findOrFail($paymentInput['withholding_id']);
 
@@ -219,6 +230,9 @@ class RecordPaymentSituationAction
                     }
                     if ($withholding->status !== 'PENDING') {
                         throw new \DomainException('Retención ya liquidada o cancelada.');
+                    }
+                    if (!in_array((int) $withholding->id, $payableIds, true)) {
+                        throw new \DomainException('Retención fuera de la ventana pagable (3 meses / 2 más recientes).');
                     }
 
                     $amount = round(min((float) $paymentInput['amount'], (float) $withholding->remaining_amount), 2);
