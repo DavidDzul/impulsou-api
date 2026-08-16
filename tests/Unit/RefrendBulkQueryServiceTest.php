@@ -5,6 +5,8 @@ namespace Tests\Unit;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Models\Generation;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipSemesterGrade;
 use App\Models\ScholarshipWithholding;
@@ -85,16 +87,29 @@ class RefrendBulkQueryServiceTest extends TestCase
         ]);
     }
 
-    private function buildTable(?int $generationId = null): array
+    private function buildTable(?int $generationId = null, ?bool $advancePaymentEligible = null, ?string $campus = null): array
     {
         return $this->service->buildTable(
-            year:         2026,
-            month:        5,
-            campus:       null,
-            generationId: $generationId,
-            page:         1,
-            perPage:      200,
+            year:                   2026,
+            month:                  5,
+            campus:                 $campus,
+            generationId:           $generationId,
+            advancePaymentEligible: $advancePaymentEligible,
+            page:                   1,
+            perPage:                200,
         );
+    }
+
+    /**
+     * Creates (or updates) a ScholarshipProfile for the given user with an
+     * explicit advance_payment_eligible flag.
+     */
+    private function seedProfile(int $userId, bool $eligible = true): void
+    {
+        ScholarshipProfile::factory()->create([
+            'user_id'                  => $userId,
+            'advance_payment_eligible' => $eligible,
+        ]);
     }
 
     // ── classifyAcademic — tested via buildTable() ────────────────────────────
@@ -332,5 +347,91 @@ class RefrendBulkQueryServiceTest extends TestCase
             $withholdingQueries,
             'Exactly one query against scholarship_withholdings must be issued for N users (no N+1).'
         );
+    }
+
+    // ── advance_payment_eligible filter (beca-pago-adelantado-cert) ───────────
+
+    /** @test */
+    public function advance_payment_filter_returns_only_flagged_profiles(): void
+    {
+        $eligible    = $this->makeRefrend();
+        $notEligible = $this->makeRefrend();
+        $this->seedProfile($eligible->user_id, true);
+        $this->seedProfile($notEligible->user_id, false);
+
+        $result = $this->buildTable(advancePaymentEligible: true);
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame($eligible->user_id, $result['rows'][0]['refrend']['user_id']);
+        $this->assertSame(1, $result['meta']['total']);
+    }
+
+    /** @test */
+    public function advance_payment_filter_excludes_becarios_without_profile(): void
+    {
+        // NULL-safety guard (design D2): a becario with no scholarship_profiles
+        // row at all must be excluded when the filter is active, because
+        // `sp.advance_payment_eligible = true` evaluates to SQL UNKNOWN (not
+        // TRUE) against a NULL from the LEFT JOIN.
+        $eligible      = $this->makeRefrend();
+        $profileLess   = $this->makeRefrend();
+        $this->seedProfile($eligible->user_id, true);
+        // Intentionally no seedProfile() call for $profileLess.
+
+        $result = $this->buildTable(advancePaymentEligible: true);
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame($eligible->user_id, $result['rows'][0]['refrend']['user_id']);
+    }
+
+    /** @test */
+    public function advance_payment_filter_null_returns_all_rows(): void
+    {
+        $eligible    = $this->makeRefrend();
+        $notEligible = $this->makeRefrend();
+        $profileLess = $this->makeRefrend();
+        $this->seedProfile($eligible->user_id, true);
+        $this->seedProfile($notEligible->user_id, false);
+
+        $result = $this->buildTable(advancePaymentEligible: null);
+
+        $this->assertCount(3, $result['rows']);
+        $this->assertSame(3, $result['meta']['total']);
+    }
+
+    /** @test */
+    public function advance_payment_filter_combines_with_campus_and_generation(): void
+    {
+        $genA = Generation::create([
+            'generation_name'   => 'Gen A',
+            'campus'            => 'MERIDA',
+            'generation_active' => true,
+        ]);
+        $genB = Generation::create([
+            'generation_name'   => 'Gen B',
+            'campus'            => 'VALLADOLID',
+            'generation_active' => true,
+        ]);
+
+        $match = $this->makeRefrend([
+            'snapshot_campus'        => 'MERIDA',
+            'snapshot_generation_id' => $genA->id,
+        ]);
+        $otherCampusGen = $this->makeRefrend([
+            'snapshot_campus'        => 'VALLADOLID',
+            'snapshot_generation_id' => $genB->id,
+        ]);
+        $this->seedProfile($match->user_id, true);
+        $this->seedProfile($otherCampusGen->user_id, true);
+
+        $result = $this->buildTable(
+            generationId: $genA->id,
+            advancePaymentEligible: true,
+            campus: 'MERIDA',
+        );
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame($match->user_id, $result['rows'][0]['refrend']['user_id']);
+        $this->assertSame(1, $result['meta']['total']);
     }
 }

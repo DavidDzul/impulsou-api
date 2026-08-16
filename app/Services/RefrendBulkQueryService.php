@@ -20,6 +20,7 @@ class RefrendBulkQueryService
         int $month,
         ?string $campus,
         ?int $generationId,
+        ?bool $advancePaymentEligible,
         int $page,
         int $perPage
     ): array {
@@ -35,6 +36,10 @@ class RefrendBulkQueryService
 
         if ($generationId !== null) {
             $query->where('r.snapshot_generation_id', $generationId);
+        }
+
+        if ($advancePaymentEligible === true) {
+            $query->where('sp.advance_payment_eligible', true);
         }
 
         $total   = $query->count();
