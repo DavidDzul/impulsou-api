@@ -6,6 +6,7 @@ use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipWithholding;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -56,6 +57,26 @@ class WithholdingPartialAmountTest extends TestCase
     private function situationUrl(int $id): string
     {
         return "/api/admin/scholarship-refrends/{$id}/situation";
+    }
+
+    private function makeWithholdingForUser(int $userId, int $periodYear, int $periodMonth, float $withheld = 500.00): ScholarshipWithholding
+    {
+        $originRefrend = $this->makeRefrend([
+            'user_id'      => $userId,
+            'period_year'  => $periodYear,
+            'period_month' => $periodMonth,
+            'status'       => 'WITHHELD',
+        ]);
+
+        return ScholarshipWithholding::create([
+            'user_id'           => $userId,
+            'origin_refrend_id' => $originRefrend->id,
+            'period_year'       => $periodYear,
+            'period_month'      => $periodMonth,
+            'withheld_amount'   => number_format($withheld, 2, '.', ''),
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
     }
 
     // ── recordSituation validation ──────────────────────────────────────────
@@ -110,6 +131,85 @@ class WithholdingPartialAmountTest extends TestCase
         $response->assertStatus(200);
         $this->assertSame('300.00', $response->json('data.discount_amount'));
         $this->assertSame('700.00', $response->json('data.final_amount'));
+    }
+
+    // ── recordSituation withholding_payments window validation ────────────────
+
+    /** @test */
+    public function it_returns_422_when_withholding_payment_references_an_out_of_window_id(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8]);
+        $stale   = $this->makeWithholdingForUser($refrend->user_id, 2026, 3, 400.00); // offset 5, out of window
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'      => 'SIN_PAGO',
+                'withholding_payments' => [
+                    ['withholding_id' => $stale->id, 'amount' => 100.00],
+                ],
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['withholding_payments.0.withholding_id']);
+        $this->assertDatabaseCount('scholarship_withholding_payments', 0);
+    }
+
+    /** @test */
+    public function it_returns_422_when_three_withholding_payments_are_submitted(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8]);
+        $first   = $this->makeWithholdingForUser($refrend->user_id, 2026, 7, 100.00); // offset 1
+        $second  = $this->makeWithholdingForUser($refrend->user_id, 2026, 6, 100.00); // offset 2
+        $third   = $this->makeWithholdingForUser($refrend->user_id, 2026, 5, 100.00); // offset 3, in-window but rank 3rd
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'      => 'SIN_PAGO',
+                'withholding_payments' => [
+                    ['withholding_id' => $first->id, 'amount' => 50.00],
+                    ['withholding_id' => $second->id, 'amount' => 50.00],
+                    ['withholding_id' => $third->id, 'amount' => 50.00],
+                ],
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['withholding_payments']);
+        $this->assertDatabaseCount('scholarship_withholding_payments', 0);
+    }
+
+    /** @test */
+    public function it_persists_payments_for_two_eligible_withholding_ids(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8]);
+        $recent  = $this->makeWithholdingForUser($refrend->user_id, 2026, 7, 100.00); // offset 1
+        $older   = $this->makeWithholdingForUser($refrend->user_id, 2026, 6, 100.00); // offset 2
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'      => 'SIN_PAGO',
+                'withholding_payments' => [
+                    ['withholding_id' => $recent->id, 'amount' => 50.00],
+                    ['withholding_id' => $older->id, 'amount' => 50.00],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+        $this->assertDatabaseCount('scholarship_withholding_payments', 2);
+    }
+
+    /** @test */
+    public function descuento_definitivo_rows_are_unaffected_by_the_window_rule(): void
+    {
+        $refrend = $this->makeRefrend(['period_year' => 2026, 'period_month' => 8, 'base_amount' => 1000.00]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), [
+                'resolution_type'    => 'DESCUENTO_DEFINITIVO',
+                'withholding_mode'   => 'fixed',
+                'withholding_value'  => 200,
+            ]);
+
+        $response->assertStatus(200);
     }
 
     // ── bulkPay ──────────────────────────────────────────────────────────────

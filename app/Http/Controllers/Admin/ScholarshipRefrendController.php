@@ -25,6 +25,7 @@ use App\Services\GenerateMonthlyRefrendsService;
 use App\Services\RecalculateRefrendService;
 use App\Services\RefrendBulkQueryService;
 use App\Services\ScholarshipLoggingService;
+use App\Services\Scholarship\PayableWithholdingWindow;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -353,8 +354,23 @@ class ScholarshipRefrendController extends Controller
                     }
                 },
             ],
-            'withholding_payments'                  => 'nullable|array|min:1',
-            'withholding_payments.*.withholding_id'  => 'required|integer|distinct|exists:scholarship_withholdings,id',
+            'withholding_payments'                  => 'nullable|array|min:1|max:' . PayableWithholdingWindow::MAX_PAYABLE,
+            'withholding_payments.*.withholding_id'  => [
+                'required',
+                'integer',
+                'distinct',
+                'exists:scholarship_withholdings,id',
+                function ($attribute, $value, $fail) use ($refrend, &$payableIds) {
+                    $payableIds ??= PayableWithholdingWindow::payableIdsForUser(
+                        $refrend->user_id,
+                        $refrend->period_year,
+                        $refrend->period_month
+                    );
+                    if (!in_array((int) $value, $payableIds, true)) {
+                        $fail('Esta retención ya no es pagable (fuera de la ventana de 3 meses o más allá de las 2 más recientes).');
+                    }
+                },
+            ],
             'withholding_payments.*.amount'          => 'required|numeric|min:0.01',
         ]);
 
