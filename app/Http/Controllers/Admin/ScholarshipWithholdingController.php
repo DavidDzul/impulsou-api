@@ -6,6 +6,7 @@ use App\Actions\Scholarship\VoidWithholdingPaymentAction;
 use App\Http\Controllers\Controller;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
+use App\Services\Scholarship\PayableWithholdingWindow;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,12 +16,21 @@ class ScholarshipWithholdingController extends Controller
      * Lists a becario's retention ledger. Defaults to pending rows with a
      * balance > 0 (what "Pago meses retenidos" needs to offer), ordered
      * oldest period first — the order an operator expects to liquidate them.
+     *
+     * Optional `relative_year`/`relative_month` (both-or-neither) narrow
+     * `data` down to the payable subset (window + top-2, per
+     * PayableWithholdingWindow) and add an additive `meta` block. Without
+     * them the response is byte-identical to the legacy shape.
      */
     public function index(Request $request, int $userId): JsonResponse
     {
-        $status = $request->validate([
-            'status' => 'nullable|in:pending,all',
-        ])['status'] ?? 'pending';
+        $validated = $request->validate([
+            'status'         => 'nullable|in:pending,all',
+            'relative_year'  => 'nullable|integer|min:2000|max:2100|required_with:relative_month',
+            'relative_month' => 'nullable|integer|min:1|max:12|required_with:relative_year',
+        ]);
+
+        $status = $validated['status'] ?? 'pending';
 
         $query = ScholarshipWithholding::with([
             'payments' => fn ($q) => $q->where('is_voided', false)
@@ -37,7 +47,37 @@ class ScholarshipWithholdingController extends Controller
             ->orderBy('period_month')
             ->get();
 
-        return response()->json(['res' => true, 'data' => $withholdings]);
+        $relativeYear  = isset($validated['relative_year']) ? (int) $validated['relative_year'] : null;
+        $relativeMonth = isset($validated['relative_month']) ? (int) $validated['relative_month'] : null;
+
+        if ($relativeYear === null || $relativeMonth === null) {
+            return response()->json(['res' => true, 'data' => $withholdings]);
+        }
+
+        // Eligibility is only meaningful over PENDING rows with an open balance
+        // (the same set the `pending()` scope defines), regardless of the
+        // `status` param used to build $withholdings above.
+        $pendingBalance = $withholdings->filter(
+            fn ($w) => $w->status === 'PENDING' && (float) $w->paid_amount < (float) $w->withheld_amount
+        )->values();
+
+        $payable = PayableWithholdingWindow::selectPayable($pendingBalance, $relativeYear, $relativeMonth);
+
+        $totalPendingAmount = $pendingBalance->sum(
+            fn ($w) => max(0, (float) $w->withheld_amount - (float) $w->paid_amount)
+        );
+
+        return response()->json([
+            'res'  => true,
+            'data' => $payable->values(),
+            'meta' => [
+                'relative_year'        => $relativeYear,
+                'relative_month'       => $relativeMonth,
+                'eligible_count'       => $payable->count(),
+                'total_pending_count'  => $pendingBalance->count(),
+                'total_pending_amount' => number_format($totalPendingAmount, 2, '.', ''),
+            ],
+        ]);
     }
 
     /**

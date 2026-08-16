@@ -183,6 +183,129 @@ class ScholarshipWithholdingEndpointTest extends TestCase
         $response->assertJsonValidationErrors(['withholding_payments.0.withholding_id']);
     }
 
+    // ── relative_year/relative_month params + meta block ──────────────────────
+
+    /** @test */
+    public function it_returns_legacy_response_without_meta_when_relative_params_are_absent(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $this->actingAs($this->admin);
+        $action = $this->app->make(RecordPaymentSituationAction::class);
+
+        $refrend = $this->makeRefrend($user->id, ['period_month' => 7]);
+        $action->execute($refrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 100, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings");
+
+        $response->assertStatus(200);
+        $this->assertCount(1, $response->json('data'));
+        $this->assertArrayNotHasKey('meta', $response->json());
+    }
+
+    /** @test */
+    public function it_returns_payable_subset_and_meta_when_relative_params_are_both_present(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $this->actingAs($this->admin);
+        $action = $this->app->make(RecordPaymentSituationAction::class);
+
+        $recentRefrend = $this->makeRefrend($user->id, ['period_month' => 7]); // offset 1
+        $action->execute($recentRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 500, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+        $recentLedger = ScholarshipWithholding::where('origin_refrend_id', $recentRefrend->id)->first();
+
+        $olderRefrend = $this->makeRefrend($user->id, ['period_month' => 6]); // offset 2
+        $action->execute($olderRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 300, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+        $olderLedger = ScholarshipWithholding::where('origin_refrend_id', $olderRefrend->id)->first();
+
+        // 3rd in-window entry -> excluded by top-2 rank, still counted in total_pending.
+        $oldestRefrend = $this->makeRefrend($user->id, ['period_month' => 5]); // offset 3
+        $action->execute($oldestRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 200, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+
+        // Out of window entirely -> excluded, still counted in total_pending.
+        $outOfWindowRefrend = $this->makeRefrend($user->id, ['period_month' => 3]); // offset 5
+        $action->execute($outOfWindowRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 100, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings?relative_year=2026&relative_month=8");
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+        $this->assertCount(2, $data);
+        $this->assertSame([$recentLedger->id, $olderLedger->id], array_column($data, 'id'));
+
+        $meta = $response->json('meta');
+        $this->assertSame(2026, $meta['relative_year']);
+        $this->assertSame(8, $meta['relative_month']);
+        $this->assertSame(2, $meta['eligible_count']);
+        $this->assertSame(4, $meta['total_pending_count']);
+        $this->assertSame('1100.00', $meta['total_pending_amount']);
+    }
+
+    /** @test */
+    public function it_returns_zero_eligible_count_with_nonzero_total_pending_when_only_stale_debt_exists(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $this->actingAs($this->admin);
+        $action = $this->app->make(RecordPaymentSituationAction::class);
+
+        $staleRefrend = $this->makeRefrend($user->id, ['period_month' => 3]); // offset 5
+        $action->execute($staleRefrend, [
+            'resolution_type' => 'RETENIDA', 'withholding_mode' => 'fixed',
+            'withholding_value' => 400, 'resolution_cause' => 'OTRO',
+        ], $this->admin->id);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings?relative_year=2026&relative_month=8");
+
+        $response->assertStatus(200);
+        $this->assertCount(0, $response->json('data'));
+
+        $meta = $response->json('meta');
+        $this->assertSame(0, $meta['eligible_count']);
+        $this->assertSame(1, $meta['total_pending_count']);
+        $this->assertSame('400.00', $meta['total_pending_amount']);
+    }
+
+    /** @test */
+    public function it_returns_422_when_only_relative_year_is_sent(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings?relative_year=2026");
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['relative_month']);
+    }
+
+    /** @test */
+    public function it_returns_422_when_only_relative_month_is_sent(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings?relative_month=8");
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['relative_year']);
+    }
+
     // ── Void payment endpoint (PR4) ────────────────────────────────────────────
 
     /** @test */
