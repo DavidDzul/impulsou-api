@@ -365,18 +365,4 @@ class BulkTableEndpointTest extends TestCase
         $this->assertLessThanOrEqual(10, count($queryLog),
             'Query count exceeded 10 — the withholding aggregate must not add a per-row query.');
     }
-
-    // ── advance_payment_eligible filter (beca-pago-adelantado-cert) ───────────
-
-    /** @test */
-    public function it_returns_422_when_advance_payment_eligible_is_not_a_valid_boolean(): void
-    {
-        // Laravel's `boolean` rule accepts true,false,1,0,"1","0" but rejects
-        // arbitrary strings like "abc" (and "true"/"false" too — design D4).
-        $response = $this->actingAs($this->admin)
-            ->getJson($this->url(['advance_payment_eligible' => 'abc']));
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['advance_payment_eligible']);
-    }
 }

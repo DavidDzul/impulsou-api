@@ -5,7 +5,6 @@ namespace Tests\Unit;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
-use App\Models\Generation;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipSemesterGrade;
@@ -87,16 +86,15 @@ class RefrendBulkQueryServiceTest extends TestCase
         ]);
     }
 
-    private function buildTable(?int $generationId = null, ?bool $advancePaymentEligible = null, ?string $campus = null): array
+    private function buildTable(?int $generationId = null, ?string $campus = null): array
     {
         return $this->service->buildTable(
-            year:                   2026,
-            month:                  5,
-            campus:                 $campus,
-            generationId:           $generationId,
-            advancePaymentEligible: $advancePaymentEligible,
-            page:                   1,
-            perPage:                200,
+            year:         2026,
+            month:        5,
+            campus:       $campus,
+            generationId: $generationId,
+            page:         1,
+            perPage:      200,
         );
     }
 
@@ -349,89 +347,50 @@ class RefrendBulkQueryServiceTest extends TestCase
         );
     }
 
-    // ── advance_payment_eligible filter (beca-pago-adelantado-cert) ───────────
+    // ── advance_payment_eligible row data (beca-pago-adelantado-cert) ─────────
+    //
+    // PIVOT: this is no longer a server-side WHERE-clause filter — the row
+    // simply carries the flag (like incidents_count/pending_withholding_count)
+    // and the "Con incidencias"-style client-side filter operates on the
+    // already-fetched rows. These tests assert the field is present and
+    // correctly typed/defaulted in the returned row data.
 
     /** @test */
-    public function advance_payment_filter_returns_only_flagged_profiles(): void
+    public function row_reflects_true_when_profile_is_flagged_eligible(): void
     {
-        $eligible    = $this->makeRefrend();
-        $notEligible = $this->makeRefrend();
-        $this->seedProfile($eligible->user_id, true);
-        $this->seedProfile($notEligible->user_id, false);
+        $refrend = $this->makeRefrend();
+        $this->seedProfile($refrend->user_id, true);
 
-        $result = $this->buildTable(advancePaymentEligible: true);
+        $result = $this->buildTable();
 
         $this->assertCount(1, $result['rows']);
-        $this->assertSame($eligible->user_id, $result['rows'][0]['refrend']['user_id']);
-        $this->assertSame(1, $result['meta']['total']);
+        $this->assertTrue($result['rows'][0]['advance_payment_eligible']);
     }
 
     /** @test */
-    public function advance_payment_filter_excludes_becarios_without_profile(): void
+    public function row_reflects_false_when_profile_is_not_flagged_eligible(): void
     {
-        // NULL-safety guard (design D2): a becario with no scholarship_profiles
-        // row at all must be excluded when the filter is active, because
-        // `sp.advance_payment_eligible = true` evaluates to SQL UNKNOWN (not
-        // TRUE) against a NULL from the LEFT JOIN.
-        $eligible      = $this->makeRefrend();
-        $profileLess   = $this->makeRefrend();
-        $this->seedProfile($eligible->user_id, true);
-        // Intentionally no seedProfile() call for $profileLess.
+        $refrend = $this->makeRefrend();
+        $this->seedProfile($refrend->user_id, false);
 
-        $result = $this->buildTable(advancePaymentEligible: true);
+        $result = $this->buildTable();
 
         $this->assertCount(1, $result['rows']);
-        $this->assertSame($eligible->user_id, $result['rows'][0]['refrend']['user_id']);
+        $this->assertFalse($result['rows'][0]['advance_payment_eligible']);
     }
 
     /** @test */
-    public function advance_payment_filter_null_returns_all_rows(): void
+    public function row_defaults_to_false_when_becario_has_no_profile(): void
     {
-        $eligible    = $this->makeRefrend();
-        $notEligible = $this->makeRefrend();
-        $profileLess = $this->makeRefrend();
-        $this->seedProfile($eligible->user_id, true);
-        $this->seedProfile($notEligible->user_id, false);
+        // No seedProfile() call — the LEFT JOIN yields NULL for every sp.*
+        // column. Unlike the genuinely-nullable profile_discount_* fields,
+        // advance_payment_eligible must be normalized to false (boolean, not
+        // null) so the frontend never receives a null in a boolean field.
+        $this->makeRefrend();
 
-        $result = $this->buildTable(advancePaymentEligible: null);
-
-        $this->assertCount(3, $result['rows']);
-        $this->assertSame(3, $result['meta']['total']);
-    }
-
-    /** @test */
-    public function advance_payment_filter_combines_with_campus_and_generation(): void
-    {
-        $genA = Generation::create([
-            'generation_name'   => 'Gen A',
-            'campus'            => 'MERIDA',
-            'generation_active' => true,
-        ]);
-        $genB = Generation::create([
-            'generation_name'   => 'Gen B',
-            'campus'            => 'VALLADOLID',
-            'generation_active' => true,
-        ]);
-
-        $match = $this->makeRefrend([
-            'snapshot_campus'        => 'MERIDA',
-            'snapshot_generation_id' => $genA->id,
-        ]);
-        $otherCampusGen = $this->makeRefrend([
-            'snapshot_campus'        => 'VALLADOLID',
-            'snapshot_generation_id' => $genB->id,
-        ]);
-        $this->seedProfile($match->user_id, true);
-        $this->seedProfile($otherCampusGen->user_id, true);
-
-        $result = $this->buildTable(
-            generationId: $genA->id,
-            advancePaymentEligible: true,
-            campus: 'MERIDA',
-        );
+        $result = $this->buildTable();
 
         $this->assertCount(1, $result['rows']);
-        $this->assertSame($match->user_id, $result['rows'][0]['refrend']['user_id']);
-        $this->assertSame(1, $result['meta']['total']);
+        $this->assertFalse($result['rows'][0]['advance_payment_eligible']);
     }
 }

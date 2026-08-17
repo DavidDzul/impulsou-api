@@ -284,19 +284,17 @@ class ScholarshipRefrendController extends Controller
             'month'                     => 'required|integer|min:1|max:12',
             'campus'                    => 'required|string|max:20',
             'generation_id'             => 'nullable|integer|exists:generations,id',
-            'advance_payment_eligible'  => 'nullable|boolean',
             'page'                      => 'nullable|integer|min:1',
             'per_page'                  => 'nullable|integer|min:1|max:500',
         ]);
 
         $result = $service->buildTable(
-            year:                   $data['year'],
-            month:                  $data['month'],
-            campus:                 $data['campus'],
-            generationId:           isset($data['generation_id']) ? (int) $data['generation_id'] : null,
-            advancePaymentEligible: isset($data['advance_payment_eligible']) ? (bool) $data['advance_payment_eligible'] : null,
-            page:                   $data['page'] ?? 1,
-            perPage:                $data['per_page'] ?? 200,
+            year:         $data['year'],
+            month:        $data['month'],
+            campus:       $data['campus'],
+            generationId: isset($data['generation_id']) ? (int) $data['generation_id'] : null,
+            page:         $data['page'] ?? 1,
+            perPage:      $data['per_page'] ?? 200,
         );
 
         return response()->json([

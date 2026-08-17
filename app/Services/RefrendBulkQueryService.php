@@ -20,7 +20,6 @@ class RefrendBulkQueryService
         int $month,
         ?string $campus,
         ?int $generationId,
-        ?bool $advancePaymentEligible,
         int $page,
         int $perPage
     ): array {
@@ -36,10 +35,6 @@ class RefrendBulkQueryService
 
         if ($generationId !== null) {
             $query->where('r.snapshot_generation_id', $generationId);
-        }
-
-        if ($advancePaymentEligible === true) {
-            $query->where('sp.advance_payment_eligible', true);
         }
 
         $total   = $query->count();
@@ -95,6 +90,14 @@ class RefrendBulkQueryService
                 'sp.active_discount_percentage as profile_discount_pct',
                 'sp.discount_valid_until as profile_discount_valid_until',
                 'sp.discount_reason as profile_discount_reason',
+                // COALESCE to 0 (not NULL passthrough like the profile_discount_*
+                // fields above): those are genuinely-nullable business data, but
+                // advance_payment_eligible is a NOT NULL boolean on the profile
+                // table — a becario with no scholarship_profiles row (LEFT JOIN
+                // NULL) must read as "not eligible", matching incidents_count/
+                // pending_withholding_count defaulting-to-zero convention below,
+                // not the raw-nullable profile_discount_* convention.
+                DB::raw('COALESCE(sp.advance_payment_eligible, 0) as advance_payment_eligible'),
             ]);
 
         if ($refrends->isEmpty()) {
@@ -273,6 +276,7 @@ class RefrendBulkQueryService
                 'profile_discount_pct'          => $r->profile_discount_pct,
                 'profile_discount_valid_until'  => $r->profile_discount_valid_until,
                 'profile_discount_reason'       => $r->profile_discount_reason,
+                'advance_payment_eligible'      => (bool) $r->advance_payment_eligible,
                 'pending_withholding_count'     => $pendingCount,
                 'pending_withholding_amount'    => $pendingAmount,
             ];
