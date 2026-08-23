@@ -41,6 +41,11 @@ class ScholarshipCalculationServiceTest extends TestCase
             'monthly_amount'             => 2500.00,
             'active_discount_percentage' => 15.00,
             'discount_reason'            => null,
+            // Both bounds required since isDiscountActiveOn() uses the shared
+            // inclusive rangeCoversDate() primitive (design D1/D3) — a null
+            // discount_valid_from now deactivates the discount, so every
+            // fixture that expects an ACTIVE discount needs a from in the past.
+            'discount_valid_from'        => Carbon::yesterday()->toDateString(),
             'discount_valid_until'       => Carbon::tomorrow()->toDateString(),
             // payment_start_date column still exists on SQLite (dropColumn skipped)
             'payment_start_date'         => now()->toDateString(),
@@ -169,5 +174,168 @@ class ScholarshipCalculationServiceTest extends TestCase
 
         $this->assertSame(15.0, $snapshot['snapshot_discount_percentage']);
         $this->assertSame('Baja calificación', $snapshot['snapshot_discount_reason']);
+    }
+
+    // ── discount_valid_from range (S-DESC-06/07) ─────────────────────────────
+
+    /** @test */
+    public function discount_is_inactive_when_discount_valid_from_is_in_the_future(): void
+    {
+        $profile = $this->makeProfile([
+            'active_discount_percentage' => 15.00,
+            'discount_valid_from'        => Carbon::tomorrow()->toDateString(),
+            'discount_valid_until'       => Carbon::tomorrow()->addDays(10)->toDateString(),
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile);
+
+        $this->assertNull($snapshot['snapshot_discount_percentage']);
+        $this->assertNull($snapshot['snapshot_discount_reason']);
+    }
+
+    /** @test */
+    public function discount_is_active_when_discount_valid_from_is_a_backfilled_past_date(): void
+    {
+        // Simulates a row backfilled by the M2 migration: discount_valid_from
+        // set to DATE(created_at), i.e. a past date, with an active discount
+        // that is still within its original discount_valid_until.
+        $profile = $this->makeProfile([
+            'active_discount_percentage' => 15.00,
+            'discount_valid_from'        => Carbon::today()->subDays(30)->toDateString(),
+            'discount_valid_until'       => Carbon::tomorrow()->toDateString(),
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile);
+
+        $this->assertSame(15.0, $snapshot['snapshot_discount_percentage']);
+    }
+
+    // ── Temporary increase in buildSnapshot() ────────────────────────────────
+
+    /** @test */
+    public function build_snapshot_sums_active_temporary_increase_into_gross_amount(): void
+    {
+        $profile = $this->makeProfile([
+            'active_discount_percentage'     => null,
+            'discount_valid_from'            => null,
+            'discount_valid_until'           => null,
+            'monthly_amount'                 => 2000.00,
+            'monto_apoyo'                     => 200.00,
+            'temporary_increase_amount'      => 500.00,
+            'temporary_increase_valid_from'  => '2026-09-01',
+            'temporary_increase_valid_until' => '2026-09-30',
+            'temporary_increase_reason'      => 'Apoyo transporte',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(2700.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(2000.0, $snapshot['base_amount']);
+        $this->assertSame(500.0, $snapshot['snapshot_temporary_increase_amount']);
+        $this->assertSame('Apoyo transporte', $snapshot['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function build_snapshot_excludes_expired_temporary_increase(): void
+    {
+        $profile = $this->makeProfile([
+            'active_discount_percentage'     => null,
+            'discount_valid_from'            => null,
+            'discount_valid_until'           => null,
+            'monthly_amount'                 => 2000.00,
+            'monto_apoyo'                     => 0,
+            'temporary_increase_amount'      => 500.00,
+            'temporary_increase_valid_from'  => '2026-08-01',
+            'temporary_increase_valid_until' => '2026-08-31',
+            'temporary_increase_reason'      => 'Apoyo transporte',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-01'));
+
+        $this->assertSame(2000.0, $snapshot['snapshot_gross_amount']);
+        $this->assertNull($snapshot['snapshot_temporary_increase_amount']);
+        $this->assertNull($snapshot['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function build_snapshot_excludes_future_temporary_increase(): void
+    {
+        $profile = $this->makeProfile([
+            'active_discount_percentage'     => null,
+            'discount_valid_from'            => null,
+            'discount_valid_until'           => null,
+            'monthly_amount'                 => 2000.00,
+            'monto_apoyo'                     => 0,
+            'temporary_increase_amount'      => 500.00,
+            'temporary_increase_valid_from'  => '2026-10-01',
+            'temporary_increase_valid_until' => '2026-10-31',
+            'temporary_increase_reason'      => 'Apoyo transporte',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(2000.0, $snapshot['snapshot_gross_amount']);
+        $this->assertNull($snapshot['snapshot_temporary_increase_amount']);
+        $this->assertNull($snapshot['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function build_snapshot_without_temporary_increase_matches_previous_behavior(): void
+    {
+        // Regression guard: a profile with no temporary increase configured at
+        // all (all 4 columns null) must calculate exactly as it did before
+        // this feature existed.
+        $profile = $this->makeProfile([
+            'active_discount_percentage'     => null,
+            'discount_valid_from'            => null,
+            'discount_valid_until'           => null,
+            'monthly_amount'                 => 2000.00,
+            'monto_apoyo'                     => 200.00,
+            'temporary_increase_amount'      => null,
+            'temporary_increase_valid_from'  => null,
+            'temporary_increase_valid_until' => null,
+            'temporary_increase_reason'      => null,
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(2200.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(2000.0, $snapshot['base_amount']);
+        $this->assertNull($snapshot['snapshot_temporary_increase_amount']);
+        $this->assertNull($snapshot['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function academic_discount_is_applied_over_gross_amount_including_temporary_increase(): void
+    {
+        // Spec scenario: monthly_amount=2000, monto_apoyo=200, aumento
+        // vigente=500, descuento activo=10% -> snapshot_gross_amount=2700 and
+        // calculateFinalAmount() applies the 10% over 2700 (not over 2200).
+        $profile = $this->makeProfile([
+            'monthly_amount'                  => 2000.00,
+            'monto_apoyo'                      => 200.00,
+            'active_discount_percentage'      => 10.00,
+            'discount_valid_from'             => Carbon::parse('2026-09-01'),
+            'discount_valid_until'            => Carbon::parse('2026-09-30'),
+            'temporary_increase_amount'       => 500.00,
+            'temporary_increase_valid_from'   => '2026-09-01',
+            'temporary_increase_valid_until'  => '2026-09-30',
+            'temporary_increase_reason'       => 'Apoyo transporte',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(2700.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(10.0, $snapshot['snapshot_discount_percentage']);
+
+        $refrend = $this->makeRefrend($profile->user_id);
+        $refrend->update([
+            'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
+            'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
+        ]);
+
+        $result = $this->service->calculateFinalAmount($refrend->fresh());
+
+        $this->assertSame(2430.0, $result['final_amount']);
     }
 }

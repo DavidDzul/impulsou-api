@@ -417,6 +417,7 @@ class ClearRefrendResolutionActionTest extends TestCase
         $user = $this->makeBecario();
         $this->makeProfile($user, [
             'active_discount_percentage' => 20,
+            'discount_valid_from'        => now()->subDay()->toDateString(),
             'discount_valid_until'       => now()->addMonths(3)->toDateString(),
         ]);
         $refrend = $this->makeResolvedRefrend($user, ['resolution_type' => 'BECA_MES']);
@@ -461,6 +462,7 @@ class ClearRefrendResolutionActionTest extends TestCase
         $user = $this->makeBecario();
         $this->makeProfile($user, [
             'active_discount_percentage' => 20,
+            'discount_valid_from'        => now()->subDay()->toDateString(),
             'discount_valid_until'       => now()->addMonths(3)->toDateString(),
         ]);
         $refrend = $this->makeResolvedRefrend($user, ['resolution_type' => 'BECA_MES']);
