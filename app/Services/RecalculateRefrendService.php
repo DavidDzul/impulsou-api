@@ -75,6 +75,8 @@ class RecalculateRefrendService
                 'snapshot_scholarship_type'   => $snapshot['snapshot_scholarship_type'],
                 'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
                 'snapshot_monto_apoyo'         => $snapshot['snapshot_monto_apoyo'],
+                'snapshot_temporary_increase_amount' => $snapshot['snapshot_temporary_increase_amount'],
+                'snapshot_temporary_increase_reason' => $snapshot['snapshot_temporary_increase_reason'],
                 'base_amount'                  => $snapshot['base_amount'],
                 'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
                 'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
