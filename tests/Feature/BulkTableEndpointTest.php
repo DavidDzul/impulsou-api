@@ -365,4 +365,52 @@ class BulkTableEndpointTest extends TestCase
         $this->assertLessThanOrEqual(10, count($queryLog),
             'Query count exceeded 10 — the withholding aggregate must not add a per-row query.');
     }
+
+    // ── Temporary increase snapshot fields (columnas-dinamicas-monto-becario) ──
+
+    /** @test */
+    public function bulk_table_response_exposes_temporary_increase_snapshot_fields_for_any_authenticated_admin_user(): void
+    {
+        // The bulk-table endpoint has no field-level role restriction (only
+        // the route-level user_type:ADMIN gate applies) — both snapshot
+        // fields must be present and correct for any actor who can reach it.
+        $this->makeRefrend([
+            'snapshot_temporary_increase_amount' => 350.00,
+            'snapshot_temporary_increase_reason' => 'Aumento temporal por desempeño',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson($this->url(['campus' => 'MERIDA']));
+
+        $response->assertStatus(200);
+
+        $rows = $response->json('data');
+        $this->assertCount(1, $rows);
+
+        $refrend = $rows[0]['refrend'];
+        $this->assertArrayHasKey('snapshot_temporary_increase_amount', $refrend);
+        $this->assertArrayHasKey('snapshot_temporary_increase_reason', $refrend);
+        $this->assertEquals(350.00, (float) $refrend['snapshot_temporary_increase_amount']);
+        $this->assertSame('Aumento temporal por desempeño', $refrend['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function bulk_table_response_returns_null_temporary_increase_fields_without_error_when_no_increase_exists(): void
+    {
+        $this->makeRefrend();
+
+        $response = $this->actingAs($this->admin)
+            ->getJson($this->url(['campus' => 'MERIDA']));
+
+        $response->assertStatus(200);
+
+        $rows = $response->json('data');
+        $this->assertCount(1, $rows);
+
+        $refrend = $rows[0]['refrend'];
+        $this->assertArrayHasKey('snapshot_temporary_increase_amount', $refrend);
+        $this->assertArrayHasKey('snapshot_temporary_increase_reason', $refrend);
+        $this->assertNull($refrend['snapshot_temporary_increase_amount']);
+        $this->assertNull($refrend['snapshot_temporary_increase_reason']);
+    }
 }

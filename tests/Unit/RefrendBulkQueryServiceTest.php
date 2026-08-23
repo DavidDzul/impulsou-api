@@ -393,4 +393,45 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertCount(1, $result['rows']);
         $this->assertFalse($result['rows'][0]['advance_payment_eligible']);
     }
+
+    // ── Temporary increase snapshot fields (columnas-dinamicas-monto-becario) ──
+    //
+    // Raw passthrough, same convention as snapshot_monto_apoyo: both columns
+    // are genuinely-nullable business data (migration
+    // 2026_08_22_100002_...), so no COALESCE is applied.
+
+    /** @test */
+    public function temporary_increase_snapshot_fields_are_null_when_no_increase_exists(): void
+    {
+        // No override — the temporary-increase snapshot columns are nullable
+        // with no default, so they stay NULL when not set.
+        $this->makeRefrend();
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertNull($result['rows'][0]['refrend']['snapshot_temporary_increase_amount']);
+        $this->assertNull($result['rows'][0]['refrend']['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function temporary_increase_snapshot_fields_reflect_stored_values_when_increase_exists(): void
+    {
+        $this->makeRefrend([
+            'snapshot_temporary_increase_amount' => 500.00,
+            'snapshot_temporary_increase_reason' => 'Aumento por mérito académico',
+        ]);
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertEquals(
+            500.00,
+            (float) $result['rows'][0]['refrend']['snapshot_temporary_increase_amount']
+        );
+        $this->assertSame(
+            'Aumento por mérito académico',
+            $result['rows'][0]['refrend']['snapshot_temporary_increase_reason']
+        );
+    }
 }
