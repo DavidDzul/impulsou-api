@@ -59,11 +59,13 @@ class UpdateScholarshipProfileRequest extends FormRequest
                 return;
             }
 
-            // Use the model's own vigencia primitive (also requires
-            // amount !== null && amount > 0) instead of a manual date
-            // comparison, so this check is always consistent with how
-            // vigencia is actually computed elsewhere (buildSnapshot()).
-            if (! $profile->isTemporaryIncreaseActiveOn()) {
+            // Use hasBlockingTemporaryIncrease() (design D-4.3), NOT
+            // isTemporaryIncreaseActiveOn(): the uniqueness check must also
+            // block a future-scheduled increase (valid_from not yet
+            // reached), not only one that is active today. It still
+            // requires amount > 0 to avoid the original bug of matching on
+            // an orphaned date alone.
+            if (! $profile->hasBlockingTemporaryIncrease()) {
                 return;
             }
 

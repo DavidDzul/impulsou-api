@@ -156,6 +156,38 @@ class ScholarshipProfileEndpointTest extends TestCase
     }
 
     /** @test */
+    public function rejects_a_second_temporary_increase_while_one_is_scheduled_for_the_future_without_replace_flag(): void
+    {
+        // Design D-4.3: "vigente" for this uniqueness check also covers an
+        // increase that hasn't started yet (valid_from in the future) as long
+        // as its valid_until hasn't passed — it WILL become active and must
+        // not be silently overwritten. This is intentionally broader than
+        // isTemporaryIncreaseActiveOn() (today-only).
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create([
+            'user_id'                          => $becario->id,
+            'temporary_increase_amount'        => 500,
+            'temporary_increase_valid_from'    => Carbon::today()->addMonth()->toDateString(),
+            'temporary_increase_valid_until'   => Carbon::today()->addMonth()->addDays(10)->toDateString(),
+            'temporary_increase_reason'        => 'Apoyo transporte futuro',
+            'temporary_increase_granted_by_id' => $this->admin->id,
+        ]);
+
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            [
+                'temporary_increase_amount'      => 800,
+                'temporary_increase_valid_from'  => Carbon::today()->toDateString(),
+                'temporary_increase_valid_until' => Carbon::tomorrow()->addDays(20)->toDateString(),
+                'temporary_increase_reason'      => 'Otro motivo',
+            ]
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('temporary_increase_amount');
+    }
+
+    /** @test */
     public function allows_replacing_a_valid_temporary_increase_with_explicit_flag(): void
     {
         $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);

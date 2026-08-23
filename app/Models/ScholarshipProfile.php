@@ -126,6 +126,32 @@ class ScholarshipProfile extends Model
     }
 
     /**
+     * Whether this profile currently has a temporary increase that must
+     * block granting a NEW one without an explicit replace confirmation
+     * (design D-4.3 "un solo aumento vigente a la vez"). This is
+     * intentionally BROADER than isTemporaryIncreaseActiveOn(): it also
+     * blocks an increase scheduled for the future (valid_from > $on) as long
+     * as its valid_until has not passed yet, because that increase WILL
+     * become active and must not be silently overwritten. Requires
+     * amount > 0 and valid_until >= $on (inclusive) — it deliberately does
+     * NOT require valid_from to have been reached.
+     */
+    public function hasBlockingTemporaryIncrease(?Carbon $on = null): bool
+    {
+        if ($this->temporary_increase_amount === null || (float) $this->temporary_increase_amount <= 0) {
+            return false;
+        }
+
+        if ($this->temporary_increase_valid_until === null) {
+            return false;
+        }
+
+        $on = ($on ?? Carbon::today())->copy()->startOfDay();
+
+        return $this->temporary_increase_valid_until->copy()->startOfDay()->gte($on);
+    }
+
+    /**
      * Whether the academic discount is active on the given date (defaults to
      * today), using the same inclusive range primitive as the temporary
      * increase.
