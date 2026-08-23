@@ -91,8 +91,12 @@ class GenerateMonthlyRefrendsService
         // Validar que el periodo esté dentro del rango de la retícula
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
-        $snapshot      = $this->calculationService->buildSnapshot($profile);
         $referenceDate = Carbon::create($year, $month, 1);
+        // Vigencia (temporary increase + discount) must be evaluated against
+        // the period being generated, not "today" — otherwise generating a
+        // refrend for a past period would use today's date to decide whether
+        // an increase/discount applies.
+        $snapshot      = $this->calculationService->buildSnapshot($profile, $referenceDate);
 
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
@@ -137,6 +141,8 @@ class GenerateMonthlyRefrendsService
                 'resolution_type'              => null,
                 'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
                 'snapshot_monto_apoyo'         => $snapshot['snapshot_monto_apoyo'],
+                'snapshot_temporary_increase_amount' => $snapshot['snapshot_temporary_increase_amount'],
+                'snapshot_temporary_increase_reason' => $snapshot['snapshot_temporary_increase_reason'],
                 'base_amount'                  => $snapshot['base_amount'],
                 'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
                 'snapshot_discount_reason'     => $snapshot['snapshot_discount_reason'],
@@ -188,6 +194,13 @@ class GenerateMonthlyRefrendsService
     {
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
 
+        $currentMonthStart = Carbon::now()->startOfMonth();
+        if ($periodStart->gt($currentMonthStart)) {
+            throw new \DomainException(
+                "No se puede generar el refrendo de {$month}/{$year} porque ese periodo aún no ha comenzado."
+            );
+        }
+
         if ($profile->reticula_start_date && $periodStart->lt($profile->reticula_start_date)) {
             throw new \DomainException(
                 "El periodo {$month}/{$year} es anterior al inicio de la retícula ({$profile->reticula_start_date->toDateString()})."
@@ -235,12 +248,18 @@ class GenerateMonthlyRefrendsService
 
         $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
         $periodMonthStart = "{$year}-{$monthPadded}-01";
+        // Bound parameter instead of DB::raw('CURDATE()') — CURDATE() is MySQL-only
+        // syntax and errors ("no such function: CURDATE") against the SQLite
+        // in-memory connection used by the test suite (phpunit.xml). Same semantics
+        // in production (MySQL): "today", computed once so all three queries below
+        // agree even across a midnight rollover during a slow request.
+        $today = now()->toDateString();
 
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
             ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->where('classes.date', '<=', $today)
             ->selectRaw('attendances.status, COUNT(*) as cnt')
             ->groupBy('attendances.status')
             ->get();
@@ -265,7 +284,7 @@ class GenerateMonthlyRefrendsService
             ->where('attendances.user_id', $userId)
             ->where('attendances.status', 'LATE')
             ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->where('classes.date', '<=', $today)
             ->count();
 
         $monthAbsent = DB::table('attendances')
@@ -273,7 +292,7 @@ class GenerateMonthlyRefrendsService
             ->where('attendances.user_id', $userId)
             ->where('attendances.status', 'ABSENT')
             ->where('classes.date', '>=', $periodMonthStart)
-            ->where('classes.date', '<=', DB::raw('CURDATE()'))
+            ->where('classes.date', '<=', $today)
             ->count();
 
         return [

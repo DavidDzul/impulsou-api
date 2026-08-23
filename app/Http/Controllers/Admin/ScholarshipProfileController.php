@@ -13,7 +13,7 @@ class ScholarshipProfileController extends Controller
 {
     public function show(int $userId)
     {
-        $profile = ScholarshipProfile::with('user')
+        $profile = ScholarshipProfile::with(['user', 'grantedBy:id,first_name,last_name'])
             ->where('user_id', $userId)
             ->first();
 
@@ -26,7 +26,15 @@ class ScholarshipProfileController extends Controller
 
     public function store(StoreScholarshipProfileRequest $request)
     {
-        $profile = ScholarshipProfile::create($request->validated());
+        $data = $request->safe()->toArray();
+
+        if (array_key_exists('temporary_increase_amount', $data)) {
+            $data['temporary_increase_granted_by_id'] = $data['temporary_increase_amount'] !== null
+                ? $request->user()->id
+                : null;
+        }
+
+        $profile = ScholarshipProfile::create($data);
 
         return response()->json(['res' => true, 'data' => $profile->fresh('user')], 201);
     }
@@ -35,9 +43,31 @@ class ScholarshipProfileController extends Controller
     {
         $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
 
-        $profile->update($request->validated());
+        $data = $request->safe()->except('replace_temporary_increase');
 
-        return response()->json(['res' => true, 'data' => $profile->fresh('user')]);
+        // The temporary increase is an atomic block of 4 columns + who
+        // granted it. The controller only writes keys present in the
+        // request (mass "safe" data), so a client sending ONLY
+        // `temporary_increase_amount: null` (without the other 3 fields)
+        // must still clear the ENTIRE block — otherwise valid_from/
+        // valid_until/reason are left "orphaned" in the DB with a stale
+        // (possibly future) date, which later false-positives the "already
+        // has a valid increase" check on a legitimate new grant.
+        if ($request->has('temporary_increase_amount')) {
+            if ($request->input('temporary_increase_amount') === null) {
+                $data['temporary_increase_amount']         = null;
+                $data['temporary_increase_valid_from']     = null;
+                $data['temporary_increase_valid_until']    = null;
+                $data['temporary_increase_reason']         = null;
+                $data['temporary_increase_granted_by_id']  = null;
+            } else {
+                $data['temporary_increase_granted_by_id'] = $request->user()->id;
+            }
+        }
+
+        $profile->update($data);
+
+        return response()->json(['res' => true, 'data' => $profile->fresh(['user', 'grantedBy:id,first_name,last_name'])]);
     }
 
     /**

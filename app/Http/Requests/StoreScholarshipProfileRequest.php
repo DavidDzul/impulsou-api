@@ -22,8 +22,14 @@ class StoreScholarshipProfileRequest extends FormRequest
             'monto_apoyo'                => 'nullable|numeric|min:0|max:99999.99',
             'advance_payment_eligible'   => 'sometimes|boolean',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'discount_valid_from'        => 'nullable|date|required_with:active_discount_percentage|before_or_equal:discount_valid_until',
             'discount_valid_until'       => 'nullable|date|required_with:active_discount_percentage',
             'discount_reason'            => 'nullable|string|max:200',
+
+            'temporary_increase_amount'      => 'nullable|numeric|min:0.01|max:99999.99|required_with:temporary_increase_valid_from,temporary_increase_valid_until,temporary_increase_reason',
+            'temporary_increase_valid_from'  => 'nullable|date|required_with:temporary_increase_amount',
+            'temporary_increase_valid_until' => 'nullable|date|after:temporary_increase_valid_from|required_with:temporary_increase_amount',
+            'temporary_increase_reason'      => 'nullable|string|max:200|required_with:temporary_increase_amount',
         ];
     }
 }

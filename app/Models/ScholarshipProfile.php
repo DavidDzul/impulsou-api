@@ -20,9 +20,15 @@ class ScholarshipProfile extends Model
         'scholarship_type',
         'monthly_amount',
         'monto_apoyo',
+        'temporary_increase_amount',
+        'temporary_increase_valid_from',
+        'temporary_increase_valid_until',
+        'temporary_increase_reason',
+        'temporary_increase_granted_by_id',
         'advance_payment_eligible',
         'active_discount_percentage',
         'discount_reason',
+        'discount_valid_from',
         'discount_valid_until',
         'reticula_start_date',
         'reticula_end_date',
@@ -35,13 +41,17 @@ class ScholarshipProfile extends Model
 
     protected $casts = [
         'scholarship_type'           => ScholarshipType::class,
-        'monthly_amount'             => 'decimal:2',
-        'monto_apoyo'                => 'decimal:2',
-        'advance_payment_eligible'   => 'boolean',
-        'active_discount_percentage' => 'decimal:2',
-        'discount_valid_until'       => 'date',
-        'reticula_start_date'        => 'date',
-        'reticula_end_date'          => 'date',
+        'monthly_amount'                  => 'decimal:2',
+        'monto_apoyo'                     => 'decimal:2',
+        'temporary_increase_amount'       => 'decimal:2',
+        'temporary_increase_valid_from'   => 'date',
+        'temporary_increase_valid_until'  => 'date',
+        'advance_payment_eligible'        => 'boolean',
+        'active_discount_percentage'      => 'decimal:2',
+        'discount_valid_from'             => 'date',
+        'discount_valid_until'            => 'date',
+        'reticula_start_date'             => 'date',
+        'reticula_end_date'               => 'date',
     ];
 
     protected $appends = ['egreso_administrativo'];
@@ -64,6 +74,7 @@ class ScholarshipProfile extends Model
             'scholarship_type'           => 'required|string|in:IU,TELMEX',
             'monthly_amount'             => 'required|numeric|min:0',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'discount_valid_from'        => 'nullable|date',
             'discount_valid_until'       => 'nullable|date',
         ];
     }
@@ -74,6 +85,7 @@ class ScholarshipProfile extends Model
             'scholarship_type'           => 'sometimes|string|in:IU,TELMEX',
             'monthly_amount'             => 'sometimes|numeric|min:0',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'discount_valid_from'        => 'nullable|date',
             'discount_valid_until'       => 'nullable|date',
         ];
     }
@@ -88,6 +100,86 @@ class ScholarshipProfile extends Model
     public function refrends(): HasMany
     {
         return $this->hasMany(ScholarshipRefrend::class, 'user_id', 'user_id');
+    }
+
+    public function grantedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'temporary_increase_granted_by_id');
+    }
+
+    // Vigencia (shared inclusive range primitive — see design D1/D3)
+
+    /**
+     * Whether the fixed-amount temporary increase is active on the given
+     * date (defaults to today). Requires amount > 0 and both range dates set;
+     * no proration by days or months.
+     */
+    public function isTemporaryIncreaseActiveOn(?Carbon $on = null): bool
+    {
+        return $this->temporary_increase_amount !== null
+            && (float) $this->temporary_increase_amount > 0
+            && self::rangeCoversDate(
+                $this->temporary_increase_valid_from,
+                $this->temporary_increase_valid_until,
+                $on
+            );
+    }
+
+    /**
+     * Whether this profile currently has a temporary increase that must
+     * block granting a NEW one without an explicit replace confirmation
+     * (design D-4.3 "un solo aumento vigente a la vez"). This is
+     * intentionally BROADER than isTemporaryIncreaseActiveOn(): it also
+     * blocks an increase scheduled for the future (valid_from > $on) as long
+     * as its valid_until has not passed yet, because that increase WILL
+     * become active and must not be silently overwritten. Requires
+     * amount > 0 and valid_until >= $on (inclusive) — it deliberately does
+     * NOT require valid_from to have been reached.
+     */
+    public function hasBlockingTemporaryIncrease(?Carbon $on = null): bool
+    {
+        if ($this->temporary_increase_amount === null || (float) $this->temporary_increase_amount <= 0) {
+            return false;
+        }
+
+        if ($this->temporary_increase_valid_until === null) {
+            return false;
+        }
+
+        $on = ($on ?? Carbon::today())->copy()->startOfDay();
+
+        return $this->temporary_increase_valid_until->copy()->startOfDay()->gte($on);
+    }
+
+    /**
+     * Whether the academic discount is active on the given date (defaults to
+     * today), using the same inclusive range primitive as the temporary
+     * increase.
+     */
+    public function isDiscountActiveOn(?Carbon $on = null): bool
+    {
+        return self::rangeCoversDate(
+            $this->discount_valid_from,
+            $this->discount_valid_until,
+            $on
+        );
+    }
+
+    /**
+     * Shared vigencia primitive: both range bounds are required (a null bound
+     * means "inactive", never "unbounded") and the range is INCLUSIVE on both
+     * ends ($on >= $from AND $on <= $until).
+     */
+    private static function rangeCoversDate(?Carbon $from, ?Carbon $until, ?Carbon $on): bool
+    {
+        if ($from === null || $until === null) {
+            return false;
+        }
+
+        $on = ($on ?? Carbon::today())->copy()->startOfDay();
+
+        return $on->gte($from->copy()->startOfDay())
+            && $on->lte($until->copy()->startOfDay());
     }
 
     // Scopes
