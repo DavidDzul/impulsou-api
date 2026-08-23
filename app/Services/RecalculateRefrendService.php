@@ -39,8 +39,11 @@ class RecalculateRefrendService
         return DB::transaction(function () use ($refrend, $profile, $user, $year, $month, $referenceDate) {
             $old = $this->loggingService->snapshotRefrend($refrend);
 
-            // 1. Refresh non-attendance snapshots
-            $snapshot  = $this->calculationService->buildSnapshot($profile);
+            // 1. Refresh non-attendance snapshots. Vigencia (temporary increase
+            // + discount) must be evaluated against the refrend's period, not
+            // "today" — otherwise recalculating an old DRAFT would use today's
+            // date to decide whether an increase/discount applies.
+            $snapshot  = $this->calculationService->buildSnapshot($profile, $referenceDate);
             $lastGrade = $this->getLastSemesterGrade($refrend->user_id);
 
             $hasProfileDiscount = isset($snapshot['snapshot_discount_percentage'])

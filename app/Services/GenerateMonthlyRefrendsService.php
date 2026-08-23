@@ -91,8 +91,12 @@ class GenerateMonthlyRefrendsService
         // Validar que el periodo esté dentro del rango de la retícula
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
-        $snapshot      = $this->calculationService->buildSnapshot($profile);
         $referenceDate = Carbon::create($year, $month, 1);
+        // Vigencia (temporary increase + discount) must be evaluated against
+        // the period being generated, not "today" — otherwise generating a
+        // refrend for a past period would use today's date to decide whether
+        // an increase/discount applies.
+        $snapshot      = $this->calculationService->buildSnapshot($profile, $referenceDate);
 
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
@@ -189,6 +193,13 @@ class GenerateMonthlyRefrendsService
     private function assertPeriodWithinReticula(ScholarshipProfile $profile, int $year, int $month): void
     {
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
+
+        $currentMonthStart = Carbon::now()->startOfMonth();
+        if ($periodStart->gt($currentMonthStart)) {
+            throw new \DomainException(
+                "No se puede generar el refrendo de {$month}/{$year} porque ese periodo aún no ha comenzado."
+            );
+        }
 
         if ($profile->reticula_start_date && $periodStart->lt($profile->reticula_start_date)) {
             throw new \DomainException(
