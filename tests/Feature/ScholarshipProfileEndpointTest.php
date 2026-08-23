@@ -277,6 +277,79 @@ class ScholarshipProfileEndpointTest extends TestCase
         ]);
     }
 
+    // ── BUG FIX: sending ONLY temporary_increase_amount: null must clear ───
+    // ── the whole block (no orphaned dates left behind) ─────────────────────
+
+    /** @test */
+    public function sending_only_temporary_increase_amount_null_clears_the_whole_block(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create([
+            'user_id'                          => $becario->id,
+            'temporary_increase_amount'        => 500,
+            'temporary_increase_valid_from'    => Carbon::yesterday()->toDateString(),
+            'temporary_increase_valid_until'   => Carbon::tomorrow()->addDays(10)->toDateString(),
+            'temporary_increase_reason'        => 'Apoyo transporte',
+            'temporary_increase_granted_by_id' => $this->admin->id,
+        ]);
+
+        // Only the amount is sent — the other 3 fields are NOT included in
+        // the payload at all (this is the exact partial-update shape that
+        // previously left temporary_increase_valid_until "orphaned" with a
+        // future date while amount/from/reason were cleared).
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            ['temporary_increase_amount' => null]
+        );
+
+        $response->assertStatus(200);
+
+        $this->assertDatabaseHas('scholarship_profiles', [
+            'user_id'                           => $becario->id,
+            'temporary_increase_amount'         => null,
+            'temporary_increase_valid_from'     => null,
+            'temporary_increase_valid_until'    => null,
+            'temporary_increase_reason'         => null,
+            'temporary_increase_granted_by_id'  => null,
+        ]);
+    }
+
+    /** @test */
+    public function granting_a_new_temporary_increase_after_a_partial_clear_is_not_blocked_as_duplicate(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create([
+            'user_id'                          => $becario->id,
+            'temporary_increase_amount'        => 500,
+            'temporary_increase_valid_from'    => Carbon::yesterday()->toDateString(),
+            'temporary_increase_valid_until'   => Carbon::tomorrow()->addDays(10)->toDateString(),
+            'temporary_increase_reason'        => 'Apoyo transporte',
+            'temporary_increase_granted_by_id' => $this->admin->id,
+        ]);
+
+        // Step 1: partial clear (amount only).
+        $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            ['temporary_increase_amount' => null]
+        )->assertStatus(200);
+
+        // Step 2: granting a brand-new increase must NOT be rejected as
+        // "already exists a valid one" — the orphaned valid_until from step 1
+        // must not leak into the vigencia check.
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            [
+                'temporary_increase_amount'      => 800,
+                'temporary_increase_valid_from'  => Carbon::today()->toDateString(),
+                'temporary_increase_valid_until' => Carbon::tomorrow()->addDays(20)->toDateString(),
+                'temporary_increase_reason'      => 'Nuevo motivo',
+            ]
+        );
+
+        $response->assertStatus(200);
+        $this->assertEquals(800, (float) $response->json('data.temporary_increase_amount'));
+    }
+
     // ── Store — mismas reglas de rango en discount_valid_from ──────────────
 
     /** @test */

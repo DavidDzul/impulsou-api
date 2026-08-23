@@ -59,13 +59,15 @@ class UpdateScholarshipProfileRequest extends FormRequest
                 return;
             }
 
-            $existingUntil = $profile->temporary_increase_valid_until;
-            $isCurrentlyValid = $existingUntil !== null
-                && Carbon::parse($existingUntil)->startOfDay()->gte(Carbon::today());
-
-            if (! $isCurrentlyValid) {
+            // Use the model's own vigencia primitive (also requires
+            // amount !== null && amount > 0) instead of a manual date
+            // comparison, so this check is always consistent with how
+            // vigencia is actually computed elsewhere (buildSnapshot()).
+            if (! $profile->isTemporaryIncreaseActiveOn()) {
                 return;
             }
+
+            $existingUntil = $profile->temporary_increase_valid_until;
 
             if ($this->isSameTemporaryIncreaseAsStored($profile)) {
                 return; // Resubmitting identical values is a no-op.
