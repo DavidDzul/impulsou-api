@@ -382,6 +382,40 @@ class ScholarshipProfileEndpointTest extends TestCase
         $this->assertEquals(800, (float) $response->json('data.temporary_increase_amount'));
     }
 
+    // ── GET show() — expone el aumento temporal activo ─────────────────────
+
+    /** @test */
+    public function show_endpoint_includes_the_temporary_increase_fields_and_granted_by_relation(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create([
+            'user_id'                          => $becario->id,
+            'temporary_increase_amount'        => 500,
+            'temporary_increase_valid_from'    => Carbon::yesterday()->toDateString(),
+            'temporary_increase_valid_until'   => Carbon::tomorrow()->addDays(10)->toDateString(),
+            'temporary_increase_reason'        => 'Apoyo transporte',
+            'temporary_increase_granted_by_id' => $this->admin->id,
+        ]);
+
+        $response = $this->actingAs($this->admin)->getJson(
+            "/api/admin/scholarship-profiles/{$becario->id}"
+        );
+
+        $response->assertStatus(200);
+        $this->assertEquals(500, (float) $response->json('data.temporary_increase_amount'));
+        $this->assertSame(
+            Carbon::yesterday()->toDateString(),
+            Carbon::parse($response->json('data.temporary_increase_valid_from'))->toDateString()
+        );
+        $this->assertSame(
+            Carbon::tomorrow()->addDays(10)->toDateString(),
+            Carbon::parse($response->json('data.temporary_increase_valid_until'))->toDateString()
+        );
+        $this->assertSame('Apoyo transporte', $response->json('data.temporary_increase_reason'));
+        $this->assertSame($this->admin->id, $response->json('data.temporary_increase_granted_by_id'));
+        $this->assertSame($this->admin->id, $response->json('data.granted_by.id'));
+    }
+
     // ── Store — mismas reglas de rango en discount_valid_from ──────────────
 
     /** @test */
