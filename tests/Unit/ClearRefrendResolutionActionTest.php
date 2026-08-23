@@ -417,8 +417,11 @@ class ClearRefrendResolutionActionTest extends TestCase
         $user = $this->makeBecario();
         $this->makeProfile($user, [
             'active_discount_percentage' => 20,
-            'discount_valid_from'        => now()->subDay()->toDateString(),
-            'discount_valid_until'       => now()->addMonths(3)->toDateString(),
+            // makeResolvedRefrend() uses a fixed period (2026-03). Vigencia is
+            // evaluated against that period's start, not "today" (buildSnapshot
+            // bug fix), so this range must cover 2026-03-01, not "now".
+            'discount_valid_from'        => '2026-02-01',
+            'discount_valid_until'       => '2026-06-01',
         ]);
         $refrend = $this->makeResolvedRefrend($user, ['resolution_type' => 'BECA_MES']);
 
@@ -462,8 +465,10 @@ class ClearRefrendResolutionActionTest extends TestCase
         $user = $this->makeBecario();
         $this->makeProfile($user, [
             'active_discount_percentage' => 20,
-            'discount_valid_from'        => now()->subDay()->toDateString(),
-            'discount_valid_until'       => now()->addMonths(3)->toDateString(),
+            // See comment in the previous test — vigencia must cover the
+            // refrend's fixed period (2026-03), not "today".
+            'discount_valid_from'        => '2026-02-01',
+            'discount_valid_until'       => '2026-06-01',
         ]);
         $refrend = $this->makeResolvedRefrend($user, ['resolution_type' => 'BECA_MES']);
 
