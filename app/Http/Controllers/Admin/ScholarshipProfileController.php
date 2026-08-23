@@ -13,7 +13,7 @@ class ScholarshipProfileController extends Controller
 {
     public function show(int $userId)
     {
-        $profile = ScholarshipProfile::with('user')
+        $profile = ScholarshipProfile::with(['user', 'grantedBy:id,first_name,last_name'])
             ->where('user_id', $userId)
             ->first();
 
@@ -26,7 +26,15 @@ class ScholarshipProfileController extends Controller
 
     public function store(StoreScholarshipProfileRequest $request)
     {
-        $profile = ScholarshipProfile::create($request->validated());
+        $data = $request->safe()->toArray();
+
+        if (array_key_exists('temporary_increase_amount', $data)) {
+            $data['temporary_increase_granted_by_id'] = $data['temporary_increase_amount'] !== null
+                ? $request->user()->id
+                : null;
+        }
+
+        $profile = ScholarshipProfile::create($data);
 
         return response()->json(['res' => true, 'data' => $profile->fresh('user')], 201);
     }
@@ -35,9 +43,18 @@ class ScholarshipProfileController extends Controller
     {
         $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
 
-        $profile->update($request->validated());
+        $data = $request->safe()->except('replace_temporary_increase');
 
-        return response()->json(['res' => true, 'data' => $profile->fresh('user')]);
+        if (array_key_exists('temporary_increase_amount', $data)) {
+            // Clearing the increase (amount null) also clears who granted it.
+            $data['temporary_increase_granted_by_id'] = $data['temporary_increase_amount'] !== null
+                ? $request->user()->id
+                : null;
+        }
+
+        $profile->update($data);
+
+        return response()->json(['res' => true, 'data' => $profile->fresh(['user', 'grantedBy:id,first_name,last_name'])]);
     }
 
     /**
