@@ -11,7 +11,7 @@ use App\Actions\Scholarship\BulkNotifyAction;
 use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\NotifyStudentAction;
-use App\Actions\Scholarship\ResolvePedagogiaAction;
+use App\Actions\Scholarship\ResolveAprobacionAction;
 use App\Enums\RefrendStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
@@ -491,7 +491,7 @@ class ScholarshipRefrendController extends Controller
         ]);
 
         try {
-            $updated = app(ResolvePedagogiaAction::class)->execute($refrend, $data, auth()->id());
+            $updated = app(ResolveAprobacionAction::class)->execute($refrend, $data, auth()->id());
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }

@@ -6,7 +6,7 @@ use App\Models\ScholarshipRefrend;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
 
-class ResolvePedagogiaAction
+class ResolveAprobacionAction
 {
     public function __construct(private ScholarshipLoggingService $logging) {}
 
