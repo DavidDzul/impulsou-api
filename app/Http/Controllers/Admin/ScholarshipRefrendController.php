@@ -447,7 +447,7 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Atención flags a DRAFT refrend with an incident → CON_INCIDENCIA.
+     * Verificación flags a DRAFT refrend with an incident → CON_INCIDENCIA.
      */
     public function atencionFlag(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
@@ -481,7 +481,7 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Pedagogía adds a comment to a CON_INCIDENCIA refrend.
+     * Aprobación adds a comment to a CON_INCIDENCIA refrend.
      * Does not change workflow_status — action is decided via the situation buttons.
      */
     public function pedagogiaResolve(Request $request, ScholarshipRefrend $refrend): JsonResponse
