@@ -11,7 +11,7 @@ use App\Actions\Scholarship\BulkNotifyAction;
 use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\NotifyStudentAction;
-use App\Actions\Scholarship\ResolvePedagogiaAction;
+use App\Actions\Scholarship\ResolveAprobacionAction;
 use App\Enums\RefrendStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
@@ -447,7 +447,7 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Atención flags a DRAFT refrend with an incident → CON_INCIDENCIA.
+     * Verificación flags a DRAFT refrend with an incident → CON_INCIDENCIA.
      */
     public function atencionFlag(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
@@ -481,7 +481,7 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Pedagogía adds a comment to a CON_INCIDENCIA refrend.
+     * Aprobación adds a comment to a CON_INCIDENCIA refrend.
      * Does not change workflow_status — action is decided via the situation buttons.
      */
     public function pedagogiaResolve(Request $request, ScholarshipRefrend $refrend): JsonResponse
@@ -491,7 +491,7 @@ class ScholarshipRefrendController extends Controller
         ]);
 
         try {
-            $updated = app(ResolvePedagogiaAction::class)->execute($refrend, $data, auth()->id());
+            $updated = app(ResolveAprobacionAction::class)->execute($refrend, $data, auth()->id());
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         }
