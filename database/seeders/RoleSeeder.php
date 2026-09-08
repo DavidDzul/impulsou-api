@@ -30,6 +30,7 @@ class RoleSeeder extends Seeder
         $adminStudentRole = Role::create(['name' => 'ADMIN_STUDENT']);
         $rootJobRole = Role::create(['name' => 'ROOT_JOB']);
         $adminJobRole = Role::create(['name' => 'ADMIN_JOB']);
+        $administrationRole = Role::firstOrCreate(['name' => 'ADMINISTRATION']);
 
         /** PANEL DE USUARIO */
         Permission::create(['name' => 'CANDIDATES_VIEW'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);

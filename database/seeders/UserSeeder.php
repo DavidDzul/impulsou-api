@@ -113,5 +113,20 @@ class UserSeeder extends Seeder
             "generation_id" => null,
             "active" => 1,
         ])->assignRole('YUCATAN');
+
+        $administrationUser = User::firstOrCreate(
+            ["email" => "administracion@iu.org.mx"],
+            [
+                "first_name" => "Impulso",
+                "last_name" => "Universitario A.C.",
+                "password" => Hash::make("abc123"),
+                "phone" => "9911071509",
+                "campus" => "MERIDA",
+                "user_type" => "ADMIN",
+                "generation_id" => null,
+                "active" => 1,
+            ]
+        );
+        $administrationUser->assignRole('ADMINISTRATION');
     }
 }
