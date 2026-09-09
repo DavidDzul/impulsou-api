@@ -114,6 +114,9 @@ class UserSeeder extends Seeder
             "active" => 1,
         ])->assignRole('YUCATAN');
 
+        // This entry uses firstOrCreate so it is safe to seed onto an already-populated DB
+        // (e.g. via `php artisan tinker`, targeting only this block). The rest of this seeder
+        // class is NOT idempotent — do not run the full class via `db:seed` on a non-fresh DB.
         $administrationUser = User::firstOrCreate(
             ["email" => "administracion@iu.org.mx"],
             [

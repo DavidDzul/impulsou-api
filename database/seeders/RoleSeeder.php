@@ -30,6 +30,9 @@ class RoleSeeder extends Seeder
         $adminStudentRole = Role::create(['name' => 'ADMIN_STUDENT']);
         $rootJobRole = Role::create(['name' => 'ROOT_JOB']);
         $adminJobRole = Role::create(['name' => 'ADMIN_JOB']);
+        // This entry uses firstOrCreate so it is safe to seed onto an already-populated DB
+        // (e.g. via `php artisan tinker`, targeting only this line). The rest of this seeder
+        // class is NOT idempotent — do not run the full class via `db:seed` on a non-fresh DB.
         $administrationRole = Role::firstOrCreate(['name' => 'ADMINISTRATION']);
 
         /** PANEL DE USUARIO */
