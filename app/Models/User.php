@@ -179,7 +179,7 @@ class User extends Authenticatable
 
     public function isRoot(): bool
     {
-        return $this->hasAnyRole(['ROOT']);
+        return $this->hasAnyRole(['ROOT', 'ROOT_ADMINISTRATION']);
     }
 
     public function isRootJob(): bool

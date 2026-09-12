@@ -130,6 +130,13 @@ class UserSeeder extends Seeder
                 "active" => 1,
             ]
         );
-        $administrationUser->assignRole('ADMINISTRATION');
+        // NOTE: renamed from 'ADMINISTRATION' to 'ROOT_ADMINISTRATION' alongside RoleSeeder.
+        // This only affects fresh seeds. Any already-seeded/production database that ran the
+        // old seeder has a real `administracion@iu.org.mx` user still assigned to the OLD
+        // 'ADMINISTRATION' role row, which now carries zero permissions (all grants moved to
+        // ROOT_ADMINISTRATION). `firstOrCreate` on the role name creates a NEW row rather than
+        // renaming the old one in place, so that live assignment will NOT be picked up
+        // automatically — see apply-progress risk log for the required follow-up reassignment.
+        $administrationUser->assignRole('ROOT_ADMINISTRATION');
     }
 }
