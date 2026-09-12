@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\NoticeController;
 use App\Http\Controllers\Admin\PersonController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\ScholarshipDocumentController;
+use App\Http\Controllers\Admin\ScholarshipPaymentDataController;
 use App\Http\Controllers\Admin\ScholarshipProfileController;
 use App\Http\Controllers\Admin\ScholarshipRefrendController;
 use App\Http\Controllers\Admin\ScholarshipSemesterGradeController;
@@ -154,5 +155,18 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('/', [ScholarshipDocumentController::class, 'store']);
         Route::patch('{id}', [ScholarshipDocumentController::class, 'update']);
         Route::delete('{id}', [ScholarshipDocumentController::class, 'destroy']);
+    });
+
+    // ── Scholarship Payment Data (bank account, CURP, RFC) ──────────────────
+    // design D4/D5 (obs #1583): permission: is an ADDITIONAL, more granular
+    // gate layered on top of auth:sanctum + user_type:ADMIN above — this is
+    // the ONLY route group in this file using it (spec R7 non-goal).
+    Route::prefix('scholarship-payment-data')->group(function () {
+        Route::get('{userId}', [ScholarshipPaymentDataController::class, 'show'])
+            ->middleware('permission:ADM_READ_PAYMENT_DATA');
+        Route::post('/', [ScholarshipPaymentDataController::class, 'store'])
+            ->middleware('permission:ADM_EDIT_PAYMENT_DATA');
+        Route::put('{userId}', [ScholarshipPaymentDataController::class, 'update'])
+            ->middleware('permission:ADM_EDIT_PAYMENT_DATA');
     });
 });

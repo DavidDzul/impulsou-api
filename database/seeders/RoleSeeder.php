@@ -30,6 +30,10 @@ class RoleSeeder extends Seeder
         $adminStudentRole = Role::create(['name' => 'ADMIN_STUDENT']);
         $rootJobRole = Role::create(['name' => 'ROOT_JOB']);
         $adminJobRole = Role::create(['name' => 'ADMIN_JOB']);
+        // This entry uses firstOrCreate so it is safe to seed onto an already-populated DB
+        // (e.g. via `php artisan tinker`, targeting only this line). The rest of this seeder
+        // class is NOT idempotent — do not run the full class via `db:seed` on a non-fresh DB.
+        $rootAdministrationRole = Role::firstOrCreate(['name' => 'ROOT_ADMINISTRATION']);
 
         /** PANEL DE USUARIO */
         Permission::create(['name' => 'CANDIDATES_VIEW'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
@@ -76,5 +80,17 @@ class RoleSeeder extends Seeder
         Permission::create(['name' => 'PS_GROUP_SCHOLARSHIPS'])->syncRoles([$rootRole]);
         Permission::create(['name' => 'PS_SCHOLARSHIPS_ATENCION'])->syncRoles([$rootRole]);
         Permission::create(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'])->syncRoles([$rootRole]);
+
+        /** PANEL ADMINISTRATION (administration-panel) */
+        // firstOrCreate here mirrors the ROOT_ADMINISTRATION role above: this grant must be
+        // safe to re-run without creating duplicate permission rows or duplicate role_has_permissions
+        // pivot rows (syncRoles is idempotent by nature — it replaces the role set, not append).
+        Permission::firstOrCreate(['name' => 'ADM_READ_USERS'])->syncRoles([$rootAdministrationRole]);
+        // Payment data (becarios-payment-config, design D5/D9): read/write split
+        // granted to ROOT_ADMINISTRATION ONLY (confirmed by user, not ROOT).
+        // firstOrCreate keeps these two lines safe to re-apply in isolation via
+        // tinker on a non-fresh DB, same as ADM_READ_USERS above.
+        Permission::firstOrCreate(['name' => 'ADM_READ_PAYMENT_DATA'])->syncRoles([$rootAdministrationRole]);
+        Permission::firstOrCreate(['name' => 'ADM_EDIT_PAYMENT_DATA'])->syncRoles([$rootAdministrationRole]);
     }
 }

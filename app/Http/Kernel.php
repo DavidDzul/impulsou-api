@@ -66,6 +66,20 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'user_type' => \App\Http\Middleware\CheckUserType::class,
         'check.business.agreement' => \App\Http\Middleware\CheckBusinessAgreement::class,
+        // D4 (design obs #1583) — VERIFIED BLOCKER: spatie/laravel-permission
+        // ^6.10's PermissionServiceProvider registers no middleware aliases
+        // under Laravel 8. Without this line, any route using
+        // `permission:...` throws "Target class [permission] does not
+        // exist" (500) instead of a clean 403.
+        //
+        // SECOND VERIFIED BLOCKER (found during PR1b apply, see
+        // App\Http\Middleware\CheckPermission docblock for full root-cause
+        // analysis): Spatie's OWN PermissionMiddleware silently fails to
+        // recognize permissions granted via a ROLE (only direct
+        // user-permissions work) due to a Collection::intersect() bug in
+        // PermissionRegistrar's cache hydration. Using our own drop-in
+        // replacement under the SAME alias/route syntax instead.
+        'permission' => \App\Http\Middleware\CheckPermission::class,
 
     ];
 }
