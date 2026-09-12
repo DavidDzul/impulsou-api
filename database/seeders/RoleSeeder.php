@@ -86,5 +86,11 @@ class RoleSeeder extends Seeder
         // safe to re-run without creating duplicate permission rows or duplicate role_has_permissions
         // pivot rows (syncRoles is idempotent by nature — it replaces the role set, not append).
         Permission::firstOrCreate(['name' => 'ADM_READ_USERS'])->syncRoles([$rootAdministrationRole]);
+        // Payment data (becarios-payment-config, design D5/D9): read/write split
+        // granted to ROOT_ADMINISTRATION ONLY (confirmed by user, not ROOT).
+        // firstOrCreate keeps these two lines safe to re-apply in isolation via
+        // tinker on a non-fresh DB, same as ADM_READ_USERS above.
+        Permission::firstOrCreate(['name' => 'ADM_READ_PAYMENT_DATA'])->syncRoles([$rootAdministrationRole]);
+        Permission::firstOrCreate(['name' => 'ADM_EDIT_PAYMENT_DATA'])->syncRoles([$rootAdministrationRole]);
     }
 }
