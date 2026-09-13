@@ -35,16 +35,22 @@ class RoleSeederAdministrationTest extends TestCase
     }
 
     /**
-     * Updated by becarios-payment-config PR1b (design D5/D9, obs #1583):
-     * ROOT_ADMINISTRATION now also holds the payment-data read/write
-     * permissions. This supersedes the original "exactly ADM_READ_USERS and
-     * nothing else" assertion — the closed set is now these three ADM_*
+     * Updated by control-accesos-administration-panel PR2 (design obs #1593,
+     * spec obs #1592 R5): ROOT_ADMINISTRATION now also holds the 4 new
+     * Control permissions (ADM_READ_ROLES, ADM_MANAGE_ROLES,
+     * ADM_READ_ADMINS, ADM_MANAGE_ADMINS), seeded in this PR alongside the 2
+     * new AdministrationRoleController routes that require the first two
+     * (the ADMINS pair gates PR8+'s Accesos feature, not yet built — spec
+     * R5 explicitly requires all 4 to already be granted only to
+     * ROOT_ADMINISTRATION regardless). This supersedes the prior
+     * three-permission closed-set assertion (previously updated by
+     * becarios-payment-config PR1b) — the closed set is now these 7 ADM_*
      * permissions specifically (still zero PS_* — covered by a separate
      * test below).
      *
      * @test
      */
-    public function seeder_grants_exactly_the_three_expected_adm_permissions_to_root_administration(): void
+    public function seeder_grants_exactly_the_seven_expected_adm_permissions_to_root_administration(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -53,10 +59,41 @@ class RoleSeederAdministrationTest extends TestCase
         $permissionNames = $role->permissions()->pluck('name')->toArray();
 
         $this->assertEqualsCanonicalizing(
-            ['ADM_READ_USERS', 'ADM_READ_PAYMENT_DATA', 'ADM_EDIT_PAYMENT_DATA'],
+            [
+                'ADM_READ_USERS',
+                'ADM_READ_PAYMENT_DATA',
+                'ADM_EDIT_PAYMENT_DATA',
+                'ADM_READ_ROLES',
+                'ADM_MANAGE_ROLES',
+                'ADM_READ_ADMINS',
+                'ADM_MANAGE_ADMINS',
+            ],
             $permissionNames,
-            'ROOT_ADMINISTRATION must hold exactly these three ADM_* permissions and nothing else.'
+            'ROOT_ADMINISTRATION must hold exactly these seven ADM_* permissions and nothing else.'
         );
+    }
+
+    /**
+     * Spec obs #1592 R5 — "only ROOT_ADMINISTRATION holds all four [new
+     * permissions]; no other seeded role holds any of them."
+     *
+     * @test
+     */
+    public function no_other_seeded_role_gains_any_of_the_four_new_control_permissions(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $newPermissionNames = ['ADM_READ_ROLES', 'ADM_MANAGE_ROLES', 'ADM_READ_ADMINS', 'ADM_MANAGE_ADMINS'];
+        $otherRoleNames = Role::where('name', '!=', 'ROOT_ADMINISTRATION')->pluck('name');
+
+        foreach ($otherRoleNames as $roleName) {
+            $role = Role::where('name', $roleName)->first();
+            $permissionNames = $role->permissions()->pluck('name')->toArray();
+
+            foreach ($newPermissionNames as $newPermissionName) {
+                $this->assertNotContains($newPermissionName, $permissionNames, "{$roleName} must not gain {$newPermissionName}.");
+            }
+        }
     }
 
     /** @test */

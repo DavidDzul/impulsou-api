@@ -12,7 +12,7 @@ class Role extends SpatieRole
 
     protected $table = 'roles';
 
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'type'];
 
     public static function createOrUpdateRules()
     {
