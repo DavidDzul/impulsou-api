@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdministrationRoleController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\VacantPositionController;
@@ -168,5 +169,23 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_EDIT_PAYMENT_DATA');
         Route::put('{userId}', [ScholarshipPaymentDataController::class, 'update'])
             ->middleware('permission:ADM_EDIT_PAYMENT_DATA');
+    });
+
+    // ── Control: Roles (administration-panel) ───────────────────────────────
+    // design obs #1593: prefix `administration-roles` (not `roles`) to avoid
+    // colliding with RoleController's existing `apiResource('roles', ...)`.
+    // Static `permissions` route MUST come before `{id}` to avoid shadowing,
+    // same convention as `scholarship-refrends/bulk-table` above.
+    Route::prefix('administration-roles')->group(function () {
+        Route::get('/', [AdministrationRoleController::class, 'index'])
+            ->middleware('permission:ADM_READ_ROLES');
+        Route::get('permissions', [AdministrationRoleController::class, 'permissionsCatalog'])
+            ->middleware('permission:ADM_READ_ROLES');
+        Route::get('{id}', [AdministrationRoleController::class, 'show'])
+            ->middleware('permission:ADM_READ_ROLES');
+        Route::post('/', [AdministrationRoleController::class, 'store'])
+            ->middleware('permission:ADM_MANAGE_ROLES');
+        Route::put('{id}/permissions', [AdministrationRoleController::class, 'syncPermissions'])
+            ->middleware('permission:ADM_MANAGE_ROLES');
     });
 });
