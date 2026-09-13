@@ -35,22 +35,22 @@ class RoleSeederAdministrationTest extends TestCase
     }
 
     /**
-     * Updated by control-accesos-administration-panel PR2 (design obs #1593,
-     * spec obs #1592 R5): ROOT_ADMINISTRATION now also holds the 4 new
-     * Control permissions (ADM_READ_ROLES, ADM_MANAGE_ROLES,
-     * ADM_READ_ADMINS, ADM_MANAGE_ADMINS), seeded in this PR alongside the 2
-     * new AdministrationRoleController routes that require the first two
-     * (the ADMINS pair gates PR8+'s Accesos feature, not yet built — spec
-     * R5 explicitly requires all 4 to already be granted only to
-     * ROOT_ADMINISTRATION regardless). This supersedes the prior
-     * three-permission closed-set assertion (previously updated by
-     * becarios-payment-config PR1b) — the closed set is now these 7 ADM_*
-     * permissions specifically (still zero PS_* — covered by a separate
-     * test below).
+     * Updated by becario-payment-file-generation PR1 (design "New
+     * Permissions", tasks 1.6): ROOT_ADMINISTRATION now also holds
+     * ADM_READ_PAYMENTS and ADM_PROCESS_PAYMENTS (module "Pagos"), seeded
+     * alongside this PR's migrations/model — the batch review + all-or-
+     * nothing payment processing endpoints land in a later PR (PR4) but
+     * spec requires both permissions to already exist and be granted only
+     * to ROOT_ADMINISTRATION. Previously updated by
+     * control-accesos-administration-panel PR2 (design obs #1593, spec obs
+     * #1592 R5) for the 4 Control permissions. This supersedes the prior
+     * seven-permission closed-set assertion — the closed set is now these 9
+     * ADM_* permissions specifically (still zero PS_* — covered by a
+     * separate test below).
      *
      * @test
      */
-    public function seeder_grants_exactly_the_seven_expected_adm_permissions_to_root_administration(): void
+    public function seeder_grants_exactly_the_nine_expected_adm_permissions_to_root_administration(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -67,9 +67,11 @@ class RoleSeederAdministrationTest extends TestCase
                 'ADM_MANAGE_ROLES',
                 'ADM_READ_ADMINS',
                 'ADM_MANAGE_ADMINS',
+                'ADM_READ_PAYMENTS',
+                'ADM_PROCESS_PAYMENTS',
             ],
             $permissionNames,
-            'ROOT_ADMINISTRATION must hold exactly these seven ADM_* permissions and nothing else.'
+            'ROOT_ADMINISTRATION must hold exactly these nine ADM_* permissions and nothing else.'
         );
     }
 
@@ -193,24 +195,28 @@ class RoleSeederAdministrationTest extends TestCase
     }
 
     /**
-     * Covers spec "ADM_* permissions carry approved copy" — all 7 rows must
+     * Covers spec "ADM_* permissions carry approved copy" — all 9 rows must
      * carry the exact user-approved Spanish description/module after
-     * seeding (design obs #1601 "RoleSeeder.php — replacement lines").
+     * seeding (design obs #1601 "RoleSeeder.php — replacement lines";
+     * extended by becario-payment-file-generation PR1 design "New
+     * Permissions" for the 2 Pagos permissions).
      *
      * @test
      */
-    public function all_seven_adm_permissions_carry_the_exact_approved_copy(): void
+    public function all_nine_adm_permissions_carry_the_exact_approved_copy(): void
     {
         $this->seed(RoleSeeder::class);
 
         $expected = [
-            'ADM_READ_USERS'        => ['module' => 'Usuarios', 'description' => 'Ver la lista de becarios y egresados'],
-            'ADM_READ_PAYMENT_DATA' => ['module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'],
-            'ADM_EDIT_PAYMENT_DATA' => ['module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'],
-            'ADM_READ_ROLES'        => ['module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos'],
-            'ADM_MANAGE_ROLES'      => ['module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'],
-            'ADM_READ_ADMINS'       => ['module' => 'Accesos', 'description' => 'Ver la lista de administradores'],
-            'ADM_MANAGE_ADMINS'     => ['module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'],
+            'ADM_READ_USERS'         => ['module' => 'Usuarios', 'description' => 'Ver la lista de becarios y egresados'],
+            'ADM_READ_PAYMENT_DATA'  => ['module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'],
+            'ADM_EDIT_PAYMENT_DATA'  => ['module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'],
+            'ADM_READ_ROLES'         => ['module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos'],
+            'ADM_MANAGE_ROLES'       => ['module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'],
+            'ADM_READ_ADMINS'        => ['module' => 'Accesos', 'description' => 'Ver la lista de administradores'],
+            'ADM_MANAGE_ADMINS'      => ['module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'],
+            'ADM_READ_PAYMENTS'      => ['module' => 'Pagos', 'description' => 'Ver el listado de pagos y el documento de pago de un becario'],
+            'ADM_PROCESS_PAYMENTS'   => ['module' => 'Pagos', 'description' => 'Procesar el pago de un grupo de becarios'],
         ];
 
         foreach ($expected as $name => $copy) {
@@ -242,6 +248,79 @@ class RoleSeederAdministrationTest extends TestCase
             ->count();
 
         $this->assertSame(0, $uncopiedPermissionCount, 'PS_* and client-tier permissions must keep null description/module.');
+    }
+
+    /**
+     * Task 1.7/1.9 (becario-payment-file-generation PR1): the two payment
+     * permission grants must be idempotent in isolation too (safe to
+     * re-apply via tinker on a non-fresh DB for the live backfill), mirroring
+     * the pattern above for ADM_READ_PAYMENT_DATA/ADM_EDIT_PAYMENT_DATA.
+     *
+     * @test
+     */
+    public function payment_permission_grants_are_idempotent_on_reapply(): void
+    {
+        $applyGrant = function (): void {
+            $role = Role::firstOrCreate(['name' => 'ROOT_ADMINISTRATION']);
+            Permission::firstOrCreate(['name' => 'ADM_READ_PAYMENTS'])->syncRoles([$role]);
+            Permission::firstOrCreate(['name' => 'ADM_PROCESS_PAYMENTS'])->syncRoles([$role]);
+        };
+
+        $applyGrant();
+        $applyGrant();
+
+        $this->assertSame(1, Permission::where('name', 'ADM_READ_PAYMENTS')->count());
+        $this->assertSame(1, Permission::where('name', 'ADM_PROCESS_PAYMENTS')->count());
+
+        $role = Role::where('name', 'ROOT_ADMINISTRATION')->first();
+        $this->assertEqualsCanonicalizing(
+            ['ADM_READ_PAYMENTS', 'ADM_PROCESS_PAYMENTS'],
+            $role->permissions()->pluck('name')->toArray()
+        );
+    }
+
+    /**
+     * Task 1.7 (becario-payment-file-generation PR1): confirms the two
+     * payment permissions exist with the correct type/module/description and
+     * are granted to ROOT_ADMINISTRATION only, after a normal seed.
+     *
+     * @test
+     */
+    public function seeder_grants_both_payment_permissions_to_root_administration_with_correct_copy(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $role = Role::where('name', 'ROOT_ADMINISTRATION')->first();
+        $this->assertContains('ADM_READ_PAYMENTS', $role->permissions()->pluck('name')->toArray());
+        $this->assertContains('ADM_PROCESS_PAYMENTS', $role->permissions()->pluck('name')->toArray());
+
+        $readPayments = Permission::where('name', 'ADM_READ_PAYMENTS')->first();
+        $this->assertNotNull($readPayments);
+        $this->assertSame('ADMINISTRATION', $readPayments->type);
+        $this->assertSame('Pagos', $readPayments->module);
+        $this->assertSame('Ver el listado de pagos y el documento de pago de un becario', $readPayments->description);
+
+        $processPayments = Permission::where('name', 'ADM_PROCESS_PAYMENTS')->first();
+        $this->assertNotNull($processPayments);
+        $this->assertSame('ADMINISTRATION', $processPayments->type);
+        $this->assertSame('Pagos', $processPayments->module);
+        $this->assertSame('Procesar el pago de un grupo de becarios', $processPayments->description);
+    }
+
+    /** @test */
+    public function no_other_role_gains_payment_permissions_as_a_side_effect(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $otherRoleNames = Role::where('name', '!=', 'ROOT_ADMINISTRATION')->pluck('name');
+
+        foreach ($otherRoleNames as $roleName) {
+            $role = Role::where('name', $roleName)->first();
+            $permissionNames = $role->permissions()->pluck('name')->toArray();
+
+            $this->assertNotContains('ADM_READ_PAYMENTS', $permissionNames, "{$roleName} must not gain ADM_READ_PAYMENTS.");
+            $this->assertNotContains('ADM_PROCESS_PAYMENTS', $permissionNames, "{$roleName} must not gain ADM_PROCESS_PAYMENTS.");
+        }
     }
 
     /**

@@ -113,5 +113,12 @@ class RoleSeeder extends Seeder
         Permission::updateOrCreate(['name' => 'ADM_MANAGE_ROLES'], ['type' => 'ADMINISTRATION', 'module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'])->syncRoles([$rootAdministrationRole]);
         Permission::updateOrCreate(['name' => 'ADM_READ_ADMINS'], ['type' => 'ADMINISTRATION', 'module' => 'Accesos', 'description' => 'Ver la lista de administradores'])->syncRoles([$rootAdministrationRole]);
         Permission::updateOrCreate(['name' => 'ADM_MANAGE_ADMINS'], ['type' => 'ADMINISTRATION', 'module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'])->syncRoles([$rootAdministrationRole]);
+        // Pagos (becario-payment-file-generation PR1, design "New Permissions"):
+        // batch review + all-or-nothing payment processing. Two separately
+        // grantable capabilities, granted only to ROOT_ADMINISTRATION, same
+        // updateOrCreate rationale as above (safe to re-apply in isolation
+        // via tinker on a non-fresh DB, retags a pre-existing row).
+        Permission::updateOrCreate(['name' => 'ADM_READ_PAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Pagos', 'description' => 'Ver el listado de pagos y el documento de pago de un becario'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_PROCESS_PAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Pagos', 'description' => 'Procesar el pago de un grupo de becarios'])->syncRoles([$rootAdministrationRole]);
     }
 }
