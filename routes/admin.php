@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdministrationRoleController;
+use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\VacantPositionController;
@@ -187,5 +188,19 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_MANAGE_ROLES');
         Route::put('{id}/permissions', [AdministrationRoleController::class, 'syncPermissions'])
             ->middleware('permission:ADM_MANAGE_ROLES');
+    });
+
+    // ── Control: Accesos (administration-panel) ─────────────────────────────
+    // design obs #1593: prefix `administrators` (not `users`) to avoid
+    // colliding with UserController's existing `apiResource('users', ...)`.
+    Route::prefix('administrators')->group(function () {
+        Route::get('/', [AdministratorController::class, 'index'])
+            ->middleware('permission:ADM_READ_ADMINS');
+        Route::get('{id}', [AdministratorController::class, 'show'])
+            ->middleware('permission:ADM_READ_ADMINS');
+        Route::post('/', [AdministratorController::class, 'store'])
+            ->middleware('permission:ADM_MANAGE_ADMINS');
+        Route::put('{id}/role', [AdministratorController::class, 'assignRole'])
+            ->middleware('permission:ADM_MANAGE_ADMINS');
     });
 });

@@ -116,6 +116,41 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Validation rules for creating a Control (Accesos) administrator
+     * account. Deliberately does NOT include a `role`/`role_id` field —
+     * $request->validate() only returns keys listed here, so any role field
+     * submitted by the client is silently discarded, never applied (spec
+     * obs #1592 R3: accounts are created with zero role assignments; role
+     * assignment is a separate endpoint, see assignAdministrationRoleRules()
+     * added in PR3b).
+     */
+    public static function createRulesAdministrator()
+    {
+        return [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => 'required|string|min:8',
+        ];
+    }
+
+    /**
+     * Validation rules for assigning a role to a Control (Accesos)
+     * administrator account. `role_id` must reference an existing role of
+     * type='ADMINISTRATION' — assigning a USER-type role (e.g. a
+     * psicol-panel or client-tier role) is rejected (spec obs #1592 R3
+     * "assign validates ADMINISTRATION type"). Mirrors the
+     * `Rule::exists(...)->where('type', 'ADMINISTRATION')` style already
+     * established by Role::syncPermissionsRules() (PR2).
+     */
+    public static function assignAdministrationRoleRules()
+    {
+        return [
+            'role_id' => ['required', 'integer', Rule::exists('roles', 'id')->where('type', 'ADMINISTRATION')],
+        ];
+    }
+
     public static function createRulesBusiness()
     {
         return [
