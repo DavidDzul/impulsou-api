@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\Rule;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Auth\Passwords\CanResetPassword;
@@ -15,6 +16,21 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable, CanResetPassword;
     use HasRoles;
+
+    /**
+     * Roles that are legitimate to assign to a user_type=BUSINESS account.
+     *
+     * These are the membership-tier roles seeded in RoleSeeder under
+     * "PANEL DE USUARIO" (they gate CANDIDATES_VIEW / CREATE_VACANT_JR) and
+     * are the roles database/seeders/UserSeeder.php + UserFactory assign to
+     * BUSINESS-type accounts (e.g. assignRole('DIAMOND')).
+     *
+     * Staff/admin roles (ROOT, ROOT_CAMPUS, YUCATAN, ATTENDANCE,
+     * ADMIN_STUDENT, ROOT_JOB, ADMIN_JOB, ROOT_ADMINISTRATION) have no
+     * business semantics and must NEVER be assignable through the business
+     * store/update endpoints — see BusinessController security fix.
+     */
+    public const BUSINESS_ROLES = ['BASIC', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
 
     /**
      * The attributes that are mass assignable.
@@ -110,6 +126,7 @@ class User extends Authenticatable
             'workstation' => 'nullable|string|max:255',
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
             'password' => 'required|string|min:8',
+            'role' => ['required', 'string', Rule::in(self::BUSINESS_ROLES)],
         ];
     }
 
@@ -124,7 +141,7 @@ class User extends Authenticatable
             'campus' => 'sometimes|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
             'password' => 'sometimes|string|min:8',
             'active' => 'nullable|boolean',
-            'role' => 'sometimes|string|exists:roles,name',
+            'role' => ['sometimes', 'string', Rule::in(self::BUSINESS_ROLES)],
         ];
     }
 
