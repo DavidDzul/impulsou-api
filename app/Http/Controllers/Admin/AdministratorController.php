@@ -86,6 +86,15 @@ class AdministratorController extends Controller
             'campus' => 'MERIDA',
         ]);
 
+        // index()/show() both eager-load 'roles', so every OTHER read path
+        // always has this key present. A freshly created administrator can
+        // never hold a role yet (store() never assigns one) — set the
+        // relation directly (no DB round trip needed) so the response shape
+        // matches every other path exactly. Omitting this crashed
+        // AccesosTable.vue's `item.roles[0]?.name` the moment a newly
+        // created administrator reached the table without a page reload.
+        $administrator->setRelation('roles', collect());
+
         return response()->json(['res' => true, 'administrator' => $administrator], 201);
     }
 

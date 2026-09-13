@@ -110,6 +110,29 @@ class AdministratorControllerTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'sinpermiso@example.com']);
     }
 
+    /**
+     * Regression: mirrors AdministrationRoleControllerTest's identical fix.
+     * index()/show() both eager-load 'roles' (so AccesosTable.vue's
+     * `item.roles[0]?.name ?? '—'` always had a `roles` array to read), but
+     * store() never did — a freshly created administrator crashed that same
+     * table the moment it landed there without a page reload:
+     * "Cannot read properties of undefined (reading '0')".
+     *
+     * @test
+     */
+    public function store_response_includes_an_empty_roles_array_matching_every_other_read_path(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/administrators', [
+            'first_name' => 'Nuevo',
+            'last_name' => 'Admin',
+            'email' => 'nuevo.admin@example.com',
+            'password' => 'secret-password',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('administrator.roles', []);
+    }
+
     // ── index() — Accesos list scope (A1) ───────────────────────────────────
 
     /** @test */

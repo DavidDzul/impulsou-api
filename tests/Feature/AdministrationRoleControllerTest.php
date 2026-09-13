@@ -167,6 +167,29 @@ class AdministrationRoleControllerTest extends TestCase
         $this->assertDatabaseMissing('roles', ['name' => 'NUEVO_ROL']);
     }
 
+    /**
+     * Regression: the frontend's RolesTable.vue reads `item.permissions.length`
+     * unconditionally to render a permission-count column (index()/show()/
+     * syncPermissions() all eager-load 'permissions', so that column always
+     * had data — until a role created via store() landed in the same table
+     * without ever reloading the page, at which point `permissions` was
+     * missing from the JSON entirely and the table threw
+     * "Cannot read properties of undefined (reading 'length')" in the
+     * browser). store() must return the same shape as every other role
+     * read path: a present (even if empty) `permissions` array.
+     *
+     * @test
+     */
+    public function store_response_includes_an_empty_permissions_array_matching_every_other_read_path(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/administration-roles', [
+            'name' => 'RECIEN_CREADO',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('role.permissions', []);
+    }
+
     // ── syncPermissions() ────────────────────────────────────────────────
 
     /** @test */

@@ -60,6 +60,16 @@ class AdministrationRoleController extends Controller
             'type' => 'ADMINISTRATION',
         ]);
 
+        // index()/show()/syncPermissions() all eager-load 'permissions', so
+        // every OTHER role read path always has this key present. A freshly
+        // created role can never have any permissions yet — set the relation
+        // directly (no need for a DB round trip) so the response shape
+        // matches every other path exactly. Omitting this crashed the
+        // frontend's permission-count column with "Cannot read properties of
+        // undefined (reading 'length')" the moment a newly created role
+        // reached the table without a page reload.
+        $role->setRelation('permissions', collect());
+
         return response()->json(['res' => true, 'role' => $role], 201);
     }
 
