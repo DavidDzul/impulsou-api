@@ -86,6 +86,28 @@ class AdministrationRoleControllerTest extends TestCase
         $response->assertStatus(403);
     }
 
+    /**
+     * Covers permission-descriptions-modules spec "AdministrationPermission
+     * catalog contract" — the catalog endpoint's JSON must include
+     * `description`/`module` per permission. Requires zero controller code
+     * changes: index()/permissionsCatalog() already return full models, so
+     * the new nullable columns ride along automatically once they exist.
+     *
+     * @test
+     */
+    public function permissions_catalog_includes_description_and_module_for_adm_permissions(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->getJson('/api/admin/administration-roles/permissions');
+
+        $response->assertStatus(200);
+        $permissions = collect($response->json('permissions'));
+        $readRoles = $permissions->firstWhere('name', 'ADM_READ_ROLES');
+
+        $this->assertNotNull($readRoles);
+        $this->assertSame('Roles', $readRoles['module']);
+        $this->assertSame('Ver la lista de roles y sus permisos', $readRoles['description']);
+    }
+
     // ── show() ───────────────────────────────────────────────────────────
 
     /** @test */

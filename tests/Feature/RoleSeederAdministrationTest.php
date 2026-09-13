@@ -191,4 +191,85 @@ class RoleSeederAdministrationTest extends TestCase
             $this->assertNotContains('ADM_EDIT_PAYMENT_DATA', $permissionNames, "{$roleName} must not gain ADM_EDIT_PAYMENT_DATA.");
         }
     }
+
+    /**
+     * Covers spec "ADM_* permissions carry approved copy" — all 7 rows must
+     * carry the exact user-approved Spanish description/module after
+     * seeding (design obs #1601 "RoleSeeder.php — replacement lines").
+     *
+     * @test
+     */
+    public function all_seven_adm_permissions_carry_the_exact_approved_copy(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $expected = [
+            'ADM_READ_USERS'        => ['module' => 'Usuarios', 'description' => 'Ver la lista de becarios y egresados'],
+            'ADM_READ_PAYMENT_DATA' => ['module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'],
+            'ADM_EDIT_PAYMENT_DATA' => ['module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'],
+            'ADM_READ_ROLES'        => ['module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos'],
+            'ADM_MANAGE_ROLES'      => ['module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'],
+            'ADM_READ_ADMINS'       => ['module' => 'Accesos', 'description' => 'Ver la lista de administradores'],
+            'ADM_MANAGE_ADMINS'     => ['module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'],
+        ];
+
+        foreach ($expected as $name => $copy) {
+            $permission = Permission::where('name', $name)->first();
+
+            $this->assertNotNull($permission, "{$name} was not seeded.");
+            $this->assertSame($copy['module'], $permission->module, "{$name} has the wrong module.");
+            $this->assertSame($copy['description'], $permission->description, "{$name} has the wrong description.");
+        }
+    }
+
+    /**
+     * Covers spec "Non-ADM seeder calls remain untouched" — PS_* and
+     * client-tier (BASIC-DIAMOND) permissions must never receive copy.
+     *
+     * @test
+     */
+    public function ps_and_client_tier_permissions_have_no_description_or_module(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $uncopiedPermissionCount = Permission::where(function ($query) {
+            $query->where('name', 'like', 'PS_%')
+                ->orWhereIn('name', ['CANDIDATES_VIEW', 'CREATE_VACANT_JR']);
+        })
+            ->where(function ($query) {
+                $query->whereNotNull('description')->orWhereNotNull('module');
+            })
+            ->count();
+
+        $this->assertSame(0, $uncopiedPermissionCount, 'PS_* and client-tier permissions must keep null description/module.');
+    }
+
+    /**
+     * Covers spec "Idempotent re-seed on a populated database" — retroactive
+     * backfill. Uses updateOrCreate (NOT the stale firstOrCreate pattern the
+     * closures above use), matching the actual RoleSeeder.php ADM_* lines,
+     * which force description/module on both create AND update.
+     *
+     * @test
+     */
+    public function retroactive_backfill_populates_copy_on_an_existing_row_without_duplicating_it(): void
+    {
+        Permission::create(['name' => 'ADM_READ_ROLES', 'type' => 'ADMINISTRATION']);
+
+        $this->assertSame(1, Permission::where('name', 'ADM_READ_ROLES')->count());
+        $this->assertNull(Permission::where('name', 'ADM_READ_ROLES')->first()->description);
+
+        // The single seeder line for ADM_READ_ROLES, re-applied in isolation
+        // (mirrors the production tinker backfill instructions).
+        Permission::updateOrCreate(
+            ['name' => 'ADM_READ_ROLES'],
+            ['type' => 'ADMINISTRATION', 'module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos']
+        );
+
+        $this->assertSame(1, Permission::where('name', 'ADM_READ_ROLES')->count(), 'Backfill must not create a duplicate row.');
+
+        $permission = Permission::where('name', 'ADM_READ_ROLES')->first();
+        $this->assertSame('Roles', $permission->module);
+        $this->assertSame('Ver la lista de roles y sus permisos', $permission->description);
+    }
 }

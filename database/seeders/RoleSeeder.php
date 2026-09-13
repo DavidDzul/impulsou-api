@@ -92,13 +92,16 @@ class RoleSeeder extends Seeder
         // pivot rows (syncRoles is idempotent by nature — it replaces the role set, not append),
         // and must retag an already-existing row (type='USER' default) to type='ADMINISTRATION'
         // (control-accesos-administration-panel PR1, B0 retag, design obs #1593).
-        Permission::updateOrCreate(['name' => 'ADM_READ_USERS'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
+        // The description/module copy rides the same updateOrCreate update-path, so re-applying
+        // these lines retroactively populates already-seeded rows (permission-descriptions-modules,
+        // design obs #1601).
+        Permission::updateOrCreate(['name' => 'ADM_READ_USERS'], ['type' => 'ADMINISTRATION', 'module' => 'Usuarios', 'description' => 'Ver la lista de becarios y egresados'])->syncRoles([$rootAdministrationRole]);
         // Payment data (becarios-payment-config, design D5/D9): read/write split
         // granted to ROOT_ADMINISTRATION ONLY (confirmed by user, not ROOT).
         // updateOrCreate keeps these two lines safe to re-apply in isolation via
         // tinker on a non-fresh DB, and retags pre-existing rows, same as ADM_READ_USERS above.
-        Permission::updateOrCreate(['name' => 'ADM_READ_PAYMENT_DATA'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
-        Permission::updateOrCreate(['name' => 'ADM_EDIT_PAYMENT_DATA'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_READ_PAYMENT_DATA'], ['type' => 'ADMINISTRATION', 'module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_EDIT_PAYMENT_DATA'], ['type' => 'ADMINISTRATION', 'module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'])->syncRoles([$rootAdministrationRole]);
         // Control (Roles + Accesos), control-accesos-administration-panel PR2
         // (design obs #1593, tasks obs #1594 Phase 2 note): these 4 were
         // originally planned for PR1 but deferred here, since the
@@ -106,9 +109,9 @@ class RoleSeeder extends Seeder
         // (ADM_READ_ROLES/ADM_MANAGE_ROLES) and PR8+ (ADM_READ_ADMINS/
         // ADM_MANAGE_ADMINS — seeded now, consumed later). Granted only to
         // ROOT_ADMINISTRATION, same updateOrCreate rationale as above.
-        Permission::updateOrCreate(['name' => 'ADM_READ_ROLES'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
-        Permission::updateOrCreate(['name' => 'ADM_MANAGE_ROLES'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
-        Permission::updateOrCreate(['name' => 'ADM_READ_ADMINS'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
-        Permission::updateOrCreate(['name' => 'ADM_MANAGE_ADMINS'], ['type' => 'ADMINISTRATION'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_READ_ROLES'], ['type' => 'ADMINISTRATION', 'module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_MANAGE_ROLES'], ['type' => 'ADMINISTRATION', 'module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_READ_ADMINS'], ['type' => 'ADMINISTRATION', 'module' => 'Accesos', 'description' => 'Ver la lista de administradores'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_MANAGE_ADMINS'], ['type' => 'ADMINISTRATION', 'module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'])->syncRoles([$rootAdministrationRole]);
     }
 }
