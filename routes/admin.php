@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\NoticeController;
 use App\Http\Controllers\Admin\PersonController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\ScholarshipDocumentController;
+use App\Http\Controllers\Admin\ScholarshipPaymentController;
 use App\Http\Controllers\Admin\ScholarshipPaymentDataController;
 use App\Http\Controllers\Admin\ScholarshipProfileController;
 use App\Http\Controllers\Admin\ScholarshipRefrendController;
@@ -171,6 +172,21 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_EDIT_PAYMENT_DATA');
         Route::put('{userId}', [ScholarshipPaymentDataController::class, 'update'])
             ->middleware('permission:ADM_EDIT_PAYMENT_DATA');
+    });
+
+    // ── Scholarship Payments (batch review + all-or-nothing processing) ─────
+    // sdd/becario-payment-file-generation design D6: ScholarshipPaymentController
+    // is intentionally distinct from ScholarshipPaymentDataController above
+    // (single-becario bank-account config) — see that controller's docblock.
+    // Static `process` route MUST come before `{refrend}` to prevent route
+    // shadowing, same convention as `scholarship-refrends/bulk-table` above.
+    Route::prefix('scholarship-payments')->group(function () {
+        Route::get('/', [ScholarshipPaymentController::class, 'index'])
+            ->middleware('permission:ADM_READ_PAYMENTS');
+        Route::post('process', [ScholarshipPaymentController::class, 'process'])
+            ->middleware('permission:ADM_PROCESS_PAYMENTS');
+        Route::get('{refrend}/document', [ScholarshipPaymentController::class, 'document'])
+            ->middleware('permission:ADM_READ_PAYMENTS');
     });
 
     // ── Control: Roles (administration-panel) ───────────────────────────────
