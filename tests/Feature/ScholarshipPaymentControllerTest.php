@@ -191,6 +191,46 @@ class ScholarshipPaymentControllerTest extends TestCase
         $blockedRow = collect($response->json('data.rows'))->firstWhere('is_payable', false);
         $this->assertNotNull($blockedRow);
         $this->assertContains('MISSING_ENROLLMENT', array_column($blockedRow['blocking_reasons'], 'code'));
+
+        // has_incident / has_pending_from_previous ride along automatically:
+        // index() passes PaymentBatchService::rows() straight through with no
+        // reshaping/whitelisting, so a ready row with neither condition must
+        // show both flags false here (the true-case is exercised end-to-end
+        // below in index_surfaces_has_incident_and_has_pending_from_previous_flags).
+        foreach ($response->json('data.rows') as $row) {
+            $this->assertArrayHasKey('has_incident', $row);
+            $this->assertArrayHasKey('has_pending_from_previous', $row);
+            $this->assertFalse($row['has_incident']);
+            $this->assertFalse($row['has_pending_from_previous']);
+        }
+    }
+
+    /** @test */
+    public function index_surfaces_has_incident_and_has_pending_from_previous_flags(): void
+    {
+        $withIncident = $this->makeReadyRefrend();
+        $withIncident->incidents()->create([
+            'incident_category' => 'ACADEMICO',
+            'incident_type'     => 'INASISTENCIA',
+            'incident_date'     => '2026-05-10',
+            'description'       => 'Faltó a clase sin justificación.',
+            'is_resolved'       => false,
+        ]);
+
+        $withPending = $this->makeReadyRefrend([
+            'amount_pending_from_previous' => 200.00,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+
+        $response->assertStatus(200);
+        $rows = collect($response->json('data.rows'))->keyBy('refrend_id');
+
+        $this->assertTrue($rows[$withIncident->id]['has_incident']);
+        $this->assertFalse($rows[$withIncident->id]['has_pending_from_previous']);
+
+        $this->assertFalse($rows[$withPending->id]['has_incident']);
+        $this->assertTrue($rows[$withPending->id]['has_pending_from_previous']);
     }
 
     // ── document() ───────────────────────────────────────────────────────────

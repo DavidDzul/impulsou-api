@@ -110,6 +110,61 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame([], $row['blocking_reasons']);
         $this->assertNull($row['outcome']);
         $this->assertNull($row['outcome_reason']);
+        $this->assertFalse($row['has_incident']);
+        $this->assertFalse($row['has_pending_from_previous']);
+    }
+
+    // ── Quick-glance indicators (has_incident / has_pending_from_previous) ────
+
+    /** @test */
+    public function has_incident_is_true_when_the_refrend_has_an_unresolved_incident(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        $refrend->incidents()->create([
+            'incident_category' => 'ACADEMICO',
+            'incident_type'     => 'INASISTENCIA',
+            'incident_date'     => '2026-05-10',
+            'description'       => 'Faltó a clase sin justificación.',
+            'is_resolved'       => false,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['has_incident']);
+    }
+
+    /** @test */
+    public function has_incident_is_false_when_the_refrend_has_zero_incidents(): void
+    {
+        $this->makeReadyRefrend();
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['has_incident']);
+    }
+
+    /** @test */
+    public function has_pending_from_previous_is_true_when_amount_pending_from_previous_is_greater_than_zero(): void
+    {
+        $this->makeReadyRefrend([
+            'amount_pending_from_previous' => 200.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['has_pending_from_previous']);
+    }
+
+    /** @test */
+    public function has_pending_from_previous_is_false_when_amount_pending_from_previous_is_zero(): void
+    {
+        $this->makeReadyRefrend([
+            'amount_pending_from_previous' => 0,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['has_pending_from_previous']);
     }
 
     // ── Joins ────────────────────────────────────────────────────────────────

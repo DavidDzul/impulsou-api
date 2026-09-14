@@ -40,6 +40,8 @@ class PaymentBatchService
      *     blocking_reasons: array<int, array{code: string, message: string}>,
      *     outcome: null,
      *     outcome_reason: null,
+     *     has_incident: bool,
+     *     has_pending_from_previous: bool,
      * }>
      */
     public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
@@ -72,24 +74,37 @@ class PaymentBatchService
                 'spd.account_number',
             ]);
 
-        return $refrends->map(function ($row) {
+        // Quick-glance indicator for has_incident: the same incidents()
+        // relation ScholarshipPaymentController::document() already uses,
+        // batched into one query keyed by refrend id (avoids N+1 across the
+        // whole batch). Purely informational — incidencias never block
+        // payment (PaymentReadinessEvaluator's decision, untouched here).
+        $refrendIdsWithIncidents = DB::table('scholarship_refrend_incidents')
+            ->whereIn('scholarship_refrend_id', $refrends->pluck('refrend_id'))
+            ->distinct()
+            ->pluck('scholarship_refrend_id')
+            ->flip();
+
+        return $refrends->map(function ($row) use ($refrendIdsWithIncidents) {
             $hasEnrollment  = $row->enrollment !== null && $row->enrollment !== '';
             $hasPaymentData = $row->bank_name !== null;
 
             $evaluation = $this->evaluator->evaluate($row, $hasEnrollment, $hasPaymentData);
 
             return [
-                'refrend_id'       => $row->refrend_id,
-                'user_id'          => $row->user_id,
-                'snapshot_name'    => $row->snapshot_name,
-                'enrollment'       => $row->enrollment,
-                'bank_name'        => $row->bank_name,
-                'account_number'   => $row->account_number,
-                'total_to_pay'     => $this->totalToPay($row),
-                'is_payable'       => $evaluation['is_payable'],
-                'blocking_reasons' => $evaluation['blocking_reasons'],
-                'outcome'          => null,
-                'outcome_reason'   => null,
+                'refrend_id'                => $row->refrend_id,
+                'user_id'                   => $row->user_id,
+                'snapshot_name'             => $row->snapshot_name,
+                'enrollment'                => $row->enrollment,
+                'bank_name'                 => $row->bank_name,
+                'account_number'            => $row->account_number,
+                'total_to_pay'              => $this->totalToPay($row),
+                'is_payable'                => $evaluation['is_payable'],
+                'blocking_reasons'          => $evaluation['blocking_reasons'],
+                'outcome'                   => null,
+                'outcome_reason'            => null,
+                'has_incident'              => $refrendIdsWithIncidents->has($row->refrend_id),
+                'has_pending_from_previous' => (float) ($row->amount_pending_from_previous ?? 0) > 0,
             ];
         })->values()->all();
     }
