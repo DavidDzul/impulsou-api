@@ -7,8 +7,10 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
+use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -22,10 +24,17 @@ class WithholdingFullSettlementAmountTest extends TestCase
     {
         parent::setUp();
 
+        // bulk/pay now requires ADM_PROCESS_PAYMENTS (PR3,
+        // sdd/becario-payment-file-generation) — grant full admin access so
+        // the pre-existing bulkPay tests below keep exercising the endpoint
+        // rather than hitting 403.
+        $this->seed(RoleSeeder::class);
+
         $this->admin = User::factory()->create([
             'user_type' => 'ADMIN',
             'active'    => true,
         ]);
+        $this->admin->assignRole('ROOT_ADMINISTRATION');
     }
 
     private function makeRefrend(array $overrides = []): ScholarshipRefrend
@@ -300,6 +309,15 @@ class WithholdingFullSettlementAmountTest extends TestCase
             'status'          => RefrendStatus::WITHHELD->value,
             'discount_amount' => 300.00,
             'final_amount'    => 700.00,
+        ]);
+        // PaymentReadinessEvaluator (PR2) also requires bank data on file —
+        // stricter than the old inline query, intentional per design.
+        ScholarshipPaymentData::create([
+            'user_id'        => $refrend->user_id,
+            'bank_name'      => 'BBVA',
+            'account_number' => '0123456789',
+            'curp'           => 'CURP010101HDFXXX01',
+            'rfc'            => 'RFC010101ABC',
         ]);
 
         $response = $this->actingAs($this->admin)

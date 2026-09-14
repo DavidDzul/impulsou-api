@@ -8,11 +8,11 @@ use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
 use App\Actions\Scholarship\BulkApproveAction;
 use App\Actions\Scholarship\BulkNotifyAction;
+use App\Actions\Scholarship\BulkPayAction;
 use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\NotifyStudentAction;
 use App\Actions\Scholarship\ResolveAprobacionAction;
-use App\Enums\RefrendStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
 use App\Models\Attendance;
@@ -566,31 +566,17 @@ class ScholarshipRefrendController extends Controller
             'ids.*' => 'integer|exists:scholarship_refrends,id',
         ]);
 
-        $refrends = ScholarshipRefrend::whereIn('id', $request->ids)
-            ->where('workflow_status', 'LISTO_PARA_PAGO')
-            ->where(function ($q) {
-                $q->where('status', '!=', RefrendStatus::WITHHELD->value)
-                    ->orWhere('final_amount', '>', 0);
-            })
-            ->get();
+        // Extracted to BulkPayAction (PR3, sdd/becario-payment-file-generation):
+        // no $batch — this legacy route has no batch concept. Response shape
+        // (['paid' => n]) and the 'BULK_PAY' log action are preserved for
+        // backwards compat (BulkPayEndpointTest). Note: BulkPayAction
+        // re-evaluates each id via PaymentReadinessEvaluator, which is a
+        // strictly narrower gate (also checks ALREADY_PAID/enrollment/bank
+        // data) than this endpoint's old inline query — intentional per
+        // design (the whole point of PR2's evaluator extraction).
+        $result = app(BulkPayAction::class)->execute($request->ids, auth()->id());
 
-        foreach ($refrends as $refrend) {
-            $old = $this->loggingService->snapshotRefrend($refrend);
-            $refrend->update([
-                'status'          => RefrendStatus::PAID->value,
-                'workflow_status' => 'CLOSED',
-                'locked_at'       => now(),
-                'locked_by_id'    => auth()->id(),
-            ]);
-            $this->loggingService->log(
-                $refrend,
-                'BULK_PAY',
-                $old,
-                $this->loggingService->snapshotRefrend($refrend->fresh())
-            );
-        }
-
-        return response()->json(['res' => true, 'data' => ['paid' => $refrends->count()]]);
+        return response()->json(['res' => true, 'data' => ['paid' => $result['paid']]]);
     }
 
     // ── Incidents ─────────────────────────────────────────────────────────────

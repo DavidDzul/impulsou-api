@@ -62,6 +62,7 @@ class ScholarshipRefrend extends Model
         'notification_method',
         'locked_at',
         'locked_by_id',
+        'payment_batch_id',
         'carryover_months_count',
         'carryover_months_detail',
         'carryover_percentage',

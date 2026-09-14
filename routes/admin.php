@@ -126,7 +126,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('generate/{userId}', [ScholarshipRefrendController::class, 'generateForUser']);
         Route::post('bulk/approve', [ScholarshipRefrendController::class, 'bulkApprove']);
         Route::post('bulk/notify', [ScholarshipRefrendController::class, 'bulkNotify']);
-        Route::post('bulk/pay', [ScholarshipRefrendController::class, 'bulkPay']);
+        Route::post('bulk/pay', [ScholarshipRefrendController::class, 'bulkPay'])
+            ->middleware('permission:ADM_PROCESS_PAYMENTS');
         // Single-refrend routes (model binding)
         Route::get('{refrend}', [ScholarshipRefrendController::class, 'show']);
         Route::post('{refrend}/approve-full', [ScholarshipRefrendController::class, 'approveFullPayment']);
