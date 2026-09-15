@@ -43,14 +43,15 @@ class RoleSeederAdministrationTest extends TestCase
      * spec requires both permissions to already exist and be granted only
      * to ROOT_ADMINISTRATION. Previously updated by
      * control-accesos-administration-panel PR2 (design obs #1593, spec obs
-     * #1592 R5) for the 4 Control permissions. This supersedes the prior
-     * seven-permission closed-set assertion — the closed set is now these 9
-     * ADM_* permissions specifically (still zero PS_* — covered by a
-     * separate test below).
+     * #1592 R5) for the 4 Control permissions. Updated again by
+     * becario-payment-bank-file-export PR4 (design "New permission") for
+     * ADM_EXPORT_PAYMENTS — the closed set is now these 10 ADM_*
+     * permissions specifically (still zero PS_* — covered by a separate
+     * test below).
      *
      * @test
      */
-    public function seeder_grants_exactly_the_nine_expected_adm_permissions_to_root_administration(): void
+    public function seeder_grants_exactly_the_ten_expected_adm_permissions_to_root_administration(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -69,9 +70,10 @@ class RoleSeederAdministrationTest extends TestCase
                 'ADM_MANAGE_ADMINS',
                 'ADM_READ_PAYMENTS',
                 'ADM_PROCESS_PAYMENTS',
+                'ADM_EXPORT_PAYMENTS',
             ],
             $permissionNames,
-            'ROOT_ADMINISTRATION must hold exactly these nine ADM_* permissions and nothing else.'
+            'ROOT_ADMINISTRATION must hold exactly these ten ADM_* permissions and nothing else.'
         );
     }
 
@@ -195,15 +197,17 @@ class RoleSeederAdministrationTest extends TestCase
     }
 
     /**
-     * Covers spec "ADM_* permissions carry approved copy" — all 9 rows must
+     * Covers spec "ADM_* permissions carry approved copy" — all 10 rows must
      * carry the exact user-approved Spanish description/module after
      * seeding (design obs #1601 "RoleSeeder.php — replacement lines";
      * extended by becario-payment-file-generation PR1 design "New
-     * Permissions" for the 2 Pagos permissions).
+     * Permissions" for the 2 Pagos permissions, and by
+     * becario-payment-bank-file-export PR4 design "New permission" for
+     * ADM_EXPORT_PAYMENTS).
      *
      * @test
      */
-    public function all_nine_adm_permissions_carry_the_exact_approved_copy(): void
+    public function all_ten_adm_permissions_carry_the_exact_approved_copy(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -217,6 +221,7 @@ class RoleSeederAdministrationTest extends TestCase
             'ADM_MANAGE_ADMINS'      => ['module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'],
             'ADM_READ_PAYMENTS'      => ['module' => 'Pagos', 'description' => 'Ver el listado de pagos y el documento de pago de un becario'],
             'ADM_PROCESS_PAYMENTS'   => ['module' => 'Pagos', 'description' => 'Procesar el pago de un grupo de becarios'],
+            'ADM_EXPORT_PAYMENTS'    => ['module' => 'Pagos', 'description' => 'Descargar el archivo bancario de dispersión de un lote de pago procesado'],
         ];
 
         foreach ($expected as $name => $copy) {
@@ -320,6 +325,64 @@ class RoleSeederAdministrationTest extends TestCase
 
             $this->assertNotContains('ADM_READ_PAYMENTS', $permissionNames, "{$roleName} must not gain ADM_READ_PAYMENTS.");
             $this->assertNotContains('ADM_PROCESS_PAYMENTS', $permissionNames, "{$roleName} must not gain ADM_PROCESS_PAYMENTS.");
+        }
+    }
+
+    /**
+     * Task 4.4/4.5 (becario-payment-bank-file-export PR4): confirms
+     * ADM_EXPORT_PAYMENTS exists with the correct type/module/description
+     * and is granted to ROOT_ADMINISTRATION only, after a normal seed.
+     *
+     * @test
+     */
+    public function seeder_grants_export_payments_permission_to_root_administration_with_correct_copy(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $role = Role::where('name', 'ROOT_ADMINISTRATION')->first();
+        $this->assertContains('ADM_EXPORT_PAYMENTS', $role->permissions()->pluck('name')->toArray());
+
+        $exportPayments = Permission::where('name', 'ADM_EXPORT_PAYMENTS')->first();
+        $this->assertNotNull($exportPayments);
+        $this->assertSame('ADMINISTRATION', $exportPayments->type);
+        $this->assertSame('Pagos', $exportPayments->module);
+        $this->assertSame('Descargar el archivo bancario de dispersión de un lote de pago procesado', $exportPayments->description);
+    }
+
+    /**
+     * Mirrors payment_permission_grants_are_idempotent_on_reapply — safe to
+     * re-apply via tinker on a non-fresh DB for the live backfill (task 4.5).
+     *
+     * @test
+     */
+    public function export_payments_permission_grant_is_idempotent_on_reapply(): void
+    {
+        $applyGrant = function (): void {
+            $role = Role::firstOrCreate(['name' => 'ROOT_ADMINISTRATION']);
+            Permission::firstOrCreate(['name' => 'ADM_EXPORT_PAYMENTS'])->syncRoles([$role]);
+        };
+
+        $applyGrant();
+        $applyGrant();
+
+        $this->assertSame(1, Permission::where('name', 'ADM_EXPORT_PAYMENTS')->count());
+
+        $role = Role::where('name', 'ROOT_ADMINISTRATION')->first();
+        $this->assertContains('ADM_EXPORT_PAYMENTS', $role->permissions()->pluck('name')->toArray());
+    }
+
+    /** @test */
+    public function no_other_role_gains_export_payments_permission_as_a_side_effect(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $otherRoleNames = Role::where('name', '!=', 'ROOT_ADMINISTRATION')->pluck('name');
+
+        foreach ($otherRoleNames as $roleName) {
+            $role = Role::where('name', $roleName)->first();
+            $permissionNames = $role->permissions()->pluck('name')->toArray();
+
+            $this->assertNotContains('ADM_EXPORT_PAYMENTS', $permissionNames, "{$roleName} must not gain ADM_EXPORT_PAYMENTS.");
         }
     }
 

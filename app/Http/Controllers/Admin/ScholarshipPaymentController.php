@@ -6,6 +6,9 @@ use App\Actions\Scholarship\BulkPayAction;
 use App\Http\Controllers\Controller;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
+use App\Services\Scholarship\BankDataValidator;
+use App\Services\Scholarship\BankPaymentFileName;
+use App\Services\Scholarship\BankPaymentFileSerializer;
 use App\Services\Scholarship\PaymentBatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -217,5 +220,114 @@ class ScholarshipPaymentController extends Controller
                 'rows'     => $outcomeRows,
             ],
         ]);
+    }
+
+    /**
+     * On-screen pre-flight for the bank-file export (design D4): count,
+     * total, and the exact filename the file endpoint will use — computed
+     * from the SAME `PaymentBatchService::paidRows()` + `BankDataValidator`
+     * gate as export(), so this response is never a promise export() can
+     * fail to keep (design's "Summary equals file" scenario).
+     */
+    public function exportSummary(ScholarshipPaymentBatch $batch): JsonResponse
+    {
+        $rows = $this->paidAndBankValidatedRows($batch);
+
+        if ($rows instanceof JsonResponse) {
+            return $rows;
+        }
+
+        $totalAmount = array_reduce(
+            $rows,
+            fn (float $carry, array $row) => $carry + (float) $row['total_to_pay'],
+            0.0
+        );
+
+        return response()->json([
+            'res'  => true,
+            'data' => [
+                'count'        => count($rows),
+                'total_amount' => number_format($totalAmount, 2, '.', ''),
+                'filename'     => BankPaymentFileName::forBatch($batch),
+            ],
+        ]);
+    }
+
+    /**
+     * Streams the BBVA fixed-width bank file for an already-paid batch
+     * (spec: "Export blocks entirely on any malformed row"). Re-runs the
+     * SAME gate exportSummary() runs — never trusts the pre-flight call, so
+     * the all-or-nothing invariant is a server-side guarantee, not a UI
+     * convention (design D4).
+     *
+     * `streamDownload()` (Laravel core, design D6) is used instead of
+     * `Excel::download()`/`Pdf::download()` because neither can emit
+     * fixed-width plain text — first plain-text download in this codebase.
+     */
+    public function export(ScholarshipPaymentBatch $batch)
+    {
+        $rows = $this->paidAndBankValidatedRows($batch);
+
+        if ($rows instanceof JsonResponse) {
+            return $rows;
+        }
+
+        $serializer = app(BankPaymentFileSerializer::class);
+        $filename   = BankPaymentFileName::forBatch($batch);
+
+        return response()->streamDownload(
+            function () use ($serializer, $rows) {
+                echo $serializer->serialize($rows);
+            },
+            $filename,
+            ['Content-Type' => 'text/plain']
+        );
+    }
+
+    /**
+     * Shared gate for both export endpoints (design D4's invariant: one code
+     * path, two callers). Returns the payable rows on success, or a fully
+     * formed 422 JsonResponse the caller returns verbatim on failure — never
+     * a partial result.
+     *
+     * @return array<int, array{refrend_id: int, user_id: int, snapshot_name: string, rfc: ?string, account_number: ?string, total_to_pay: string}>|JsonResponse
+     */
+    private function paidAndBankValidatedRows(ScholarshipPaymentBatch $batch)
+    {
+        $rows = app(PaymentBatchService::class)->paidRows($batch);
+
+        if (empty($rows)) {
+            return response()->json([
+                'res' => false,
+                'msg' => 'El lote no tiene becarios pagados.',
+            ], 422);
+        }
+
+        $validator   = app(BankDataValidator::class);
+        $invalidRows = [];
+
+        foreach ($rows as $row) {
+            $reasons = $validator->validate($row['account_number'], $row['rfc'], $row['total_to_pay']);
+
+            if (!empty($reasons)) {
+                $invalidRows[] = [
+                    'refrend_id'     => $row['refrend_id'],
+                    'snapshot_name'  => $row['snapshot_name'],
+                    'account_number' => $row['account_number'],
+                    'rfc'            => $row['rfc'],
+                    'reasons'        => $reasons,
+                ];
+            }
+        }
+
+        if (!empty($invalidRows)) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => 'El lote tiene becarios con datos bancarios inválidos.',
+                'data' => ['invalid_rows' => $invalidRows],
+            ], 422);
+        }
+
+        return $rows;
     }
 }

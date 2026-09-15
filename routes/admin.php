@@ -178,13 +178,22 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     // sdd/becario-payment-file-generation design D6: ScholarshipPaymentController
     // is intentionally distinct from ScholarshipPaymentDataController above
     // (single-becario bank-account config) — see that controller's docblock.
-    // Static `process` route MUST come before `{refrend}` to prevent route
-    // shadowing, same convention as `scholarship-refrends/bulk-table` above.
+    // Static `process` and `batches/...` routes MUST come before `{refrend}`
+    // to prevent route shadowing, same convention as
+    // `scholarship-refrends/bulk-table` above. The two `batches/{batch}/export...`
+    // routes (sdd/becario-payment-bank-file-export/design D4) are additionally
+    // segment-disjoint from `{refrend}/document` (3-4 segments vs 2), so no
+    // collision is possible regardless of order — kept before it anyway for
+    // convention consistency.
     Route::prefix('scholarship-payments')->group(function () {
         Route::get('/', [ScholarshipPaymentController::class, 'index'])
             ->middleware('permission:ADM_READ_PAYMENTS');
         Route::post('process', [ScholarshipPaymentController::class, 'process'])
             ->middleware('permission:ADM_PROCESS_PAYMENTS');
+        Route::get('batches/{batch}/export/summary', [ScholarshipPaymentController::class, 'exportSummary'])
+            ->middleware('permission:ADM_EXPORT_PAYMENTS');
+        Route::get('batches/{batch}/export', [ScholarshipPaymentController::class, 'export'])
+            ->middleware('permission:ADM_EXPORT_PAYMENTS');
         Route::get('{refrend}/document', [ScholarshipPaymentController::class, 'document'])
             ->middleware('permission:ADM_READ_PAYMENTS');
     });

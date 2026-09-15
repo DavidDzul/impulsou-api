@@ -120,5 +120,15 @@ class RoleSeeder extends Seeder
         // via tinker on a non-fresh DB, retags a pre-existing row).
         Permission::updateOrCreate(['name' => 'ADM_READ_PAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Pagos', 'description' => 'Ver el listado de pagos y el documento de pago de un becario'])->syncRoles([$rootAdministrationRole]);
         Permission::updateOrCreate(['name' => 'ADM_PROCESS_PAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Pagos', 'description' => 'Procesar el pago de un grupo de becarios'])->syncRoles([$rootAdministrationRole]);
+        // Bank-file export (becario-payment-bank-file-export PR4, design "New
+        // Permissions"): downloading the BBVA dispersión file for an already
+        // paid batch, distinct from ADM_READ_PAYMENTS/ADM_PROCESS_PAYMENTS.
+        // Granted only to ROOT_ADMINISTRATION, same updateOrCreate rationale
+        // as above (safe to re-apply in isolation via tinker on a non-fresh
+        // DB, retags a pre-existing row). syncRoles is correct here — this is
+        // a brand-new permission with no prior role_has_permissions rows, so
+        // syncing only affects THIS permission's role list, not any other
+        // permission any role already holds (no stripping risk).
+        Permission::updateOrCreate(['name' => 'ADM_EXPORT_PAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Pagos', 'description' => 'Descargar el archivo bancario de dispersión de un lote de pago procesado'])->syncRoles([$rootAdministrationRole]);
     }
 }
