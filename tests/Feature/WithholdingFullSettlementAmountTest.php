@@ -317,7 +317,7 @@ class WithholdingFullSettlementAmountTest extends TestCase
             'bank_name'      => 'BBVA',
             'account_number' => '0123456789',
             'curp'           => 'CURP010101HDFXXX01',
-            'rfc'            => 'RFC010101ABC',
+            'rfc'            => 'PEPJ800101ABC',
         ]);
 
         $response = $this->actingAs($this->admin)

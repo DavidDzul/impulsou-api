@@ -50,8 +50,12 @@ class BulkPayActionTest extends TestCase
      * A becario + refrend that is fully payable by default (LISTO_PARA_PAGO,
      * unlocked, enrollment present, bank data present, not WITHHELD).
      */
-    private function makePayableRefrend(array $refrendOverrides = [], array $userOverrides = [], bool $withPaymentData = true): ScholarshipRefrend
-    {
+    private function makePayableRefrend(
+        array $refrendOverrides = [],
+        array $userOverrides = [],
+        bool $withPaymentData = true,
+        string $accountNumber = '0123456789'
+    ): ScholarshipRefrend {
         $user = User::factory()->create(array_merge([
             'user_type' => 'BEC_ACTIVE',
             'campus'    => self::CAMPUS,
@@ -62,9 +66,9 @@ class BulkPayActionTest extends TestCase
             ScholarshipPaymentData::create([
                 'user_id'        => $user->id,
                 'bank_name'      => 'BBVA',
-                'account_number' => '0123456789',
+                'account_number' => $accountNumber,
                 'curp'           => 'CURP010101HDFXXX01',
-                'rfc'            => 'RFC010101ABC',
+                'rfc'            => 'PEPJ800101ABC',
             ]);
         }
 
@@ -227,6 +231,37 @@ class BulkPayActionTest extends TestCase
 
         $this->assertSame(1, $result['skipped']);
         $this->assertStringContainsString('Ya fue procesado en un pago anterior', $result['errors'][0]['reason']);
+    }
+
+    // ── Bank data rules (PR3, sdd/becario-payment-bank-file-export) ────────
+
+    /** @test */
+    public function skips_a_refrend_with_a_malformed_account_number(): void
+    {
+        // This becario would have been PAID before this batch — the new
+        // bank-data validation is a real, intentional behavior change.
+        $refrend = $this->makePayableRefrend(accountNumber: '12345678A');
+
+        $result = $this->action->execute([$refrend->id], $this->admin->id);
+
+        $this->assertSame(0, $result['paid']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertStringContainsString('Número de cuenta inválido', $result['errors'][0]['reason']);
+
+        $refrend->refresh();
+        $this->assertNull($refrend->locked_at);
+        $this->assertNull($refrend->payment_batch_id);
+    }
+
+    /** @test */
+    public function pays_a_refrend_with_a_well_formed_account_number_and_rfc(): void
+    {
+        $refrend = $this->makePayableRefrend(accountNumber: '0123456789');
+
+        $result = $this->action->execute([$refrend->id], $this->admin->id);
+
+        $this->assertSame(1, $result['paid']);
+        $this->assertSame(0, $result['skipped']);
     }
 
     /** @test */

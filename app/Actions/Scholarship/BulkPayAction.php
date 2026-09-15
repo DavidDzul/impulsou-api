@@ -54,15 +54,25 @@ class BulkPayAction
                 ->with('user')
                 ->get();
 
-            $paymentDataUserIds = ScholarshipPaymentData::whereIn('user_id', $refrends->pluck('user_id'))
-                ->pluck('user_id')
-                ->all();
+            // Full rows (not just ids) — PR3 needs account_number/rfc to
+            // feed PaymentReadinessEvaluator's now-required bank-data check
+            // (sdd/becario-payment-bank-file-export/design D2).
+            $paymentDataByUserId = ScholarshipPaymentData::whereIn('user_id', $refrends->pluck('user_id'))
+                ->get()
+                ->keyBy('user_id');
 
             foreach ($refrends as $refrend) {
                 $hasEnrollment  = !empty($refrend->user?->enrollment);
-                $hasPaymentData = in_array($refrend->user_id, $paymentDataUserIds, true);
+                $paymentData    = $paymentDataByUserId->get($refrend->user_id);
+                $hasPaymentData = $paymentData !== null;
 
-                $evaluation = $this->evaluator->evaluate($refrend, $hasEnrollment, $hasPaymentData);
+                $evaluation = $this->evaluator->evaluate(
+                    $refrend,
+                    $hasEnrollment,
+                    $hasPaymentData,
+                    $paymentData?->account_number,
+                    $paymentData?->rfc
+                );
 
                 if (!$evaluation['is_payable']) {
                     $skipped++;

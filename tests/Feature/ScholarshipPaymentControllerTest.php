@@ -67,7 +67,7 @@ class ScholarshipPaymentControllerTest extends TestCase
                 'bank_name'      => 'BBVA',
                 'account_number' => '0123456789',
                 'curp'           => 'CURP010101HDFXXX01',
-                'rfc'            => 'RFC010101ABC',
+                'rfc'            => 'PEPJ800101ABC',
             ]);
         }
 
@@ -203,6 +203,76 @@ class ScholarshipPaymentControllerTest extends TestCase
             $this->assertFalse($row['has_incident']);
             $this->assertFalse($row['has_pending_from_previous']);
         }
+    }
+
+    // ── index(): batch block (PR3, design D3 — export reachable after reload) ──
+
+    /** @test */
+    public function index_returns_a_null_batch_block_when_the_period_has_not_been_paid(): void
+    {
+        $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+
+        $response->assertStatus(200);
+        $this->assertNull($response->json('data.batch.batch_id'));
+        $this->assertFalse($response->json('data.batch.is_paid'));
+    }
+
+    /** @test */
+    public function index_returns_the_batch_id_and_is_paid_true_after_the_period_was_paid(): void
+    {
+        $this->makeReadyRefrend();
+
+        $processResponse = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        );
+        $processResponse->assertStatus(200);
+        $batchId = $processResponse->json('data.batch_id');
+
+        // Simulates the realistic "pay today, download later" workflow —
+        // a fresh index() call after the SPA's transient batchId is gone.
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+
+        $response->assertStatus(200);
+        $this->assertSame($batchId, $response->json('data.batch.batch_id'));
+        $this->assertTrue($response->json('data.batch.is_paid'));
+    }
+
+    /** @test */
+    public function index_batch_derivation_adds_zero_extra_queries(): void
+    {
+        // Design D3's explicit claim: batch_id/is_paid is derived from a
+        // column rows() already SELECTs — no new query. Compare the query
+        // count of an unpaid index() call against a paid one; they must be
+        // identical, proving the batch block is not backed by a new query.
+        // A throwaway warm-up call primes Spatie's permission cache first,
+        // so that one-time cache-fill cost doesn't pollute the comparison.
+        $this->makeReadyRefrend();
+        $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+
+        \DB::enableQueryLog();
+        $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+        $unpaidQueryCount = count(\DB::getQueryLog());
+        \DB::flushQueryLog();
+        \DB::disableQueryLog();
+
+        $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        )->assertStatus(200);
+
+        \DB::enableQueryLog();
+        $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+        $paidQueryCount = count(\DB::getQueryLog());
+        \DB::disableQueryLog();
+
+        $this->assertSame(
+            $unpaidQueryCount,
+            $paidQueryCount,
+            'index() must derive the batch block from already-selected data — zero additional queries.'
+        );
     }
 
     /** @test */

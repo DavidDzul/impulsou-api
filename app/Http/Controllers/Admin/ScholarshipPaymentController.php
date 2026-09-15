@@ -53,8 +53,36 @@ class ScholarshipPaymentController extends Controller
             'data' => [
                 'rows'    => $rows,
                 'summary' => $summary,
+                'batch'   => $this->batchBlock($rows),
             ],
         ]);
+    }
+
+    /**
+     * Derives whether this batch key is already paid from the row-level
+     * `payment_batch_id` PaymentBatchService::rows() already SELECTs — zero
+     * additional queries (design D3, sdd/becario-payment-bank-file-export).
+     * Without this, the export feature is unreachable after a page reload:
+     * the SPA's `paymentsStore.batchId` is only ever set transiently by
+     * process(), never recovered on a fresh index() call.
+     *
+     * `batch_id` is null unless the rows carry EXACTLY ONE distinct
+     * non-null payment_batch_id — 0 means unpaid, >1 is impossible given the
+     * batch key's unique index, but is handled explicitly rather than
+     * picking one arbitrarily.
+     *
+     * @param array<int, array{payment_batch_id: ?int}> $rows
+     * @return array{batch_id: ?int, is_paid: bool}
+     */
+    private function batchBlock(array $rows): array
+    {
+        $paymentBatchIds = collect($rows)->pluck('payment_batch_id')->filter()->unique();
+
+        if ($paymentBatchIds->count() !== 1) {
+            return ['batch_id' => null, 'is_paid' => false];
+        }
+
+        return ['batch_id' => $paymentBatchIds->first(), 'is_paid' => true];
     }
 
     /**
