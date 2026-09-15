@@ -77,7 +77,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertSame(
-            [['code' => 'NOT_APPROVED', 'message' => 'Pendiente de aprobación en psicol-panel']],
+            [['code' => 'NOT_APPROVED', 'message' => 'Pendiente de aprobación']],
             $result['blocking_reasons']
         );
     }

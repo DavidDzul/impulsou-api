@@ -50,7 +50,7 @@ class PaymentReadinessEvaluator
         $reasons = [];
 
         if ($this->statusValue($refrendRow->workflow_status) !== 'LISTO_PARA_PAGO') {
-            $reasons[] = ['code' => 'NOT_APPROVED', 'message' => 'Pendiente de aprobación en psicol-panel'];
+            $reasons[] = ['code' => 'NOT_APPROVED', 'message' => 'Pendiente de aprobación'];
         }
 
         if ($refrendRow->locked_at !== null || ($refrendRow->payment_batch_id ?? null) !== null) {

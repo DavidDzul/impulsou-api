@@ -175,7 +175,7 @@ class BulkPayActionTest extends TestCase
         $this->assertSame(0, $result['paid']);
         $this->assertSame(1, $result['skipped']);
         $this->assertSame($refrend->id, $result['errors'][0]['id']);
-        $this->assertStringContainsString('Pendiente de aprobación en psicol-panel', $result['errors'][0]['reason']);
+        $this->assertStringContainsString('Pendiente de aprobación', $result['errors'][0]['reason']);
 
         $refrend->refresh();
         $this->assertSame('PENDIENTE_NOTIFICACION', $refrend->workflow_status);
