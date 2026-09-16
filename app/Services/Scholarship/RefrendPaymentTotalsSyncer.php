@@ -15,6 +15,15 @@ use App\Models\ScholarshipWithholdingPayment;
  * an identically consistent state — extracted out of
  * RecordPaymentSituationAction (where it started as a private method) once
  * PR4 needed the exact same derivation for reversal.
+ *
+ * CROSS-REFERENCE (sdd/withholding-detail-display, design D2): the query in
+ * sync() below (`applied_refrend_id` + `is_voided = false`, NO status
+ * filter) is mirrored byte-for-byte by
+ * RefrendRetentionBreakdown::forRefrend()'s `ledger_applied` query
+ * (app/Services/Scholarship/RefrendRetentionBreakdown.php) — the READ-side
+ * twin of this class. If this query's filter ever changes, that class's
+ * `ledger_applied_total` will desync from amount_pending_from_previous.
+ * Keep both in lockstep.
  */
 class RefrendPaymentTotalsSyncer
 {
