@@ -199,6 +199,38 @@ class ApproveFullPaymentActionTest extends TestCase
         $this->assertSame('0.00', $discount->discount_percentage);
     }
 
+    // ── resolution_type only marks a REAL forgiveness ────────────────────────
+
+    /** @test */
+    public function resolution_type_stays_null_when_there_was_no_penalty_to_forgive(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeDraftRefrend($user);
+
+        $result = $this->action->execute($refrend, $this->admin->id);
+
+        $this->assertNull($result->resolution_type);
+    }
+
+    /** @test */
+    public function resolution_type_is_beca_mes_when_a_retardos_penalty_was_actually_forgiven(): void
+    {
+        $user       = $this->makeBecario();
+        $generation = $this->makeGeneration();
+        $classOne   = $this->makeClass($generation->id, '2026-03-10');
+        $classTwo   = $this->makeClass($generation->id, '2026-03-11');
+        $this->makeAttendance($user->id, $classOne->id, 'LATE');
+        $this->makeAttendance($user->id, $classTwo->id, 'LATE');
+
+        $refrend = $this->makeDraftRefrend($user);
+        $this->app->make(\App\Services\AttendancePenaltyService::class)
+            ->applyPenaltyIfDue($refrend, $user, 25.0, \Carbon\Carbon::create(2026, 3, 15));
+
+        $result = $this->action->execute($refrend->fresh(), $this->admin->id);
+
+        $this->assertSame('BECA_MES', $result->resolution_type);
+    }
+
     // ── Lock guard ────────────────────────────────────────────────────────────
 
     /** @test */
