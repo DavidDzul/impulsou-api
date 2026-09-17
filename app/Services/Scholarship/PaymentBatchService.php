@@ -45,7 +45,13 @@ class PaymentBatchService
      *     outcome_reason: null,
      *     has_incident: bool,
      *     has_pending_from_previous: bool,
+     *     resolution_type: ?string,
+     *     resolution_cause: ?string,
      * }>
+     *
+     * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
+     * purely informational: they are never read by PaymentReadinessEvaluator
+     * and never participate in is_payable/blocking_reasons.
      */
     public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
     {
@@ -68,6 +74,12 @@ class PaymentBatchService
                 'r.final_amount',
                 'r.amount_pending_from_previous',
                 'r.refund_amount_from_previous',
+                // resolution_type/resolution_cause (sdd/resolution-status-visibility):
+                // informational-only, added for the row-level indicator chip.
+                // DB::table() bypasses Eloquent casts, so these arrive as raw
+                // string|null — never a BackedEnum, no normalization needed.
+                'r.resolution_type',
+                'r.resolution_cause',
                 'u.enrollment',
                 // scholarship_payment_data columns are NOT NULL (migration
                 // 2026_09_11_000000_...:14-16), so a NULL here (from the
@@ -120,6 +132,8 @@ class PaymentBatchService
                 'outcome_reason'            => null,
                 'has_incident'              => $refrendIdsWithIncidents->has($row->refrend_id),
                 'has_pending_from_previous' => (float) ($row->amount_pending_from_previous ?? 0) > 0,
+                'resolution_type'           => $row->resolution_type,
+                'resolution_cause'          => $row->resolution_cause,
             ];
         })->values()->all();
     }

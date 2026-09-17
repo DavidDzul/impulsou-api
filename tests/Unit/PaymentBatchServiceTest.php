@@ -465,4 +465,146 @@ class PaymentBatchServiceTest extends TestCase
 
         $this->assertSame(['Ana Test', 'Zulema Test'], array_column($rows, 'snapshot_name'));
     }
+
+    // ── resolution_type / resolution_cause (sdd/resolution-status-visibility) ──
+    //
+    // THE regression gate (design "Testing Strategy", task 1.1): literals
+    // below were captured from this service's ACTUAL behavior BEFORE
+    // 'resolution_type'/'resolution_cause' were added to rows()'s SELECT or
+    // returned shape — not invented. This test must keep passing, byte
+    // identical, after PaymentBatchService::rows() gains the two new keys
+    // (task 1.5). It is the mechanical proof of the user's core requirement:
+    // the resolution indicator is purely additive and NEVER changes
+    // is_payable/blocking_reasons/total_to_pay/summary.
+    //
+    // Row 1: partial RETENIDA — status=WITHHELD but final_amount is positive,
+    // so NOTHING_TO_PAY does NOT fire (PaymentReadinessEvaluator:68 requires
+    // final_amount<=0). Payable.
+    // Row 2: SIN_PAGO — final_amount='0.00' but status is left at the
+    // default 'DRAFT' (untouched by resolution), so the WITHHELD-specific
+    // NOTHING_TO_PAY check never runs; BankDataValidator's own
+    // NOTHING_TO_PAY reason for the same zero amount is explicitly discarded
+    // by the evaluator (PaymentReadinessEvaluator:85-91) regardless. Payable
+    // with $0.00 — exactly the "blind spot" this whole change makes visible
+    // (design D5).
+    // Row 3: BECA_MES — ordinary ready refrend, resolution_type set but
+    // nothing else changed. Payable.
+    // Row 4: null resolution_type — the ordinary bulk-approve path. Payable.
+    /** @test */
+    public function resolution_type_and_resolution_cause_never_alter_is_payable_blocking_reasons_total_to_pay_or_summary(): void
+    {
+        $this->makeReadyRefrend([
+            'status'           => 'WITHHELD',
+            'final_amount'     => 300.00,
+            'resolution_type'  => 'RETENIDA',
+            'resolution_cause' => 'BAJO_PROMEDIO',
+        ]);
+        $this->makeReadyRefrend([
+            'final_amount'     => 0.00,
+            'resolution_type'  => 'SIN_PAGO',
+            'resolution_cause' => null,
+        ]);
+        $this->makeReadyRefrend([
+            'resolution_type'  => 'BECA_MES',
+            'resolution_cause' => null,
+        ]);
+        $this->makeReadyRefrend();
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertCount(4, $rows);
+
+        $captured = array_map(
+            fn (array $row) => [
+                'is_payable'       => $row['is_payable'],
+                'blocking_reasons' => $row['blocking_reasons'],
+                'total_to_pay'     => $row['total_to_pay'],
+            ],
+            $rows
+        );
+
+        $this->assertSame([
+            ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '300.00'],
+            ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '0.00'],
+            ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '1000.00'],
+            ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '1000.00'],
+        ], $captured);
+
+        $this->assertSame([
+            'total'        => 4,
+            'ready'        => 4,
+            'blocking'     => 0,
+            'total_amount' => '2300.00',
+        ], $summary);
+    }
+
+    // 8+1 pass-through matrix (task 1.2): one refrend per resolution_type
+    // value verified against ScholarshipRefrendController.php:334's
+    // validation rule, plus a null row. BECA_MES is asserted PRESENT, not
+    // excluded (user override of the proposal's D5 exclusion). array_keys()
+    // is checked exactly so a 9th, unexpected key never silently appears.
+    /** @test */
+    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_eight_values_and_null(): void
+    {
+        $values = [
+            'BECA_MES', 'SIN_PAGO', 'RETENIDA', 'SUSPENDIDA',
+            'BAJA_DEFINITIVA', 'EGRESADO', 'REEMBOLSO_PARCIAL', 'DESCUENTO_DEFINITIVO',
+        ];
+
+        foreach ($values as $value) {
+            $this->makeReadyRefrend([
+                'snapshot_name'    => "Becario {$value}",
+                'resolution_type'  => $value,
+                'resolution_cause' => "{$value}_CAUSE",
+            ]);
+        }
+        $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario NULL',
+            'resolution_type'  => null,
+            'resolution_cause' => null,
+        ]);
+
+        $rows = collect($this->rows())->keyBy('snapshot_name');
+
+        $this->assertCount(9, $rows);
+
+        foreach ($values as $value) {
+            $row = $rows["Becario {$value}"];
+            $this->assertSame($value, $row['resolution_type']);
+            $this->assertSame("{$value}_CAUSE", $row['resolution_cause']);
+        }
+
+        $nullRow = $rows['Becario NULL'];
+        $this->assertNull($nullRow['resolution_type']);
+        $this->assertNull($nullRow['resolution_cause']);
+
+        $expectedKeys = [
+            'refrend_id', 'user_id', 'snapshot_name', 'enrollment', 'bank_name',
+            'account_number', 'rfc', 'payment_batch_id', 'total_to_pay', 'is_payable',
+            'blocking_reasons', 'outcome', 'outcome_reason', 'has_incident',
+            'has_pending_from_previous', 'resolution_type', 'resolution_cause',
+        ];
+        $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
+    }
+
+    // Boundary-lock (task 1.3): paidRows() has its own independent SELECT
+    // list for the bank-file export and must NEVER gain these two keys, so a
+    // later contributor does not "helpfully" mirror this change into the
+    // export path (design D1's explicit scope boundary).
+    /** @test */
+    public function paid_rows_never_exposes_resolution_type_or_resolution_cause(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'resolution_type'  => 'RETENIDA',
+            'resolution_cause' => 'BAJO_PROMEDIO',
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey('resolution_type', $rows[0]);
+        $this->assertArrayNotHasKey('resolution_cause', $rows[0]);
+    }
 }

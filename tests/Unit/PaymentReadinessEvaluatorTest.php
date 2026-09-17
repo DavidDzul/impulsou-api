@@ -295,4 +295,32 @@ class PaymentReadinessEvaluatorTest extends TestCase
             array_column($result['blocking_reasons'], 'code')
         );
     }
+
+    // ── resolution_type / resolution_cause structural immunity (sdd/resolution-status-visibility, task 1.4) ──
+
+    /**
+     * Concrete, mechanical proof — not a narrative claim — that the evaluator
+     * is structurally unreachable by the two new row properties. evaluate()
+     * reads five NAMED properties (workflow_status, locked_at,
+     * payment_batch_id, status, final_amount) and never iterates
+     * $refrendRow, so extra stdClass properties on the row are inert here.
+     * Locked as a baseline BEFORE any implementation change (it passes
+     * trivially today, since the evaluator doesn't read these props) and
+     * must keep passing identically after PaymentBatchService::rows() starts
+     * emitting them.
+     */
+    /** @test */
+    public function it_ignores_extra_row_properties_like_resolution_type_and_resolution_cause(): void
+    {
+        $plainRow = $this->makeRow();
+        $rowWithResolutionFields = $this->makeRow([
+            'resolution_type'  => 'RETENIDA',
+            'resolution_cause' => 'BAJO_PROMEDIO',
+        ]);
+
+        $resultWithoutFields = $this->evaluate($plainRow, hasEnrollment: true, hasPaymentData: true);
+        $resultWithFields    = $this->evaluate($rowWithResolutionFields, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertSame($resultWithoutFields, $resultWithFields);
+    }
 }

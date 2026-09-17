@@ -718,4 +718,69 @@ class ScholarshipPaymentControllerTest extends TestCase
         // Still exactly one batch row — double payment is genuinely impossible.
         $this->assertSame(1, ScholarshipPaymentBatch::count());
     }
+
+    // ── resolution_type / resolution_cause pass-through (sdd/resolution-status-visibility) ──
+
+    /**
+     * index()'s row carries the two fields straight from
+     * PaymentBatchService::rows() — no reshaping in the controller.
+     */
+    /** @test */
+    public function index_surfaces_resolution_type_and_resolution_cause(): void
+    {
+        $this->makeReadyRefrend([
+            'resolution_type'  => 'RETENIDA',
+            'resolution_cause' => 'BAJO_PROMEDIO',
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+
+        $response->assertStatus(200);
+        $row = $response->json('data.rows.0');
+        $this->assertSame('RETENIDA', $row['resolution_type']);
+        $this->assertSame('BAJO_PROMEDIO', $row['resolution_cause']);
+    }
+
+    /**
+     * process() re-calls rows() internally (:166) and its array_map (:213-219)
+     * only sets outcome/outcome_reason on the existing row array — proves the
+     * pass-through requires ZERO controller code (design's verified fact,
+     * task 2.2).
+     */
+    /** @test */
+    public function process_surfaces_resolution_type_and_resolution_cause_alongside_outcome(): void
+    {
+        $this->makeReadyRefrend([
+            'resolution_type'  => 'BECA_MES',
+            'resolution_cause' => null,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        );
+
+        $response->assertStatus(200);
+        $row = $response->json('data.rows.0');
+        $this->assertSame('BECA_MES', $row['resolution_type']);
+        $this->assertNull($row['resolution_cause']);
+        $this->assertSame('PAID', $row['outcome']);
+    }
+
+    /**
+     * Regression guard (task 2.3): no new permission gates the new fields —
+     * ADM_READ_PAYMENTS alone still suffices for index(), same as before.
+     */
+    /** @test */
+    public function index_with_resolution_fields_still_requires_only_adm_read_payments(): void
+    {
+        $readOnlyUser = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $readOnlyUser->givePermissionTo('ADM_READ_PAYMENTS');
+        $this->makeReadyRefrend(['resolution_type' => 'EGRESADO']);
+
+        $response = $this->actingAs($readOnlyUser)->getJson($this->indexUrl());
+
+        $response->assertStatus(200);
+        $this->assertSame('EGRESADO', $response->json('data.rows.0.resolution_type'));
+    }
 }
