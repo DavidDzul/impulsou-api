@@ -7,7 +7,11 @@ use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendDiscount;
+use App\Models\ScholarshipWithholding;
+use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
+use App\Services\Scholarship\RefrendRetentionBreakdown;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -89,6 +93,60 @@ class ScholarshipPaymentControllerTest extends TestCase
             'snapshot_campus'              => self::CAMPUS,
             'snapshot_scholarship_type'    => ScholarshipType::IU->value,
         ], $refrendOverrides));
+    }
+
+    /**
+     * Builds an additional refrend for the SAME becario, e.g. a past-period
+     * origin refrend for a withholding — no separate user/bank data, unlike
+     * makeReadyRefrend() (sdd/withholding-detail-display PR2 retentions
+     * fixtures, mirrors RefrendRetentionBreakdownTest::makeRefrend).
+     */
+    private function makeRefrendForUser(int $userId, array $overrides = []): ScholarshipRefrend
+    {
+        return ScholarshipRefrend::create(array_merge([
+            'user_id'                      => $userId,
+            'period_year'                  => self::YEAR,
+            'period_month'                 => self::MONTH,
+            'refrend_type'                 => RefrendType::NORMAL->value,
+            'status'                       => 'DRAFT',
+            'workflow_status'              => 'DRAFT',
+            'base_amount'                  => 1000.00,
+            'discount_percentage'          => 0,
+            'discount_amount'              => 0,
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 0,
+            'snapshot_name'                => 'Test Becario',
+            'snapshot_generation'          => null,
+            'snapshot_generation_id'       => self::GENERATION_ID,
+            'snapshot_campus'              => self::CAMPUS,
+            'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+        ], $overrides));
+    }
+
+    private function makeWithholding(int $userId, int $originRefrendId, array $overrides = []): ScholarshipWithholding
+    {
+        return ScholarshipWithholding::create(array_merge([
+            'user_id'           => $userId,
+            'origin_refrend_id' => $originRefrendId,
+            'period_year'       => self::YEAR,
+            'period_month'      => self::MONTH,
+            'withheld_amount'   => '300.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+            'cause'             => 'BAJO_PROMEDIO',
+            'created_by_id'     => $this->rootAdmin->id,
+        ], $overrides));
+    }
+
+    private function makeWithholdingPayment(int $withholdingId, int $appliedRefrendId, array $overrides = []): ScholarshipWithholdingPayment
+    {
+        return ScholarshipWithholdingPayment::create(array_merge([
+            'withholding_id'     => $withholdingId,
+            'applied_refrend_id' => $appliedRefrendId,
+            'amount'             => '100.00',
+            'created_by_id'      => $this->rootAdmin->id,
+            'is_voided'          => false,
+        ], $overrides));
     }
 
     private function indexUrl(): string
@@ -352,6 +410,175 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertSame('1000.00', $data['amount_breakdown']['final_amount']);
         $this->assertSame('450.00', $data['amount_breakdown']['amount_pending_from_previous']);
         $this->assertSame('1450.00', $data['amount_breakdown']['total_to_pay']);
+    }
+
+    // ── document(): retentions (sdd/withholding-detail-display, PR2) ───────────
+
+    /** @test */
+    public function document_includes_retentions_ledger_applied_breakdown_matching_the_breakdown_service(): void
+    {
+        $becario = User::factory()->create([
+            'user_type'  => 'BEC_ACTIVE',
+            'campus'     => self::CAMPUS,
+            'active'     => true,
+            'enrollment' => 'MAT-' . random_int(100000, 999999),
+        ]);
+        ScholarshipPaymentData::create([
+            'user_id'        => $becario->id,
+            'bank_name'      => 'BBVA',
+            'account_number' => '0123456789',
+            'curp'           => 'CURP010101HDFXXX01',
+            'rfc'            => 'PEPJ800101ABC',
+        ]);
+
+        $origin      = $this->makeRefrendForUser($becario->id, ['period_month' => 1]);
+        $withholding = $this->makeWithholding($becario->id, $origin->id, [
+            'period_month' => 1, 'withheld_amount' => '300.00', 'cause' => 'BAJO_PROMEDIO',
+        ]);
+        $refrend = $this->makeRefrendForUser($becario->id, [
+            'period_month'                 => self::MONTH,
+            'workflow_status'              => 'LISTO_PARA_PAGO',
+            'amount_pending_from_previous' => 300.00,
+            'final_amount'                 => 1300.00,
+        ]);
+        $this->makeWithholdingPayment($withholding->id, $refrend->id, ['amount' => '300.00']);
+        $withholding->recomputePaidAmount();
+
+        $expected = app(RefrendRetentionBreakdown::class)->forRefrend($refrend->fresh());
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+
+        $this->assertArrayHasKey('retentions', $data);
+        $this->assertSame($expected, $data['retentions']);
+        $this->assertCount(1, $data['retentions']['ledger_applied']);
+        $this->assertSame($withholding->id, $data['retentions']['ledger_applied'][0]['withholding_id']);
+        $this->assertSame('300.00', $data['retentions']['ledger_applied'][0]['amount_applied_now']);
+        $this->assertSame('300.00', $data['retentions']['ledger_applied_total']);
+    }
+
+    /** @test */
+    public function document_includes_retentions_origin_withholding_when_active(): void
+    {
+        $refrend     = $this->makeReadyRefrend(['period_month' => 1]);
+        $withholding = $this->makeWithholding($refrend->user_id, $refrend->id, [
+            'status' => 'PENDING', 'withheld_amount' => '250.00', 'cause' => 'OTRO',
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $originWithholding = $response->json('data.retentions.origin_withholding');
+
+        $this->assertNotNull($originWithholding);
+        $this->assertSame($withholding->id, $originWithholding['withholding_id']);
+        $this->assertSame('250.00', $originWithholding['withheld_amount']);
+        $this->assertSame('PENDING', $originWithholding['status']);
+    }
+
+    /** @test */
+    public function document_retentions_origin_withholding_is_null_when_the_originating_withholding_was_cancelled(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'resolution_type'     => 'DESCUENTO_DEFINITIVO',
+            'discount_amount'     => '120.00',
+            'discount_percentage' => '40.00',
+            'resolution_cause'    => 'OTRO',
+        ]);
+        $this->makeWithholding($refrend->user_id, $refrend->id, ['status' => 'CANCELLED']);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $this->assertNull($response->json('data.retentions.origin_withholding'));
+        $this->assertNotNull($response->json('data.retentions.definitive_discount'));
+    }
+
+    /** @test */
+    public function document_includes_retentions_attendance_discounts(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $refrend->id,
+            'discount_type'          => 'RETARDOS',
+            'discount_percentage'    => '10.00',
+            'description'            => 'Tres retardos en el mes.',
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $discounts = $response->json('data.retentions.attendance_discounts');
+
+        $this->assertCount(1, $discounts);
+        $this->assertSame('RETARDOS', $discounts[0]['discount_type']);
+        $this->assertArrayNotHasKey('amount', $discounts[0]);
+    }
+
+    /** @test */
+    public function document_includes_retentions_definitive_discount(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'resolution_type'     => 'DESCUENTO_DEFINITIVO',
+            'discount_amount'     => '400.00',
+            'discount_percentage' => '40.00',
+            'resolution_cause'    => 'BAJO_PROMEDIO',
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $definitive = $response->json('data.retentions.definitive_discount');
+
+        $this->assertNotNull($definitive);
+        $this->assertSame('400.00', $definitive['discount_amount']);
+        $this->assertSame('40.00', $definitive['discount_percentage']);
+        $this->assertSame('BAJO_PROMEDIO', $definitive['resolution_cause']);
+    }
+
+    /** @test */
+    public function document_retentions_are_all_empty_when_no_retention_activity_exists(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $retentions = $response->json('data.retentions');
+
+        $this->assertSame([], $retentions['ledger_applied']);
+        $this->assertSame('0.00', $retentions['ledger_applied_total']);
+        $this->assertNull($retentions['origin_withholding']);
+        $this->assertSame([], $retentions['attendance_discounts']);
+        $this->assertNull($retentions['definitive_discount']);
+    }
+
+    /** @test */
+    public function document_retentions_are_visible_with_only_adm_read_payments_permission_no_new_permission_needed(): void
+    {
+        $readOnlyUser = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $readOnlyUser->givePermissionTo('ADM_READ_PAYMENTS');
+        $refrend = $this->makeReadyRefrend();
+        ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $refrend->id,
+            'discount_type'          => 'RETARDOS',
+            'discount_percentage'    => '10.00',
+            'description'            => 'Un retardo.',
+        ]);
+
+        $response = $this->actingAs($readOnlyUser)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $this->assertCount(1, $response->json('data.retentions.attendance_discounts'));
     }
 
     // ── process(): all-or-nothing gate (422) ────────────────────────────────

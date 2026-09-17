@@ -10,6 +10,7 @@ use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\BankPaymentFileName;
 use App\Services\Scholarship\BankPaymentFileSerializer;
 use App\Services\Scholarship\PaymentBatchService;
+use App\Services\Scholarship\RefrendRetentionBreakdown;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -93,10 +94,14 @@ class ScholarshipPaymentController extends Controller
      * its user (matrícula) + its incidents relation — no separate read model
      * exists for this yet (this endpoint is new in this PR), so the shape is
      * decided here: matrícula, nombre, incidencias, meses retenidos
-     * (carryover_months_count/detail), % retenido (carryover_percentage),
-     * the 3 comentario fields kept SEPARATE (atencion_observations,
-     * pedagogia_observations, resolution_notes — spec's resolved decision,
-     * never merged into one free-text blob), and a monto breakdown.
+     * (carryover_months_count/detail), % retenido (carryover_percentage —
+     * removal pending in a later PR of sdd/withholding-detail-display, left
+     * untouched here), the 3 comentario fields kept SEPARATE
+     * (atencion_observations, pedagogia_observations, resolution_notes —
+     * spec's resolved decision, never merged into one free-text blob), a
+     * monto breakdown, and `retentions` — the READ-side breakdown of the
+     * three retention kinds (sdd/withholding-detail-display, design D1/D4),
+     * assembled by RefrendRetentionBreakdown so this controller stays thin.
      */
     public function document(ScholarshipRefrend $refrend): JsonResponse
     {
@@ -131,6 +136,7 @@ class ScholarshipPaymentController extends Controller
                     'final_amount'                   => $refrend->final_amount,
                     'total_to_pay'                   => $refrend->total_to_pay,
                 ],
+                'retentions' => app(RefrendRetentionBreakdown::class)->forRefrend($refrend),
             ],
         ]);
     }
