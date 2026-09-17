@@ -91,7 +91,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertSame(
-            [['code' => 'ALREADY_PAID', 'message' => 'Ya fue procesado en un pago anterior']],
+            [['code' => 'ALREADY_PAID', 'message' => 'Pago ya realizado']],
             $result['blocking_reasons']
         );
     }
@@ -105,7 +105,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertSame(
-            [['code' => 'ALREADY_PAID', 'message' => 'Ya fue procesado en un pago anterior']],
+            [['code' => 'ALREADY_PAID', 'message' => 'Pago ya realizado']],
             $result['blocking_reasons']
         );
     }
@@ -185,11 +185,10 @@ class PaymentReadinessEvaluatorTest extends TestCase
     }
 
     /** @test */
-    public function all_five_blocking_reasons_can_fire_at_once(): void
+    public function four_blocking_reasons_can_fire_at_once_when_not_already_paid(): void
     {
         $row = $this->makeRow([
             'workflow_status'  => 'PENDIENTE_NOTIFICACION',
-            'locked_at'        => '2026-09-01 10:00:00',
             'status'           => 'WITHHELD',
             'final_amount'     => 0,
         ]);
@@ -197,10 +196,37 @@ class PaymentReadinessEvaluatorTest extends TestCase
         $result = $this->evaluate($row, hasEnrollment: false, hasPaymentData: false);
 
         $this->assertFalse($result['is_payable']);
-        $this->assertCount(5, $result['blocking_reasons']);
+        $this->assertCount(4, $result['blocking_reasons']);
         $this->assertSame(
-            ['NOT_APPROVED', 'ALREADY_PAID', 'MISSING_ENROLLMENT', 'MISSING_PAYMENT_DATA', 'NOTHING_TO_PAY'],
+            ['NOT_APPROVED', 'MISSING_ENROLLMENT', 'MISSING_PAYMENT_DATA', 'NOTHING_TO_PAY'],
             array_column($result['blocking_reasons'], 'code')
+        );
+    }
+
+    /**
+     * Regression: a refrend that finished its lifecycle (PAID/CLOSED, so
+     * workflow_status is no longer LISTO_PARA_PAGO) previously showed BOTH
+     * ALREADY_PAID and a misleading "Pendiente de aprobación" — nothing is
+     * actually pending on an already-paid refrend. NOT_APPROVED is
+     * suppressed whenever ALREADY_PAID applies; the two are mutually
+     * exclusive in practice, ALREADY_PAID alone is the accurate reason.
+     *
+     * @test
+     */
+    public function not_approved_is_suppressed_once_already_paid(): void
+    {
+        $row = $this->makeRow([
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => '2026-09-17 07:45:12',
+            'payment_batch_id' => 2,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertFalse($result['is_payable']);
+        $this->assertSame(
+            [['code' => 'ALREADY_PAID', 'message' => 'Pago ya realizado']],
+            $result['blocking_reasons']
         );
     }
 

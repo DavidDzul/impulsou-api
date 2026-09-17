@@ -230,7 +230,7 @@ class BulkPayActionTest extends TestCase
         $result = $this->action->execute([$refrend->id], $this->admin->id);
 
         $this->assertSame(1, $result['skipped']);
-        $this->assertStringContainsString('Ya fue procesado en un pago anterior', $result['errors'][0]['reason']);
+        $this->assertStringContainsString('Pago ya realizado', $result['errors'][0]['reason']);
     }
 
     // ── Bank data rules (PR3, sdd/becario-payment-bank-file-export) ────────

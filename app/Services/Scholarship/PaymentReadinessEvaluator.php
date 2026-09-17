@@ -49,12 +49,17 @@ class PaymentReadinessEvaluator
     ): array {
         $reasons = [];
 
-        if ($this->statusValue($refrendRow->workflow_status) !== 'LISTO_PARA_PAGO') {
+        $alreadyPaid = $refrendRow->locked_at !== null || ($refrendRow->payment_batch_id ?? null) !== null;
+
+        // A refrend that already finished its lifecycle (paid, locked) can no
+        // longer be "pending approval" — the two reasons are mutually
+        // exclusive in practice, and showing both together is misleading.
+        if (!$alreadyPaid && $this->statusValue($refrendRow->workflow_status) !== 'LISTO_PARA_PAGO') {
             $reasons[] = ['code' => 'NOT_APPROVED', 'message' => 'Pendiente de aprobación'];
         }
 
-        if ($refrendRow->locked_at !== null || ($refrendRow->payment_batch_id ?? null) !== null) {
-            $reasons[] = ['code' => 'ALREADY_PAID', 'message' => 'Ya fue procesado en un pago anterior'];
+        if ($alreadyPaid) {
+            $reasons[] = ['code' => 'ALREADY_PAID', 'message' => 'Pago ya realizado'];
         }
 
         if (!$hasEnrollment) {

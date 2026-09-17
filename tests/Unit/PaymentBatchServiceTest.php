@@ -254,6 +254,51 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertFalse($rows[0]['has_pending_from_previous']);
     }
 
+    /**
+     * Distinguishes "this payment settles a retained month on top of a
+     * normal current-month payment" from "this payment settles ONLY a
+     * retained month, the current month pays nothing" — the frontend chip
+     * previously read the same in both cases (user-reported ambiguity).
+     */
+    /** @test */
+    public function only_pending_from_previous_is_true_when_current_month_pays_nothing(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'                 => 0,
+            'amount_pending_from_previous' => 300.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['only_pending_from_previous']);
+    }
+
+    /** @test */
+    public function only_pending_from_previous_is_false_when_current_month_also_pays(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 300.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['only_pending_from_previous']);
+    }
+
+    /** @test */
+    public function only_pending_from_previous_is_false_when_there_is_nothing_pending_from_previous(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 0,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['only_pending_from_previous']);
+    }
+
     // ── Joins ────────────────────────────────────────────────────────────────
 
     /** @test */
@@ -583,7 +628,7 @@ class PaymentBatchServiceTest extends TestCase
             'refrend_id', 'user_id', 'snapshot_name', 'enrollment', 'bank_name',
             'account_number', 'rfc', 'payment_batch_id', 'total_to_pay', 'is_payable',
             'blocking_reasons', 'outcome', 'outcome_reason', 'has_incident',
-            'has_pending_from_previous', 'resolution_type', 'resolution_cause',
+            'has_pending_from_previous', 'only_pending_from_previous', 'resolution_type', 'resolution_cause',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }

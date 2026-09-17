@@ -45,6 +45,7 @@ class PaymentBatchService
      *     outcome_reason: null,
      *     has_incident: bool,
      *     has_pending_from_previous: bool,
+     *     only_pending_from_previous: bool,
      *     resolution_type: ?string,
      *     resolution_cause: ?string,
      * }>
@@ -132,6 +133,12 @@ class PaymentBatchService
                 'outcome_reason'            => null,
                 'has_incident'              => $refrendIdsWithIncidents->has($row->refrend_id),
                 'has_pending_from_previous' => (float) ($row->amount_pending_from_previous ?? 0) > 0,
+                // Distinguishes "also paying the current month" from "ONLY
+                // settling a retained month, current month pays nothing" —
+                // has_pending_from_previous alone can't tell those apart
+                // (user-reported ambiguity in the "Incluye mes retenido" chip).
+                'only_pending_from_previous' => (float) ($row->amount_pending_from_previous ?? 0) > 0
+                    && (float) $row->final_amount <= 0,
                 'resolution_type'           => $row->resolution_type,
                 'resolution_cause'          => $row->resolution_cause,
             ];
