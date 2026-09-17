@@ -94,9 +94,9 @@ class ScholarshipPaymentController extends Controller
      * its user (matrícula) + its incidents relation — no separate read model
      * exists for this yet (this endpoint is new in this PR), so the shape is
      * decided here: matrícula, nombre, incidencias, meses retenidos
-     * (carryover_months_count/detail), % retenido (carryover_percentage —
-     * removal pending in a later PR of sdd/withholding-detail-display, left
-     * untouched here), the 3 comentario fields kept SEPARATE
+     * (carryover_months_count/detail — `carryover_percentage` removed in
+     * sdd/withholding-detail-display PR3, dead column with no write path),
+     * the 3 comentario fields kept SEPARATE
      * (atencion_observations, pedagogia_observations, resolution_notes —
      * spec's resolved decision, never merged into one free-text blob), a
      * monto breakdown, and `retentions` — the READ-side breakdown of the
@@ -123,7 +123,6 @@ class ScholarshipPaymentController extends Controller
                 ])->values()->all(),
                 'carryover_months_count'  => $refrend->carryover_months_count,
                 'carryover_months_detail' => $refrend->carryover_months_detail,
-                'carryover_percentage'    => $refrend->carryover_percentage,
                 'atencion_observations'   => $refrend->atencion_observations,
                 'pedagogia_observations'  => $refrend->pedagogia_observations,
                 'resolution_notes'        => $refrend->resolution_notes,

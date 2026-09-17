@@ -65,7 +65,6 @@ class ScholarshipRefrend extends Model
         'payment_batch_id',
         'carryover_months_count',
         'carryover_months_detail',
-        'carryover_percentage',
         'suspension_scope',
         'pedagogia_resolved_at',
         'pedagogia_resolved_by_id',
@@ -97,7 +96,6 @@ class ScholarshipRefrend extends Model
         'pedagogia_reviewed_at'        => 'datetime',
         'pedagogia_resolved_at'        => 'datetime',
         'carryover_months_count'       => 'integer',
-        'carryover_percentage'         => 'decimal:2',
         'notified_at'                  => 'datetime',
         'locked_at'                    => 'datetime',
     ];

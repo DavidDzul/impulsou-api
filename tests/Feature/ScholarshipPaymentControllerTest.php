@@ -372,7 +372,6 @@ class ScholarshipPaymentControllerTest extends TestCase
             'resolution_notes'        => 'Aprobado tras revisión.',
             'carryover_months_count'  => 2,
             'carryover_months_detail' => '04/2026: 300.00; 03/2026: 150.00',
-            'carryover_percentage'    => 50.00,
             'final_amount'            => 1000.00,
             'amount_pending_from_previous' => 450.00,
         ], ['enrollment' => 'MAT-123456']);
@@ -401,7 +400,7 @@ class ScholarshipPaymentControllerTest extends TestCase
 
         $this->assertSame(2, $data['carryover_months_count']);
         $this->assertSame('04/2026: 300.00; 03/2026: 150.00', $data['carryover_months_detail']);
-        $this->assertSame('50.00', $data['carryover_percentage']);
+        $this->assertArrayNotHasKey('carryover_percentage', $data);
 
         $this->assertSame('Llegó tarde dos veces.', $data['atencion_observations']);
         $this->assertSame('Bajo rendimiento en cálculo.', $data['pedagogia_observations']);
