@@ -100,11 +100,13 @@ class PatchInlineEndpointTest extends TestCase
     }
 
     /** @test */
-    public function it_returns_422_when_atencion_label_exceeds_60_chars(): void
+    public function it_returns_422_when_atencion_label_exceeds_100_chars(): void
     {
         $refrend = $this->makeRefrend();
 
-        $longLabel = str_repeat('a', 61);
+        // Limit is InlineUpdateScholarshipRefrendRequest::rules()'s
+        // 'atencion_labels.*' => 'string|max:100'.
+        $longLabel = str_repeat('a', 101);
 
         $response = $this->actingAs($this->admin)
             ->patchJson($this->patchUrl($refrend->id), [
@@ -116,13 +118,15 @@ class PatchInlineEndpointTest extends TestCase
     }
 
     /** @test */
-    public function it_returns_422_when_atencion_observations_exceeds_500_chars(): void
+    public function it_returns_422_when_atencion_observations_exceeds_2000_chars(): void
     {
         $refrend = $this->makeRefrend();
 
+        // Limit is InlineUpdateScholarshipRefrendRequest::rules()'s
+        // 'atencion_observations' => 'sometimes|nullable|string|max:2000'.
         $response = $this->actingAs($this->admin)
             ->patchJson($this->patchUrl($refrend->id), [
-                'atencion_observations' => str_repeat('x', 501),
+                'atencion_observations' => str_repeat('x', 2001),
             ]);
 
         $response->assertStatus(422);
