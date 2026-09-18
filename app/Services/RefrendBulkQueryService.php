@@ -172,13 +172,21 @@ class RefrendBulkQueryService
         // como string decimal en el armado de la fila para no depender del
         // tipo que devuelva el driver (MySQL: string, SQLite: float).
         [$minAbsMonth, $maxAbsMonth] = PayableWithholdingWindow::absoluteBounds($year, $month);
+        $currentRefrendIdByUser = $refrends->pluck('id', 'user_id');
         $pendingWithholdings = DB::table('scholarship_withholdings')
             ->whereIn('user_id', $userIds)
             ->where('status', 'PENDING')
             ->whereColumn('paid_amount', '<', 'withheld_amount')
             ->whereRaw('(period_year * 12 + period_month) between ? and ?', [$minAbsMonth, $maxAbsMonth])
-            ->select(['id', 'user_id', 'period_year', 'period_month', 'withheld_amount', 'paid_amount'])
+            ->select(['id', 'user_id', 'origin_refrend_id', 'period_year', 'period_month', 'withheld_amount', 'paid_amount'])
             ->get()
+            // Excludes a withholding THIS SAME row's own refrendo originated
+            // (offset 0 in the payable window) BEFORE the top-2 ranking below —
+            // it's brand-new debt from this very resolution, not leftover debt
+            // from a prior period. Letting it survive into the ranking could
+            // also wrongly displace a real prior withholding out of the top-2
+            // cap (user-reported: reads as "still owes from before" otherwise).
+            ->reject(fn ($w) => (int) $w->origin_refrend_id === (int) ($currentRefrendIdByUser->get($w->user_id) ?? 0))
             ->groupBy('user_id')
             ->map(fn ($rows) => PayableWithholdingWindow::selectPayable($rows, $year, $month));
 

@@ -267,13 +267,15 @@ class BulkTableEndpointTest extends TestCase
     /** @test */
     public function pending_withholding_count_and_amount_reflect_only_the_payable_window_top_2(): void
     {
-        // NOTE (retencion-limite-3-meses B5): this test used to assert an
-        // unbounded aggregate across ALL periods including the current one.
-        // That behavior is superseded by the payable-withholding-window rule
-        // (spec: "Chip Reflects Eligible Subset Only") — the chip now counts
-        // only the eligible subset per PayableWithholdingWindow: origin period
+        // NOTE (retencion-limite-3-meses B5, later corrected): the chip counts
+        // only the eligible subset per PayableWithholdingWindow — origin period
         // 0-3 months back from the queried period, top 2 most recent when more
-        // than 2 fall in-window.
+        // than 2 fall in-window. A withholding the QUERIED ROW'S OWN refrendo
+        // originated (offset 0) is additionally excluded before that ranking —
+        // it's brand-new debt from this very resolution, not leftover debt
+        // from a prior period, and displaying it here read as "still owes
+        // from before" (user-reported, mirrors administration-panel's
+        // RefrendRetentionBreakdown ledger_applied/origin_withholding split).
         $user = User::factory()->create([
             'user_type' => 'BEC_ACTIVE',
             'campus'    => 'MERIDA',
@@ -284,15 +286,15 @@ class BulkTableEndpointTest extends TestCase
         // bulk-table endpoint returns for this test.
         $mayRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 5]);
         // Two older refrends, both still within the 3-month window (offsets 2
-        // and 1 respectively) — but all 3 origins together exceed the top-2 cap.
+        // and 1 respectively).
         $marRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 3]);
         $aprRefrend = $this->makeRefrend(['user_id' => $user->id, 'period_month' => 4]);
 
         // 3 PENDING withholdings with a pending balance, one of them
-        // originated in the current (May) refrend itself. All 3 are within
-        // the 3-month window, but only the 2 most recent (May offset 0, April
-        // offset 1) are payable — March (offset 2) is rank-excluded despite
-        // being in-window.
+        // originated in the current (May) refrend itself — that one is
+        // excluded (self-origin, offset 0) before the March/April pair is
+        // ranked, so both survive the top-2 cap instead of March being
+        // rank-excluded to make room for May's self-origin.
         ScholarshipWithholding::create([
             'user_id' => $user->id, 'origin_refrend_id' => $mayRefrend->id,
             'period_year' => 2026, 'period_month' => 5,
@@ -316,8 +318,10 @@ class BulkTableEndpointTest extends TestCase
         $rows = $response->json('data');
         $this->assertCount(1, $rows);
 
+        // March (150-50=100) + April (200) = 300; May's self-origin (300) is
+        // excluded entirely, never displacing March from the top-2.
         $this->assertSame(2, $rows[0]['pending_withholding_count']);
-        $this->assertSame('500.00', $rows[0]['pending_withholding_amount']);
+        $this->assertSame('300.00', $rows[0]['pending_withholding_amount']);
         $this->assertIsString($rows[0]['pending_withholding_amount']);
     }
 

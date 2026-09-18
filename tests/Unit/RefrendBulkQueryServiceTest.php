@@ -286,6 +286,64 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertSame('250.00', $result['rows'][0]['pending_withholding_amount']);
     }
 
+    /**
+     * A withholding this SAME refrend originates (offset 0, period equal to
+     * the row's own period) is structurally in-window per
+     * PayableWithholdingWindow — but it's brand-new debt, not leftover debt
+     * from a prior period. Showing it on the very row that created it reads
+     * as "this becario still owes from before" when they don't (mirrors
+     * administration-panel's RefrendRetentionBreakdown split between
+     * ledger_applied and origin_withholding for the same reason).
+     *
+     * @test
+     */
+    public function chip_excludes_a_withholding_this_same_refrend_originated(): void
+    {
+        $refrend = $this->makeRefrend();
+        ScholarshipWithholding::create([
+            'user_id'           => $refrend->user_id,
+            'origin_refrend_id' => $refrend->id,
+            'period_year'       => $refrend->period_year,
+            'period_month'      => $refrend->period_month,
+            'withheld_amount'   => '400.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+
+        $result = $this->buildTable();
+
+        $this->assertSame(0, $result['rows'][0]['pending_withholding_count']);
+        $this->assertNull($result['rows'][0]['pending_withholding_amount']);
+    }
+
+    /**
+     * The self-originated withholding must be dropped BEFORE the top-2
+     * ranking, not after — otherwise it could occupy one of the 2 payable
+     * slots and wrongly push out a real prior-period withholding.
+     *
+     * @test
+     */
+    public function self_originated_withholding_never_displaces_a_real_one_from_the_top_two(): void
+    {
+        $refrend = $this->makeRefrend();
+        ScholarshipWithholding::create([
+            'user_id'           => $refrend->user_id,
+            'origin_refrend_id' => $refrend->id,
+            'period_year'       => $refrend->period_year,
+            'period_month'      => $refrend->period_month, // offset 0 — self
+            'withheld_amount'   => '999.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 4, 100.00); // offset 1, real
+        $this->makeWithholdingForUser($refrend->user_id, 2026, 3, 150.00); // offset 2, real
+
+        $result = $this->buildTable();
+
+        $this->assertSame(2, $result['rows'][0]['pending_withholding_count']);
+        $this->assertSame('250.00', $result['rows'][0]['pending_withholding_amount']);
+    }
+
     /** @test */
     public function chip_excludes_stale_out_of_window_rows(): void
     {
