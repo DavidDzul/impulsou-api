@@ -24,8 +24,15 @@ class ResolveAprobacionAction
                 'pedagogia_reviewed_at'    => now(),
             ];
 
-            if (!empty($data['comment'])) {
-                $updates['pedagogia_observations'] = $data['comment'];
+            // array_key_exists (not !empty()) — the frontend's "remove" flow
+            // explicitly sends comment=null to clear an existing comment, and
+            // !empty() silently discarded that, leaving the stale comment in
+            // place while still reporting success (user-reported). Only skip
+            // the field entirely when the caller never mentioned it.
+            if (array_key_exists('comment', $data)) {
+                $updates['pedagogia_observations'] = ($data['comment'] ?? '') !== ''
+                    ? $data['comment']
+                    : null;
             }
 
             $refrend->update($updates);
