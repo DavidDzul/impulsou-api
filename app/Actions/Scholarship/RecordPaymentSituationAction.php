@@ -180,6 +180,14 @@ class RecordPaymentSituationAction
                 $this->attendancePenalty->neutralizeAttendancePenalties($refrend);
             }
 
+            // A permanent withdrawal must stop this becario from being
+            // generated any further refrends — GenerateMonthlyRefrendsService
+            // only considers active=true users (same mechanism
+            // reticula_end_date already relies on for a natural graduation).
+            if ($updates['resolution_type'] === 'BAJA_DEFINITIVA') {
+                $refrend->user()->update(['active' => false]);
+            }
+
             if ($ledgerAmount !== null && $ledgerAmount > 0) {
                 ScholarshipWithholding::updateOrCreate(
                     ['origin_refrend_id' => $refrend->id],

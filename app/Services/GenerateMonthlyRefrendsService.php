@@ -40,9 +40,16 @@ class GenerateMonthlyRefrendsService
         $stats = ['created' => 0, 'skipped' => 0, 'errors' => 0];
 
         /** @var \Illuminate\Support\Collection<int, ScholarshipProfile> $profiles */
+        // Deliberately does NOT filter by user_type — a becario whose
+        // reticula ended but is still inside the 2-month "egreso
+        // administrativo" grace window must keep getting generated/paid
+        // 100% for those remaining months, even if user_type was separately
+        // flipped away from BEC_ACTIVE. Only active=false ("permanently
+        // withdrawn", set by RecordPaymentSituationAction's BAJA_DEFINITIVA)
+        // stops generation — mirrors generateForUser()'s own guard.
         $profiles = ScholarshipProfile::with('user')
             ->whereHas('user', function ($q) use ($campus, $generationId) {
-                $q->where('user_type', 'BEC_ACTIVE')->where('active', true);
+                $q->where('active', true);
                 if ($campus !== null) {
                     $q->where('campus', $campus);
                 }
@@ -86,6 +93,24 @@ class GenerateMonthlyRefrendsService
 
         if ($exists) {
             return null;
+        }
+
+        // generateForPeriod() (bulk) already filters active=true in its
+        // initial query, but generateForUser() itself never re-checked it —
+        // reachable directly via the per-becario generate endpoint (no UI
+        // button today, but a live API route), which could otherwise generate
+        // a refrend for a becario already given de baja (users.active=false,
+        // set by RecordPaymentSituationAction's BAJA_DEFINITIVA). Deliberately
+        // checks ONLY `active`, not user_type: a becario can legitimately
+        // graduate (user_type changing away from BEC_ACTIVE, a separate,
+        // still-undecided concern) while still owed pending months within
+        // their reticula window — `active=false` alone means "permanently
+        // withdrawn, stop everything."
+        $user = $profile->user;
+        if (!$user || !$user->active) {
+            throw new \DomainException(
+                'No se puede generar el refrendo: el becario no está activo.'
+            );
         }
 
         // Validar que el periodo esté dentro del rango de la retícula
