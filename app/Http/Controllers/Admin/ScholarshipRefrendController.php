@@ -336,6 +336,10 @@ class ScholarshipRefrendController extends Controller
             'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL,DESCUENTO_DEFINITIVO',
             'resolution_cause'        => 'nullable|string|max:200',
             'resolution_notes'        => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|string|max:1000',
+            // Capturable (not mandatory — the Action enforces "required only on
+            // divergence" server-side, since a static required_if cannot express
+            // "the applied amount diverges from what was advance-paid").
+            'advance_divergence_reason' => 'nullable|string|max:200',
             'suspension_percentage'   => 'required_if:resolution_type,SUSPENDIDA|nullable|numeric|in:25,30,50,65,75,100',
             'refund_amount'           => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|numeric|min:0.01',
             'withholding_mode'        => 'required_if:resolution_type,RETENIDA,DESCUENTO_DEFINITIVO|nullable|in:percentage,fixed',

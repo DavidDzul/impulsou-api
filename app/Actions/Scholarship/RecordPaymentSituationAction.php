@@ -4,6 +4,7 @@ namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
 use App\Exceptions\WithholdingAmountMismatchException;
+use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
@@ -159,7 +160,7 @@ class RecordPaymentSituationAction
 
         $old = $this->logging->snapshotRefrend($refrend);
 
-        return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $paymentInputs, $neutralizePenalties) {
+        return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $type, $paymentInputs, $neutralizePenalties) {
             // Re-classification guard: a retention that already has payments applied
             // against it (paid_amount > 0) cannot be silently overwritten or
             // cancelled by re-registering the situation — the amounts already
@@ -270,6 +271,32 @@ class RecordPaymentSituationAction
                 }
 
                 $this->totalsSyncer->sync($refrend);
+            }
+
+            // Advance-payment arrival reconciliation (design D4): if this refrend
+            // was pre-created by RecordAdvancePaymentAction (PR3) — i.e. it has a
+            // linked scholarship_advance_payment_months row — annotate that child
+            // row with whatever resolution staff just applied. Zero changes to the
+            // 8 branches above: this is purely additive and a complete no-op (one
+            // indexed lookup, no writes) for the normal case of a refrend with no
+            // advance history. Locked inside this same transaction so a diverging
+            // resolution without a reason rolls back everything above it too.
+            $advanceMonth = ScholarshipAdvancePaymentMonth::where('refrend_id', $refrend->id)
+                ->lockForUpdate()
+                ->first();
+            if ($advanceMonth) {
+                $diverged = abs((float) $refrend->final_amount - (float) $advanceMonth->amount) > 0.01;
+                if ($diverged && empty($data['advance_divergence_reason'])) {
+                    throw new \DomainException(
+                        'Este mes ya fue pagado por adelantado: indique el motivo del cambio de resolución.'
+                    );
+                }
+                $advanceMonth->update([
+                    'status'                  => $diverged ? 'OVERRIDDEN' : 'REACHED',
+                    'settled_resolution_type' => $type,
+                    'divergence_reason'       => $data['advance_divergence_reason'] ?? null,
+                    'reached_at'              => now(),
+                ]);
             }
 
             $fresh = $refrend->fresh();
