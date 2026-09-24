@@ -68,6 +68,12 @@ class RefrendBulkQueryService
                 'r.final_amount',
                 'r.amount_pending_from_previous',
                 'r.refund_amount_from_previous',
+                // advance_payment_amount (sdd/pago-adelantado, design D6):
+                // NOT NULL DEFAULT 0 (migration 2026_09_24_000003), written
+                // only on the ORIGIN refrend by RecordAdvancePaymentAction.
+                // Feeds the total_to_pay formula below — see the lockstep
+                // cross-reference comment there.
+                'r.advance_payment_amount',
                 'r.snapshot_name',
                 'r.snapshot_generation',
                 'r.snapshot_generation_id',
@@ -190,8 +196,26 @@ class RefrendBulkQueryService
             ->groupBy('user_id')
             ->map(fn ($rows) => PayableWithholdingWindow::selectPayable($rows, $year, $month));
 
+        // ── Advance-paid annotation (sdd/pago-adelantado, spec "Row
+        // indicator in psicol-panel bulk tables") ──────────────────────────
+        // A row is "advance-paid" when ITS OWN refrend was pre-created by
+        // RecordAdvancePaymentAction (whereIn('refrend_id', $refrendIds) on
+        // the child table, per design's File Changes table). Purely
+        // informational — never read by PaymentReadinessEvaluator, never
+        // participates in is_payable/blocking_reasons (same isolation this
+        // codebase already enforces for resolution_type/resolution_cause).
+        // The origin month/year comes from the HEADER (origin_period_year/
+        // month), not the child's own period_year/month (which equals this
+        // row's own period) — one query, keyed by refrend_id, no N+1.
+        $advancePaidByRefrendId = DB::table('scholarship_advance_payment_months as apm')
+            ->join('scholarship_advance_payments as ap', 'ap.id', '=', 'apm.advance_payment_id')
+            ->whereIn('apm.refrend_id', $refrendIds)
+            ->select(['apm.refrend_id', 'apm.amount', 'ap.origin_period_year', 'ap.origin_period_month'])
+            ->get()
+            ->keyBy('refrend_id');
+
         // ── Assemble rows ──────────────────────────────────────────────────
-        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings) {
+        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings, $advancePaidByRefrendId) {
             $snap         = $r->attendance_summary_snapshot ? json_decode($r->attendance_summary_snapshot, true) : null;
             $gradeRecord  = $gradeRows->get($r->user_id);
             $incident     = $firstIncidents->get($r->id);
@@ -210,6 +234,8 @@ class RefrendBulkQueryService
                 : null;
 
             $academicStatus = $this->resolveAcademicStatus($grade, $gradeRecord !== null);
+
+            $advance = $advancePaidByRefrendId->get($r->id);
 
             $atencionLabels = null;
             if ($r->atencion_labels !== null) {
@@ -241,7 +267,13 @@ class RefrendBulkQueryService
                 'final_amount'             => $r->final_amount,
                 'amount_pending_from_previous' => $r->amount_pending_from_previous,
                 'refund_amount_from_previous'   => $r->refund_amount_from_previous ?? '0.00',
-                'total_to_pay'             => (float) $r->final_amount + (float) ($r->amount_pending_from_previous ?? 0) + (float) ($r->refund_amount_from_previous ?? 0),
+                'advance_payment_amount'   => $r->advance_payment_amount ?? '0.00',
+                // CROSS-REFERENCE (sdd/pago-adelantado, design D6): this
+                // formula is mirrored in TWO other places that must stay in
+                // lockstep — ScholarshipRefrend::getTotalToPayAttribute()
+                // and PaymentBatchService::totalToPay(). If a term is
+                // added/changed here, add/change it in both.
+                'total_to_pay'             => (float) $r->final_amount + (float) ($r->amount_pending_from_previous ?? 0) + (float) ($r->refund_amount_from_previous ?? 0) + (float) ($r->advance_payment_amount ?? 0),
                 'snapshot_name'            => $r->snapshot_name,
                 'snapshot_generation'      => $r->snapshot_generation,
                 'snapshot_generation_id'   => $r->snapshot_generation_id,
@@ -291,6 +323,12 @@ class RefrendBulkQueryService
                 'advance_payment_eligible'      => (bool) $r->advance_payment_eligible,
                 'pending_withholding_count'     => $pendingCount,
                 'pending_withholding_amount'    => $pendingAmount,
+                'advance_paid'                  => $advance !== null,
+                'advance_paid_amount'           => $advance !== null
+                    ? number_format((float) $advance->amount, 2, '.', '')
+                    : null,
+                'advance_paid_origin_year'      => $advance->origin_period_year ?? null,
+                'advance_paid_origin_month'     => $advance->origin_period_month ?? null,
             ];
         })->values()->all();
 

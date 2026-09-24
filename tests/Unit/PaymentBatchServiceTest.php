@@ -5,6 +5,8 @@ namespace Tests\Unit;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Models\ScholarshipAdvancePayment;
+use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
@@ -372,6 +374,54 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame('850.00', $rows[0]['total_to_pay']);
     }
 
+    // ── sdd/pago-adelantado D6: total_to_pay += advance_payment_amount ───────
+    // This is the THIRD of the three lockstep formula sites (the other two
+    // are ScholarshipRefrendTotalToPayTest and RefrendBulkQueryServiceTest).
+
+    /** @test */
+    public function total_to_pay_is_unchanged_when_advance_payment_amount_defaults_to_zero(): void
+    {
+        // No explicit advance_payment_amount override — relies on the
+        // column's NOT NULL DEFAULT 0, the exact state of every pre-PR5 row.
+        $this->makeReadyRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertSame('1200.00', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function total_to_pay_includes_advance_payment_amount(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 0,
+            'advance_payment_amount'       => 3000.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertSame('4000.00', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function paid_rows_total_to_pay_also_includes_advance_payment_amount(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 0,
+            'advance_payment_amount'       => 3000.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertSame('4000.00', $rows[0]['total_to_pay']);
+    }
+
     // ── Summary ──────────────────────────────────────────────────────────────
 
     /** @test */
@@ -629,6 +679,7 @@ class PaymentBatchServiceTest extends TestCase
             'account_number', 'rfc', 'payment_batch_id', 'total_to_pay', 'is_payable',
             'blocking_reasons', 'outcome', 'outcome_reason', 'has_incident',
             'has_pending_from_previous', 'only_pending_from_previous', 'resolution_type', 'resolution_cause',
+            'advance_paid', 'advance_paid_amount', 'advance_paid_origin_year', 'advance_paid_origin_month',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -651,5 +702,104 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertArrayNotHasKey('resolution_type', $rows[0]);
         $this->assertArrayNotHasKey('resolution_cause', $rows[0]);
+    }
+
+    // ── sdd/pago-adelantado: advance-paid row indicator (rows() only) ────────
+    // Spec "Row indicator in administration-panel Pagos table". Purely
+    // informational — never touches is_payable/blocking_reasons.
+
+    private function linkAdvancePaidRefrend(
+        ScholarshipRefrend $refrend,
+        int $originYear,
+        int $originMonth,
+        float $amount = 500.00
+    ): void {
+        $originRefrend = ScholarshipRefrend::create([
+            'user_id'       => $refrend->user_id,
+            'period_year'   => $originYear,
+            'period_month'  => $originMonth,
+            'base_amount'   => 1000,
+            'final_amount'  => 1000,
+            'snapshot_name' => 'Origin Refrend',
+        ]);
+
+        $header = ScholarshipAdvancePayment::create([
+            'user_id'             => $refrend->user_id,
+            'origin_refrend_id'   => $originRefrend->id,
+            'origin_period_year'  => $originYear,
+            'origin_period_month' => $originMonth,
+            'months_count'        => 1,
+            'total_amount'        => $amount,
+        ]);
+
+        ScholarshipAdvancePaymentMonth::create([
+            'advance_payment_id' => $header->id,
+            'user_id'            => $refrend->user_id,
+            'period_year'        => $refrend->period_year,
+            'period_month'       => $refrend->period_month,
+            'amount'             => $amount,
+            'refrend_id'         => $refrend->id,
+            'status'             => 'PENDING',
+        ]);
+    }
+
+    /** @test */
+    public function advance_paid_is_false_and_fields_are_null_for_a_normal_row(): void
+    {
+        $this->makeReadyRefrend();
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['advance_paid']);
+        $this->assertNull($rows[0]['advance_paid_amount']);
+        $this->assertNull($rows[0]['advance_paid_origin_year']);
+        $this->assertNull($rows[0]['advance_paid_origin_month']);
+    }
+
+    /** @test */
+    public function advance_paid_is_true_with_origin_month_year_and_amount_when_linked(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        $this->linkAdvancePaidRefrend($refrend, 2026, 2, 500.00);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['advance_paid']);
+        $this->assertSame('500.00', $rows[0]['advance_paid_amount']);
+        $this->assertSame(2026, $rows[0]['advance_paid_origin_year']);
+        $this->assertSame(2, $rows[0]['advance_paid_origin_month']);
+    }
+
+    /** @test */
+    public function advance_paid_never_alters_is_payable_or_blocking_reasons(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        $this->linkAdvancePaidRefrend($refrend, 2026, 2, 500.00);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['is_payable']);
+        $this->assertSame([], $rows[0]['blocking_reasons']);
+    }
+
+    // Boundary-lock (mirrors paid_rows_never_exposes_resolution_type_or_resolution_cause):
+    // paidRows() must NEVER gain the advance_paid indicator fields, so a
+    // later contributor does not "helpfully" mirror this change into the
+    // export path (design's explicit scope boundary — the export path only
+    // needs the money term, already wired into totalToPay()).
+    /** @test */
+    public function paid_rows_never_exposes_advance_paid_indicator_fields(): void
+    {
+        $batch   = $this->makeBatch();
+        $refrend = $this->makePaidRefrendForBatch($batch);
+        $this->linkAdvancePaidRefrend($refrend, 2026, 2, 500.00);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey('advance_paid', $rows[0]);
+        $this->assertArrayNotHasKey('advance_paid_amount', $rows[0]);
+        $this->assertArrayNotHasKey('advance_paid_origin_year', $rows[0]);
+        $this->assertArrayNotHasKey('advance_paid_origin_month', $rows[0]);
     }
 }

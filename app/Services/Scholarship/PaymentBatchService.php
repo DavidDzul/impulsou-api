@@ -48,11 +48,22 @@ class PaymentBatchService
      *     only_pending_from_previous: bool,
      *     resolution_type: ?string,
      *     resolution_cause: ?string,
+     *     advance_paid: bool,
+     *     advance_paid_amount: ?string,
+     *     advance_paid_origin_year: ?int,
+     *     advance_paid_origin_month: ?int,
      * }>
      *
      * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
      * purely informational: they are never read by PaymentReadinessEvaluator
      * and never participate in is_payable/blocking_reasons.
+     *
+     * advance_paid/advance_paid_amount/advance_paid_origin_year/
+     * advance_paid_origin_month (sdd/pago-adelantado, design D6) follow the
+     * exact same isolation — purely informational, never read by
+     * PaymentReadinessEvaluator. Deliberately NOT emitted by paidRows()
+     * (design's explicit scope boundary, mirroring resolution_type/
+     * resolution_cause's own exclusion from that method).
      */
     public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
     {
@@ -75,6 +86,12 @@ class PaymentBatchService
                 'r.final_amount',
                 'r.amount_pending_from_previous',
                 'r.refund_amount_from_previous',
+                // advance_payment_amount (sdd/pago-adelantado, design D6):
+                // NOT NULL DEFAULT 0, feeds totalToPay() below — see the
+                // lockstep cross-reference comment there. Selected here (not
+                // just in the indicator lookup) because totalToPay() reads
+                // it directly off this row object.
+                'r.advance_payment_amount',
                 // resolution_type/resolution_cause (sdd/resolution-status-visibility):
                 // informational-only, added for the row-level indicator chip.
                 // DB::table() bypasses Eloquent casts, so these arrive as raw
@@ -105,7 +122,20 @@ class PaymentBatchService
             ->pluck('scholarship_refrend_id')
             ->flip();
 
-        return $refrends->map(function ($row) use ($refrendIdsWithIncidents) {
+        // Advance-paid annotation (sdd/pago-adelantado, spec "Row indicator
+        // in administration-panel Pagos table") — same shape/lookup as
+        // RefrendBulkQueryService::buildTable()'s twin block. Deliberately
+        // NOT built/used inside paidRows() (design's explicit scope
+        // boundary — mirrors resolution_type/resolution_cause).
+        $advancePaidByRefrendId = DB::table('scholarship_advance_payment_months as apm')
+            ->join('scholarship_advance_payments as ap', 'ap.id', '=', 'apm.advance_payment_id')
+            ->whereIn('apm.refrend_id', $refrends->pluck('refrend_id'))
+            ->select(['apm.refrend_id', 'apm.amount', 'ap.origin_period_year', 'ap.origin_period_month'])
+            ->get()
+            ->keyBy('refrend_id');
+
+        return $refrends->map(function ($row) use ($refrendIdsWithIncidents, $advancePaidByRefrendId) {
+            $advance = $advancePaidByRefrendId->get($row->refrend_id);
             $hasEnrollment  = $row->enrollment !== null && $row->enrollment !== '';
             $hasPaymentData = $row->bank_name !== null;
 
@@ -141,6 +171,12 @@ class PaymentBatchService
                     && (float) $row->final_amount <= 0,
                 'resolution_type'           => $row->resolution_type,
                 'resolution_cause'          => $row->resolution_cause,
+                'advance_paid'              => $advance !== null,
+                'advance_paid_amount'       => $advance !== null
+                    ? number_format((float) $advance->amount, 2, '.', '')
+                    : null,
+                'advance_paid_origin_year'  => $advance->origin_period_year ?? null,
+                'advance_paid_origin_month' => $advance->origin_period_month ?? null,
             ];
         })->values()->all();
     }
@@ -178,6 +214,12 @@ class PaymentBatchService
                 'scholarship_refrends.final_amount',
                 'scholarship_refrends.amount_pending_from_previous',
                 'scholarship_refrends.refund_amount_from_previous',
+                // advance_payment_amount (sdd/pago-adelantado, design D6):
+                // selected so totalToPay() computes the correct exported
+                // total — the money term is shared with rows(), unlike the
+                // advance_paid indicator fields, which paidRows() never
+                // exposes (design's explicit scope boundary).
+                'scholarship_refrends.advance_payment_amount',
                 'spd.account_number',
                 'spd.rfc',
             ]);
@@ -220,18 +262,27 @@ class PaymentBatchService
 
     /**
      * Reuses RefrendBulkQueryService's exact existing formula
-     * (final_amount + amount_pending_from_previous + refund_amount_from_previous),
-     * formatted the same way ScholarshipRefrend::getTotalToPayAttribute()
-     * does — as a decimal string, since the driver returns this value as a
-     * string on MySQL and a float on SQLite (RefrendBulkQueryService.php:162-173
-     * documents the same trap).
+     * (final_amount + amount_pending_from_previous + refund_amount_from_previous
+     * + advance_payment_amount), formatted the same way
+     * ScholarshipRefrend::getTotalToPayAttribute() does — as a decimal
+     * string, since the driver returns this value as a string on MySQL and
+     * a float on SQLite (RefrendBulkQueryService.php documents the same
+     * trap).
+     *
+     * CROSS-REFERENCE (sdd/pago-adelantado, design D6): this formula is
+     * mirrored in TWO other places that must stay in lockstep —
+     * ScholarshipRefrend::getTotalToPayAttribute() and
+     * RefrendBulkQueryService::buildTable()'s row-assembly closure. If a
+     * term is added/changed here, add/change it in both. Shared by both
+     * rows() and paidRows() — both SELECT lists include advance_payment_amount.
      */
     private function totalToPay(object $row): string
     {
         return number_format(
             (float) $row->final_amount
             + (float) ($row->amount_pending_from_previous ?? 0)
-            + (float) ($row->refund_amount_from_previous ?? 0),
+            + (float) ($row->refund_amount_from_previous ?? 0)
+            + (float) ($row->advance_payment_amount ?? 0),
             2,
             '.',
             ''

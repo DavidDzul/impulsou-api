@@ -105,12 +105,20 @@ class ScholarshipRefrend extends Model
 
     protected $appends = ['total_to_pay'];
 
+    /**
+     * CROSS-REFERENCE (sdd/pago-adelantado, design D6): this formula is
+     * mirrored in TWO other places that must stay in lockstep —
+     * RefrendBulkQueryService::buildTable()'s row-assembly closure and
+     * PaymentBatchService::totalToPay(). If a term is added/changed here,
+     * add/change it in both.
+     */
     public function getTotalToPayAttribute(): string
     {
         return number_format(
             (float) $this->final_amount
             + (float) $this->amount_pending_from_previous
-            + (float) ($this->refund_amount_from_previous ?? 0),
+            + (float) ($this->refund_amount_from_previous ?? 0)
+            + (float) ($this->advance_payment_amount ?? 0),
             2,
             '.',
             ''
