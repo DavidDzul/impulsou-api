@@ -214,17 +214,13 @@ class GenerateMonthlyRefrendsService
             $incidentDescription = implode(', ', $parts) . '.';
         }
 
-        // NOTE: $createdVia is accepted but intentionally NOT written to the
-        // `ScholarshipRefrend::create()` call below — `created_via` doesn't
-        // exist as a column until PR2's migration. PR2 only needs to add
-        // `'created_via' => $createdVia` to the array below; no signature
-        // changes required here or on either public caller.
-        return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
+        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,
                 'period_month'                 => $month,
                 'refrend_type'                 => RefrendType::NORMAL->value,
+                'created_via'                  => $createdVia,
                 'status'                       => RefrendStatus::DRAFT->value,
                 'workflow_status'              => $initialWorkflowStatus,
                 'resolution_type'              => null,
