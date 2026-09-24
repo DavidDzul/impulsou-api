@@ -133,6 +133,10 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('{refrend}', [ScholarshipRefrendController::class, 'show']);
         Route::post('{refrend}/approve-full', [ScholarshipRefrendController::class, 'approveFullPayment']);
         Route::post('{refrend}/situation', [ScholarshipRefrendController::class, 'recordSituation']);
+        // Same permission gate as `situation` above (confirmed — not
+        // ADM_PROCESS_PAYMENTS): inherits the group's auth:sanctum +
+        // user_type:ADMIN only.
+        Route::post('{refrend}/advance-payment', [ScholarshipRefrendController::class, 'recordAdvancePayment']);
         Route::post('{refrend}/clear-resolution', [ScholarshipRefrendController::class, 'clearResolution']);
         Route::post('{refrend}/atencion-flag', [ScholarshipRefrendController::class, 'atencionFlag']);
         Route::post('{refrend}/atencion-clear', [ScholarshipRefrendController::class, 'atencionClearFlag']);

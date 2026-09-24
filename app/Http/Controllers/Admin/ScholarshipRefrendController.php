@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ApproveFullPaymentAction;
 use App\Actions\Scholarship\ClearRefrendResolutionAction;
+use App\Actions\Scholarship\RecordAdvancePaymentAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
 use App\Actions\Scholarship\BulkApproveAction;
@@ -28,6 +29,7 @@ use App\Services\RefrendBulkQueryService;
 use App\Services\ScholarshipLoggingService;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -414,6 +416,55 @@ class ScholarshipRefrendController extends Controller
         }
 
         return response()->json(['res' => true, 'data' => $updated]);
+    }
+
+    /**
+     * Records a batch of 1-MAX_ADVANCED_MONTHS future months as advance-paid
+     * against this refrend (design "Endpoint"). Same permission gate as
+     * recordSituation — no dedicated permission, only the group's
+     * auth:sanctum + user_type:ADMIN.
+     */
+    public function recordAdvancePayment(Request $request, ScholarshipRefrend $refrend): JsonResponse
+    {
+        $data = $request->validate([
+            'months' => [
+                'required',
+                'array',
+                'min:1',
+                'max:' . RecordAdvancePaymentAction::MAX_ADVANCED_MONTHS,
+                function ($attribute, $value, $fail) {
+                    $seen = [];
+                    foreach ((array) $value as $month) {
+                        $key = ($month['year'] ?? '') . '-' . ($month['month'] ?? '');
+                        if (isset($seen[$key])) {
+                            $fail('No se puede repetir el mismo mes dentro de una misma solicitud.');
+                            return;
+                        }
+                        $seen[$key] = true;
+                    }
+                },
+            ],
+            'months.*.year'  => 'required|integer|min:2020|max:2100',
+            'months.*.month' => 'required|integer|min:1|max:12',
+            'cause'          => 'nullable|string|max:200',
+            'notes'          => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $header = app(RecordAdvancePaymentAction::class)->execute($refrend, $data, auth()->id());
+        } catch (\DomainException $e) {
+            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
+        } catch (QueryException $e) {
+            // Final backstop against a genuine concurrent-claim race (the
+            // scholarship_advance_payment_months unique constraint) —
+            // surfaces as 422, not an unhandled 500.
+            return response()->json([
+                'res' => false,
+                'msg' => 'Uno o más de los meses solicitados ya fue pagado por adelantado.',
+            ], 422);
+        }
+
+        return response()->json(['res' => true, 'data' => $header]);
     }
 
     /**
