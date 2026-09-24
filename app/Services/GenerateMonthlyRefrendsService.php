@@ -95,27 +95,86 @@ class GenerateMonthlyRefrendsService
             return null;
         }
 
-        // generateForPeriod() (bulk) already filters active=true in its
-        // initial query, but generateForUser() itself never re-checked it —
-        // reachable directly via the per-becario generate endpoint (no UI
-        // button today, but a live API route), which could otherwise generate
-        // a refrend for a becario already given de baja (users.active=false,
-        // set by RecordPaymentSituationAction's BAJA_DEFINITIVA). Deliberately
-        // checks ONLY `active`, not user_type: a becario can legitimately
-        // graduate (user_type changing away from BEC_ACTIVE, a separate,
-        // still-undecided concern) while still owed pending months within
-        // their reticula window — `active=false` alone means "permanently
-        // withdrawn, stop everything."
+        $this->assertUserIsActive($profile);
+
+        // Validar que el periodo no sea futuro y esté dentro del rango de la
+        // retícula. generateForUser() keeps ZERO new parameters and cannot be
+        // opted out of the future-period guard — the only sanctioned bypass
+        // is the separately named generateFutureForAdvance() below.
+        $this->assertPeriodNotInFuture($year, $month);
+        $this->assertPeriodWithinReticula($profile, $year, $month);
+
+        return $this->createRefrendForPeriod($profile, $year, $month, 'GENERATION');
+    }
+
+    /**
+     * Genera un refrendo para un periodo FUTURO, exclusivamente para el flujo
+     * de pago adelantado (RecordAdvancePaymentAction). Requiere que el
+     * periodo sea estrictamente posterior al mes en curso — lo opuesto de
+     * generateForUser() — y sigue respetando el rango de la retícula, para
+     * que un becario no pueda ser adelantado un periodo fuera de su ventana
+     * académica.
+     *
+     * A diferencia de generateForUser(), este método NO es idempotente por
+     * sí mismo (no hace exists()-skip): la deduplicación y el control de
+     * concurrencia son responsabilidad del llamador (RecordAdvancePaymentAction),
+     * que ya realiza esos checks dentro de su propia transacción.
+     *
+     * @param string $createdVia Provenance marker for the created refrend.
+     *   Not yet persisted — `scholarship_refrends.created_via` does not exist
+     *   until PR2's migration lands. Accepted now so this call site's
+     *   contract is stable and PR2 only needs to wire the column write,
+     *   not change this signature.
+     */
+    public function generateFutureForAdvance(
+        ScholarshipProfile $profile,
+        int $year,
+        int $month,
+        string $createdVia = 'ADVANCE_PAYMENT'
+    ): ScholarshipRefrend {
+        $this->assertUserIsActive($profile);
+        $this->assertPeriodIsFuture($year, $month);
+        $this->assertPeriodWithinReticula($profile, $year, $month);
+
+        return $this->createRefrendForPeriod($profile, $year, $month, $createdVia);
+    }
+
+    /**
+     * generateForPeriod() (bulk) already filters active=true in its initial
+     * query, but generateForUser() itself never re-checked it — reachable
+     * directly via the per-becario generate endpoint (no UI button today,
+     * but a live API route), which could otherwise generate a refrend for a
+     * becario already given de baja (users.active=false, set by
+     * RecordPaymentSituationAction's BAJA_DEFINITIVA). Deliberately checks
+     * ONLY `active`, not user_type: a becario can legitimately graduate
+     * (user_type changing away from BEC_ACTIVE, a separate, still-undecided
+     * concern) while still owed pending months within their reticula window
+     * — `active=false` alone means "permanently withdrawn, stop everything."
+     * Shared by both generateForUser() and generateFutureForAdvance().
+     */
+    private function assertUserIsActive(ScholarshipProfile $profile): void
+    {
         $user = $profile->user;
         if (!$user || !$user->active) {
             throw new \DomainException(
                 'No se puede generar el refrendo: el becario no está activo.'
             );
         }
+    }
 
-        // Validar que el periodo esté dentro del rango de la retícula
-        $this->assertPeriodWithinReticula($profile, $year, $month);
-
+    /**
+     * Crea el refrendo (snapshot, incidente de descuento, penalizaciones,
+     * recálculo) para un periodo ya validado por el llamador. Extraído
+     * verbatim del cuerpo de generateForUser() para que generateForUser() y
+     * generateFutureForAdvance() compartan exactamente la misma lógica de
+     * creación, parametrizada únicamente por cómo se originó la fila.
+     */
+    private function createRefrendForPeriod(
+        ScholarshipProfile $profile,
+        int $year,
+        int $month,
+        string $createdVia
+    ): ScholarshipRefrend {
         $referenceDate = Carbon::create($year, $month, 1);
         // Vigencia (temporary increase + discount) must be evaluated against
         // the period being generated, not "today" — otherwise generating a
@@ -155,6 +214,11 @@ class GenerateMonthlyRefrendsService
             $incidentDescription = implode(', ', $parts) . '.';
         }
 
+        // NOTE: $createdVia is accepted but intentionally NOT written to the
+        // `ScholarshipRefrend::create()` call below — `created_via` doesn't
+        // exist as a column until PR2's migration. PR2 only needs to add
+        // `'created_via' => $createdVia` to the array below; no signature
+        // changes required here or on either public caller.
         return DB::transaction(function () use ($profile, $year, $month, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
@@ -212,19 +276,47 @@ class GenerateMonthlyRefrendsService
     }
 
     /**
+     * Valida que el periodo (año/mes) NO sea futuro respecto al mes en curso.
+     * Restored, committed guard — the sanctioned exception is
+     * generateFutureForAdvance(), which uses the inverse assertPeriodIsFuture()
+     * instead. No other call site may bypass this.
+     */
+    private function assertPeriodNotInFuture(int $year, int $month): void
+    {
+        $periodStart = Carbon::create($year, $month, 1)->startOfDay();
+        $currentMonthStart = Carbon::now()->startOfMonth();
+
+        if ($periodStart->gt($currentMonthStart)) {
+            throw new \DomainException(
+                "No se puede generar el refrendo de {$month}/{$year} porque ese periodo aún no ha comenzado."
+            );
+        }
+    }
+
+    /**
+     * Valida que el periodo (año/mes) SEA estrictamente futuro respecto al
+     * mes en curso. Inverso de assertPeriodNotInFuture(); usado únicamente
+     * por generateFutureForAdvance().
+     */
+    private function assertPeriodIsFuture(int $year, int $month): void
+    {
+        $periodStart = Carbon::create($year, $month, 1)->startOfDay();
+        $currentMonthStart = Carbon::now()->startOfMonth();
+
+        if (!$periodStart->gt($currentMonthStart)) {
+            throw new \DomainException(
+                "No se puede registrar un pago adelantado para {$month}/{$year} porque ese periodo no es futuro."
+            );
+        }
+    }
+
+    /**
      * Valida que el periodo (año/mes) esté dentro del rango de la retícula del perfil.
      * Lanza DomainException si está fuera del rango.
      */
     private function assertPeriodWithinReticula(ScholarshipProfile $profile, int $year, int $month): void
     {
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
-
-        $currentMonthStart = Carbon::now()->startOfMonth();
-        if ($periodStart->gt($currentMonthStart)) {
-            throw new \DomainException(
-                "No se puede generar el refrendo de {$month}/{$year} porque ese periodo aún no ha comenzado."
-            );
-        }
 
         if ($profile->reticula_start_date && $periodStart->lt($profile->reticula_start_date)) {
             throw new \DomainException(

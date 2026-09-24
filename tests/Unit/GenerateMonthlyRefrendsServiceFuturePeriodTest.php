@@ -2,8 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipProfile;
+use App\Models\ScholarshipRefrend;
 use App\Models\User;
 use App\Services\GenerateMonthlyRefrendsService;
 use Carbon\Carbon;
@@ -25,6 +27,12 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
     {
         parent::setUp();
         $this->service = $this->app->make(GenerateMonthlyRefrendsService::class);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     private function makeProfile(array $overrides = []): ScholarshipProfile
@@ -98,5 +106,100 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
         $this->assertPeriodWithinReticula($profile, $past->year, $past->month);
 
         $this->addToAssertionCount(1);
+    }
+
+    // ── PR1: assertPeriodWithinReticula() splits into assertPeriodNotInFuture()
+    // (normal path, restored/committed), assertPeriodIsFuture() (new, inverse,
+    // advance-only path), and assertPeriodWithinReticula() keeping only the
+    // reticula-range checks. generateFutureForAdvance() is the new, separately
+    // named, explicitly-future-only entry point. ──
+
+    /** @test */
+    public function normal_generation_rejects_a_future_period(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 15));
+        $profile = $this->makeProfile();
+
+        try {
+            $this->service->generateForUser($profile, 2026, 10);
+            $this->fail('Expected a DomainException for a future period.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('10', $e->getMessage());
+        }
+
+        $this->assertTrue(
+            ScholarshipRefrend::where('user_id', $profile->user_id)
+                ->where('period_year', 2026)
+                ->where('period_month', 10)
+                ->doesntExist(),
+            'No refrend row should be left behind by a rejected future-period generation.'
+        );
+    }
+
+    /** @test */
+    public function normal_generation_accepts_the_current_period(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 15));
+        $profile = $this->makeProfile();
+
+        $refrend = $this->service->generateForUser($profile, 2026, 9);
+
+        $this->assertNotNull($refrend);
+        $this->assertSame(RefrendType::NORMAL, $refrend->refrend_type);
+    }
+
+    /** @test */
+    public function bulk_generation_counts_a_future_period_as_error_not_created(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 15));
+        $this->makeProfile(['campus' => 'MERIDA']);
+
+        $stats = $this->service->generateForPeriod(2026, 10, 'MERIDA', null);
+
+        $this->assertSame(0, $stats['created']);
+        $this->assertSame(1, $stats['errors']);
+    }
+
+    /** @test */
+    public function advance_path_creates_a_future_refrend_in_draft(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 15));
+        $profile = $this->makeProfile();
+
+        $refrend = $this->service->generateFutureForAdvance($profile, 2027, 6);
+
+        $this->assertInstanceOf(ScholarshipRefrend::class, $refrend);
+        $this->assertSame(RefrendType::NORMAL, $refrend->refrend_type);
+        $this->assertSame('DRAFT', $refrend->workflow_status);
+        $this->assertNull($refrend->resolution_type);
+        $this->assertSame(2027, $refrend->period_year);
+        $this->assertSame(6, $refrend->period_month);
+    }
+
+    /** @test */
+    public function advance_path_still_rejects_periods_outside_the_reticula(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 15));
+        $profile = $this->makeProfile([
+            'reticula_end_date' => Carbon::create(2026, 10, 1)->toDateString(),
+        ]);
+
+        // Egreso administrativo = reticula_end_date + 2 months = 2026-12-01.
+        // 2027-06 is well past that window, so even though it is a valid
+        // future period, it must still be rejected by the reticula check.
+        $this->expectException(\DomainException::class);
+
+        $this->service->generateFutureForAdvance($profile, 2027, 6);
+    }
+
+    /** @test */
+    public function advance_path_rejects_a_non_future_period(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 15));
+        $profile = $this->makeProfile();
+
+        $this->expectException(\DomainException::class);
+
+        $this->service->generateFutureForAdvance($profile, 2026, 9);
     }
 }
