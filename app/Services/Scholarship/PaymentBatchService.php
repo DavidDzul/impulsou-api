@@ -52,6 +52,7 @@ class PaymentBatchService
      *     advance_paid_amount: ?string,
      *     advance_paid_origin_year: ?int,
      *     advance_paid_origin_month: ?int,
+     *     advance_payment_amount: string,
      * }>
      *
      * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
@@ -64,6 +65,18 @@ class PaymentBatchService
      * PaymentReadinessEvaluator. Deliberately NOT emitted by paidRows()
      * (design's explicit scope boundary, mirroring resolution_type/
      * resolution_cause's own exclusion from that method).
+     *
+     * advance_payment_amount (sdd/pago-adelantado PR8) is DIFFERENT from
+     * advance_paid_amount above — do not confuse the two: advance_paid_amount
+     * means "this row IS one of the future months settled by someone else's
+     * batch" (this refrend is a CHILD), while advance_payment_amount means
+     * "this row itself has an advance payment registered against it, i.e.
+     * it is the ORIGIN refrend of a batch" (design D6's
+     * scholarship_refrends.advance_payment_amount column, already feeding
+     * totalToPay() below). Both can theoretically be true on different rows
+     * in the same batch. Always a decimal string, "0.00" when the column is
+     * at its NOT NULL DEFAULT 0 — same convention as every other money field
+     * in this row shape.
      */
     public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
     {
@@ -177,6 +190,10 @@ class PaymentBatchService
                     : null,
                 'advance_paid_origin_year'  => $advance->origin_period_year ?? null,
                 'advance_paid_origin_month' => $advance->origin_period_month ?? null,
+                // advance_payment_amount (sdd/pago-adelantado PR8): the
+                // origin-refrend indicator — see the docblock above for why
+                // this is NOT the same concept as advance_paid_amount.
+                'advance_payment_amount'    => number_format((float) ($row->advance_payment_amount ?? 0), 2, '.', ''),
             ];
         })->values()->all();
     }

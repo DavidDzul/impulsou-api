@@ -680,6 +680,7 @@ class PaymentBatchServiceTest extends TestCase
             'blocking_reasons', 'outcome', 'outcome_reason', 'has_incident',
             'has_pending_from_previous', 'only_pending_from_previous', 'resolution_type', 'resolution_cause',
             'advance_paid', 'advance_paid_amount', 'advance_paid_origin_year', 'advance_paid_origin_month',
+            'advance_payment_amount',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -801,5 +802,41 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertArrayNotHasKey('advance_paid_amount', $rows[0]);
         $this->assertArrayNotHasKey('advance_paid_origin_year', $rows[0]);
         $this->assertArrayNotHasKey('advance_paid_origin_month', $rows[0]);
+    }
+
+    // ── PR8: advance_payment_amount as its own row field (origin-refrend indicator) ──
+    //
+    // Distinct from advance_paid/advance_paid_amount above: those describe
+    // "this row IS one of the future months settled by someone else's
+    // batch". This field describes the opposite direction — "this row
+    // itself has an advance payment registered against it, i.e. it is the
+    // ORIGIN refrend of a batch" (design D6's advance_payment_amount
+    // column, already feeding totalToPay() below, but never emitted on its
+    // own before now). Both can theoretically be true on different rows;
+    // never conflate the two.
+
+    /** @test */
+    public function rows_emits_advance_payment_amount_as_its_own_field_when_positive(): void
+    {
+        $this->makeReadyRefrend([
+            'advance_payment_amount' => 3000.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertArrayHasKey('advance_payment_amount', $rows[0]);
+        $this->assertSame('3000.00', $rows[0]['advance_payment_amount']);
+    }
+
+    /** @test */
+    public function rows_emits_advance_payment_amount_as_zero_string_when_column_defaults_to_zero(): void
+    {
+        // No explicit advance_payment_amount override — relies on the
+        // column's NOT NULL DEFAULT 0.
+        $this->makeReadyRefrend();
+
+        $rows = $this->rows();
+
+        $this->assertSame('0.00', $rows[0]['advance_payment_amount']);
     }
 }
