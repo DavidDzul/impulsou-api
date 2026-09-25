@@ -29,7 +29,7 @@ class RecordAdvancePaymentAction
      * own re-check, and the endpoint's response meta. Never an inline
      * literal, so raising the cap later touches only this line.
      */
-    public const MAX_ADVANCED_MONTHS = 3;
+    public const MAX_ADVANCED_MONTHS = 6;
 
     private const ALLOWED_WORKFLOW_STATUSES = ['DRAFT', 'CON_INCIDENCIA', 'LISTO_PARA_PAGO'];
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Scholarship\RecordAdvancePaymentAction;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipAdvancePayment;
@@ -91,13 +92,24 @@ class ScholarshipAdvancePaymentEndpointTest extends TestCase
     {
         $origin = $this->makeOriginRefrend();
 
+        // Built from the constant (not hardcoded) so raising the cap later
+        // doesn't silently turn this into a false negative — origin is
+        // always 2026-09 (makeOriginRefrend's default), so this walks
+        // forward MAX_ADVANCED_MONTHS + 1 months from there.
+        $months = [];
+        $year   = 2026;
+        $month  = 9;
+        for ($i = 0; $i < RecordAdvancePaymentAction::MAX_ADVANCED_MONTHS + 1; $i++) {
+            $month++;
+            if ($month > 12) {
+                $month = 1;
+                $year++;
+            }
+            $months[] = ['year' => $year, 'month' => $month];
+        }
+
         $response = $this->actingAs($this->admin)->postJson($this->url($origin->id), [
-            'months' => [
-                ['year' => 2026, 'month' => 10],
-                ['year' => 2026, 'month' => 11],
-                ['year' => 2026, 'month' => 12],
-                ['year' => 2027, 'month' => 1],
-            ],
+            'months' => $months,
         ]);
 
         $response->assertStatus(422);

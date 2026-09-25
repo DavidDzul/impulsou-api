@@ -98,15 +98,24 @@ class RecordAdvancePaymentActionTest extends TestCase
         $profile = $this->makeProfile();
         $origin  = $this->makeOriginRefrend($profile->user_id);
 
+        // Built from the constant (not hardcoded) so raising the cap later
+        // doesn't silently turn this into a false negative — one month past
+        // the origin's own period for each entry, MAX_ADVANCED_MONTHS + 1
+        // total entries, guaranteed to exceed the cap regardless of its value.
+        $months = [];
+        $year   = 2026;
+        $month  = 9;
+        for ($i = 0; $i < RecordAdvancePaymentAction::MAX_ADVANCED_MONTHS + 1; $i++) {
+            $month++;
+            if ($month > 12) {
+                $month = 1;
+                $year++;
+            }
+            $months[] = ['year' => $year, 'month' => $month];
+        }
+
         try {
-            $this->action->execute($origin, [
-                'months' => [
-                    ['year' => 2026, 'month' => 10],
-                    ['year' => 2026, 'month' => 11],
-                    ['year' => 2026, 'month' => 12],
-                    ['year' => 2027, 'month' => 1],
-                ],
-            ], $this->admin->id);
+            $this->action->execute($origin, ['months' => $months], $this->admin->id);
             $this->fail('Expected a DomainException for exceeding MAX_ADVANCED_MONTHS.');
         } catch (\DomainException $e) {
             // expected
@@ -256,20 +265,29 @@ class RecordAdvancePaymentActionTest extends TestCase
     }
 
     /** @test */
-    public function a_valid_three_month_request_is_accepted_at_the_cap(): void
+    public function a_valid_request_is_accepted_at_the_cap(): void
     {
         $profile = $this->makeProfile();
         $origin  = $this->makeOriginRefrend($profile->user_id);
 
-        $header = $this->action->execute($origin, [
-            'months' => [
-                ['year' => 2026, 'month' => 10],
-                ['year' => 2026, 'month' => 11],
-                ['year' => 2026, 'month' => 12],
-            ],
-        ], $this->admin->id);
+        // Built from the constant (not hardcoded) so raising the cap later
+        // doesn't silently turn this into a false positive — exactly
+        // MAX_ADVANCED_MONTHS entries, one month past the origin's own
+        // period for each.
+        $months = [];
+        $year   = 2026;
+        $month  = 9;
+        for ($i = 0; $i < RecordAdvancePaymentAction::MAX_ADVANCED_MONTHS; $i++) {
+            $month++;
+            if ($month > 12) {
+                $month = 1;
+                $year++;
+            }
+            $months[] = ['year' => $year, 'month' => $month];
+        }
 
-        $this->assertSame(3, $header->months_count);
+        $header = $this->action->execute($origin, ['months' => $months], $this->admin->id);
+
         $this->assertSame(RecordAdvancePaymentAction::MAX_ADVANCED_MONTHS, $header->months_count);
     }
 
