@@ -86,50 +86,80 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
         ]);
     }
 
-    // ── Matching amount → REACHED ────────────────────────────────────────────
+    // ── Zero amount → the EXPECTED outcome, never needs a reason ─────────────
+    //
+    // The becario already received this month's money via the advance batch
+    // back at the origin refrend. Paying nothing now is the safe, expected
+    // action (design correction, live user feedback 2026-09-25) — it must
+    // NEVER require a divergence reason, regardless of whether one is
+    // supplied. The old logic compared the resolution's amount against the
+    // ALREADY-PAID amount and required a reason for anything that DIFFERED —
+    // backwards: it let a full re-payment through silently and demanded an
+    // explanation for the safe $0 case.
 
     /** @test */
-    public function resolving_with_a_matching_amount_marks_the_advance_month_reached(): void
+    public function resolving_with_sin_pago_marks_the_advance_month_reached_without_requiring_a_reason(): void
     {
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
-        $this->action->execute($refrend, ['resolution_type' => 'BECA_MES'], $this->admin->id);
+        $this->action->execute($refrend, ['resolution_type' => 'SIN_PAGO'], $this->admin->id);
 
         $advanceMonth->refresh();
         $this->assertSame('REACHED', $advanceMonth->status);
-        $this->assertSame('BECA_MES', $advanceMonth->settled_resolution_type);
+        $this->assertSame('SIN_PAGO', $advanceMonth->settled_resolution_type);
         $this->assertNull($advanceMonth->divergence_reason);
         $this->assertNotNull($advanceMonth->reached_at);
     }
 
     /** @test */
-    public function zero_percent_resolution_is_just_as_valid_as_full_amount(): void
+    public function a_baja_definitiva_resolution_never_diverges_since_it_pays_nothing(): void
     {
-        // Proves the spec's core constraint: SIN_PAGO (0%) after a 100%
-        // advance is NOT special-cased or rejected — it is one more
-        // divergent-but-allowed resolution, exactly like any other.
+        // BAJA_DEFINITIVA always sets final_amount to 0.00 — same zero-amount
+        // case as SIN_PAGO, so it must never require a reason either.
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
-        $result = $this->action->execute($refrend, [
-            'resolution_type'            => 'SIN_PAGO',
-            'advance_divergence_reason'  => 'Becario reprobó el periodo adelantado.',
+        $this->action->execute($refrend, [
+            'resolution_type'  => 'BAJA_DEFINITIVA',
+            'resolution_cause' => 'BAJO_PROMEDIO',
         ], $this->admin->id);
 
-        $this->assertSame('0.00', $result->final_amount);
-
         $advanceMonth->refresh();
-        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
-        $this->assertSame('SIN_PAGO', $advanceMonth->settled_resolution_type);
-        $this->assertSame('Becario reprobó el periodo adelantado.', $advanceMonth->divergence_reason);
-        $this->assertNotNull($advanceMonth->reached_at);
+        $this->assertSame('REACHED', $advanceMonth->status);
+        $this->assertSame('BAJA_DEFINITIVA', $advanceMonth->settled_resolution_type);
+        $this->assertNull($advanceMonth->divergence_reason);
     }
 
-    // ── Divergence without a reason is rejected ──────────────────────────────
+    /** @test */
+    public function retenida_at_100_percent_does_not_diverge_since_nothing_is_paid_now(): void
+    {
+        // A full (100%) withholding also reduces final_amount to 0.00 — this
+        // is the boundary between RETENIDA's two behaviors (see the partial
+        // case below, which DOES diverge).
+        $refrend      = $this->makeRefrend(1000.00);
+        $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
+
+        $this->action->execute($refrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 100,
+        ], $this->admin->id);
+
+        $advanceMonth->refresh();
+        $this->assertSame('REACHED', $advanceMonth->status);
+        $this->assertSame('RETENIDA', $advanceMonth->settled_resolution_type);
+        $this->assertNull($advanceMonth->divergence_reason);
+    }
+
+    // ── Non-zero amount → divergence, a reason is required ───────────────────
+    //
+    // Any resolution that pays the becario something THIS month, on top of
+    // what they already received via the advance, is the risky case (real
+    // double-payment risk) — this is what must require an explicit reason.
 
     /** @test */
-    public function diverging_from_the_advanced_amount_without_a_reason_is_rejected(): void
+    public function diverging_with_a_non_zero_amount_without_a_reason_is_rejected(): void
     {
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
@@ -138,7 +168,7 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
         $this->expectExceptionMessageMatches('/pagado por adelantado/');
 
         try {
-            $this->action->execute($refrend, ['resolution_type' => 'SIN_PAGO'], $this->admin->id);
+            $this->action->execute($refrend, ['resolution_type' => 'BECA_MES'], $this->admin->id);
         } finally {
             // Whole-transaction rollback: the refrend's own update must not
             // have survived either, proving this guard runs inside the same
@@ -152,57 +182,72 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
         }
     }
 
-    // ── Zero restriction: spot-check other resolution types ─────────────────
-
     /** @test */
-    public function a_matching_egresado_resolution_is_accepted_and_annotated(): void
+    public function a_non_zero_amount_with_a_reason_marks_the_advance_month_overridden(): void
     {
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
-        $this->action->execute($refrend, ['resolution_type' => 'EGRESADO'], $this->admin->id);
+        $result = $this->action->execute($refrend, [
+            'resolution_type'           => 'BECA_MES',
+            'advance_divergence_reason' => 'Solicitud especial de dirección, se autoriza pago completo adicional.',
+        ], $this->admin->id);
+
+        $this->assertSame('1000.00', $result->final_amount);
 
         $advanceMonth->refresh();
-        $this->assertSame('REACHED', $advanceMonth->status);
+        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
+        $this->assertSame('BECA_MES', $advanceMonth->settled_resolution_type);
+        $this->assertSame(
+            'Solicitud especial de dirección, se autoriza pago completo adicional.',
+            $advanceMonth->divergence_reason
+        );
+        $this->assertNotNull($advanceMonth->reached_at);
+    }
+
+    // ── Zero restriction: spot-check other resolution types ─────────────────
+
+    /** @test */
+    public function an_egresado_resolution_diverges_and_requires_a_reason(): void
+    {
+        // EGRESADO is financially identical to BECA_MES (full dueAmount) —
+        // same divergence rule applies.
+        $refrend      = $this->makeRefrend(1000.00);
+        $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
+
+        $this->action->execute($refrend, [
+            'resolution_type'           => 'EGRESADO',
+            'advance_divergence_reason' => 'Egresó el mismo mes del adelanto, se paga de todas formas.',
+        ], $this->admin->id);
+
+        $advanceMonth->refresh();
+        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
         $this->assertSame('EGRESADO', $advanceMonth->settled_resolution_type);
-        $this->assertNull($advanceMonth->divergence_reason);
+        $this->assertSame(
+            'Egresó el mismo mes del adelanto, se paga de todas formas.',
+            $advanceMonth->divergence_reason
+        );
     }
 
     /** @test */
     public function a_diverging_retenida_resolution_is_accepted_with_a_reason(): void
     {
+        // A PARTIAL (50%) withholding leaves final_amount at 500.00 — a
+        // genuine non-zero payment this month, unlike the 100% case above.
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
         $this->action->execute($refrend, [
             'resolution_type'           => 'RETENIDA',
             'withholding_mode'          => 'percentage',
-            'withholding_value'         => 100,
-            'advance_divergence_reason' => 'Retención total por incidencia administrativa.',
+            'withholding_value'         => 50,
+            'advance_divergence_reason' => 'Retención parcial por incidencia administrativa.',
         ], $this->admin->id);
 
         $advanceMonth->refresh();
         $this->assertSame('OVERRIDDEN', $advanceMonth->status);
         $this->assertSame('RETENIDA', $advanceMonth->settled_resolution_type);
-        $this->assertSame('Retención total por incidencia administrativa.', $advanceMonth->divergence_reason);
-    }
-
-    /** @test */
-    public function a_diverging_baja_definitiva_resolution_is_accepted_with_a_reason(): void
-    {
-        $refrend      = $this->makeRefrend(1000.00);
-        $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
-
-        $this->action->execute($refrend, [
-            'resolution_type'           => 'BAJA_DEFINITIVA',
-            'resolution_cause'          => 'BAJO_PROMEDIO',
-            'advance_divergence_reason' => 'Baja definitiva posterior al adelanto.',
-        ], $this->admin->id);
-
-        $advanceMonth->refresh();
-        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
-        $this->assertSame('BAJA_DEFINITIVA', $advanceMonth->settled_resolution_type);
-        $this->assertSame('Baja definitiva posterior al adelanto.', $advanceMonth->divergence_reason);
+        $this->assertSame('Retención parcial por incidencia administrativa.', $advanceMonth->divergence_reason);
     }
 
     // ── No-op for normal (non-advance) refrends ──────────────────────────────

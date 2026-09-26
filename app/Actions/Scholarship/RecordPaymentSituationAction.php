@@ -3,6 +3,7 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
+use App\Exceptions\AdvanceDivergenceRequiredException;
 use App\Exceptions\WithholdingAmountMismatchException;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipRefrend;
@@ -285,11 +286,20 @@ class RecordPaymentSituationAction
                 ->lockForUpdate()
                 ->first();
             if ($advanceMonth) {
-                $diverged = abs((float) $refrend->final_amount - (float) $advanceMonth->amount) > 0.01;
+                // Divergence means "staff is paying something THIS month on
+                // top of what the becario already received via the advance"
+                // — the real double-payment risk, and the case that needs an
+                // explanation. Corrected 2026-09-25 (live user feedback): the
+                // previous check compared against $advanceMonth->amount and
+                // required a reason whenever the two differed, which was
+                // backwards — it silently allowed a full re-payment
+                // (matching the advance amount) and demanded a reason for
+                // the safe, expected $0 case (SIN_PAGO/BAJA_DEFINITIVA/a
+                // 100% RETENIDA), which is precisely when NOTHING further is
+                // being paid.
+                $diverged = (float) $refrend->final_amount > 0.01;
                 if ($diverged && empty($data['advance_divergence_reason'])) {
-                    throw new \DomainException(
-                        'Este mes ya fue pagado por adelantado: indique el motivo del cambio de resolución.'
-                    );
+                    throw new AdvanceDivergenceRequiredException();
                 }
                 $advanceMonth->update([
                     'status'                  => $diverged ? 'OVERRIDDEN' : 'REACHED',
