@@ -580,6 +580,74 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertCount(1, $response->json('data.retentions.attendance_discounts'));
     }
 
+    // ── document(): advance_payment context (added 2026-09-27) ─────────────
+
+    /** @test */
+    public function document_advance_payment_is_all_falsy_nulls_when_no_advance_activity_exists(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $advancePayment = $response->json('data.advance_payment');
+
+        $this->assertFalse($advancePayment['settled_as_advance']);
+        $this->assertNull($advancePayment['divergence_reason']);
+        $this->assertFalse($advancePayment['has_registered_batch']);
+    }
+
+    /** @test */
+    public function document_advance_payment_reports_the_divergence_reason_for_a_settled_advance_month(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        $origin  = ScholarshipRefrend::create([
+            'user_id'                      => $refrend->user_id,
+            'period_year'                  => self::YEAR - 1,
+            'period_month'                 => 9,
+            'refrend_type'                 => RefrendType::NORMAL->value,
+            'status'                       => 'DRAFT',
+            'workflow_status'              => 'CLOSED',
+            'base_amount'                  => 1000.00,
+            'final_amount'                 => 1000.00,
+            'snapshot_name'                => 'Test Becario',
+            'snapshot_campus'              => self::CAMPUS,
+        ]);
+
+        $header = \App\Models\ScholarshipAdvancePayment::create([
+            'user_id'             => $origin->user_id,
+            'origin_refrend_id'   => $origin->id,
+            'origin_period_year'  => $origin->period_year,
+            'origin_period_month' => $origin->period_month,
+            'months_count'        => 1,
+            'total_amount'        => '1000.00',
+        ]);
+        \App\Models\ScholarshipAdvancePaymentMonth::create([
+            'advance_payment_id'      => $header->id,
+            'user_id'                 => $refrend->user_id,
+            'period_year'             => $refrend->period_year,
+            'period_month'            => $refrend->period_month,
+            'amount'                  => '1000.00',
+            'refrend_id'              => $refrend->id,
+            'status'                  => 'OVERRIDDEN',
+            'settled_resolution_type' => 'BECA_MES',
+            'divergence_reason'       => 'Autorizado por dirección.',
+            'reached_at'              => now(),
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $advancePayment = $response->json('data.advance_payment');
+
+        $this->assertTrue($advancePayment['settled_as_advance']);
+        $this->assertSame('Autorizado por dirección.', $advancePayment['divergence_reason']);
+        $this->assertSame($origin->period_year, $advancePayment['origin_period_year']);
+        $this->assertSame($origin->period_month, $advancePayment['origin_period_month']);
+    }
+
     // ── process(): all-or-nothing gate (422) ────────────────────────────────
 
     /** @test */

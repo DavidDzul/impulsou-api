@@ -52,6 +52,7 @@ class PaymentBatchService
      *     advance_paid_amount: ?string,
      *     advance_paid_origin_year: ?int,
      *     advance_paid_origin_month: ?int,
+     *     advance_paid_divergence_reason: ?string,
      *     advance_payment_amount: string,
      * }>
      *
@@ -143,7 +144,10 @@ class PaymentBatchService
         $advancePaidByRefrendId = DB::table('scholarship_advance_payment_months as apm')
             ->join('scholarship_advance_payments as ap', 'ap.id', '=', 'apm.advance_payment_id')
             ->whereIn('apm.refrend_id', $refrends->pluck('refrend_id'))
-            ->select(['apm.refrend_id', 'apm.amount', 'ap.origin_period_year', 'ap.origin_period_month'])
+            ->select([
+                'apm.refrend_id', 'apm.amount', 'apm.divergence_reason',
+                'ap.origin_period_year', 'ap.origin_period_month',
+            ])
             ->get()
             ->keyBy('refrend_id');
 
@@ -190,6 +194,13 @@ class PaymentBatchService
                     : null,
                 'advance_paid_origin_year'  => $advance->origin_period_year ?? null,
                 'advance_paid_origin_month' => $advance->origin_period_month ?? null,
+                // Row-level chip data for the divergence-reason indicator
+                // (administration-panel, added 2026-09-27): set only when
+                // staff overrode the safe $0 outcome with a reason on
+                // arrival (RecordPaymentSituationAction / ApproveFullPaymentAction's
+                // shared AdvancePaymentReconciler) — null otherwise, same
+                // null-on-nothing convention as advance_paid_amount.
+                'advance_paid_divergence_reason' => $advance->divergence_reason ?? null,
                 // advance_payment_amount (sdd/pago-adelantado PR8): the
                 // origin-refrend indicator — see the docblock above for why
                 // this is NOT the same concept as advance_paid_amount.

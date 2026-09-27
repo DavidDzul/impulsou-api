@@ -6,6 +6,7 @@ use App\Actions\Scholarship\BulkPayAction;
 use App\Http\Controllers\Controller;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
+use App\Services\Scholarship\AdvancePaymentDocumentContext;
 use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\BankPaymentFileName;
 use App\Services\Scholarship\BankPaymentFileSerializer;
@@ -136,6 +137,7 @@ class ScholarshipPaymentController extends Controller
                     'total_to_pay'                   => $refrend->total_to_pay,
                 ],
                 'retentions' => app(RefrendRetentionBreakdown::class)->forRefrend($refrend),
+                'advance_payment' => app(AdvancePaymentDocumentContext::class)->forRefrend($refrend),
             ],
         ]);
     }

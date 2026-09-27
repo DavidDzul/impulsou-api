@@ -680,7 +680,7 @@ class PaymentBatchServiceTest extends TestCase
             'blocking_reasons', 'outcome', 'outcome_reason', 'has_incident',
             'has_pending_from_previous', 'only_pending_from_previous', 'resolution_type', 'resolution_cause',
             'advance_paid', 'advance_paid_amount', 'advance_paid_origin_year', 'advance_paid_origin_month',
-            'advance_payment_amount',
+            'advance_paid_divergence_reason', 'advance_payment_amount',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -713,7 +713,8 @@ class PaymentBatchServiceTest extends TestCase
         ScholarshipRefrend $refrend,
         int $originYear,
         int $originMonth,
-        float $amount = 500.00
+        float $amount = 500.00,
+        ?string $divergenceReason = null
     ): void {
         $originRefrend = ScholarshipRefrend::create([
             'user_id'       => $refrend->user_id,
@@ -734,13 +735,15 @@ class PaymentBatchServiceTest extends TestCase
         ]);
 
         ScholarshipAdvancePaymentMonth::create([
-            'advance_payment_id' => $header->id,
-            'user_id'            => $refrend->user_id,
-            'period_year'        => $refrend->period_year,
-            'period_month'       => $refrend->period_month,
-            'amount'             => $amount,
-            'refrend_id'         => $refrend->id,
-            'status'             => 'PENDING',
+            'advance_payment_id'      => $header->id,
+            'user_id'                 => $refrend->user_id,
+            'period_year'             => $refrend->period_year,
+            'period_month'            => $refrend->period_month,
+            'amount'                  => $amount,
+            'refrend_id'              => $refrend->id,
+            'status'                  => $divergenceReason !== null ? 'OVERRIDDEN' : 'PENDING',
+            'settled_resolution_type' => $divergenceReason !== null ? 'BECA_MES' : null,
+            'divergence_reason'       => $divergenceReason,
         ]);
     }
 
@@ -755,6 +758,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertNull($rows[0]['advance_paid_amount']);
         $this->assertNull($rows[0]['advance_paid_origin_year']);
         $this->assertNull($rows[0]['advance_paid_origin_month']);
+        $this->assertNull($rows[0]['advance_paid_divergence_reason']);
     }
 
     /** @test */
@@ -769,6 +773,23 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame('500.00', $rows[0]['advance_paid_amount']);
         $this->assertSame(2026, $rows[0]['advance_paid_origin_year']);
         $this->assertSame(2, $rows[0]['advance_paid_origin_month']);
+        $this->assertNull($rows[0]['advance_paid_divergence_reason']);
+    }
+
+    // Row-level chip data for the divergence-reason indicator
+    // (administration-panel, added 2026-09-27) — staff overrode the safe
+    // $0 outcome with a reason, so a reviewer scanning the batch table
+    // needs to see that at a glance, not only inside the "Ver" document.
+    /** @test */
+    public function advance_paid_divergence_reason_is_present_when_the_arrived_month_was_settled_with_a_reason(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        $this->linkAdvancePaidRefrend($refrend, 2026, 2, 500.00, 'Autorizado por dirección.');
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['advance_paid']);
+        $this->assertSame('Autorizado por dirección.', $rows[0]['advance_paid_divergence_reason']);
     }
 
     /** @test */
@@ -802,6 +823,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertArrayNotHasKey('advance_paid_amount', $rows[0]);
         $this->assertArrayNotHasKey('advance_paid_origin_year', $rows[0]);
         $this->assertArrayNotHasKey('advance_paid_origin_month', $rows[0]);
+        $this->assertArrayNotHasKey('advance_paid_divergence_reason', $rows[0]);
     }
 
     // ── PR8: advance_payment_amount as its own row field (origin-refrend indicator) ──
