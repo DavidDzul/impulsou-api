@@ -102,6 +102,11 @@ class RoleSeeder extends Seeder
         // tinker on a non-fresh DB, and retags pre-existing rows, same as ADM_READ_USERS above.
         Permission::updateOrCreate(['name' => 'ADM_READ_PAYMENT_DATA'], ['type' => 'ADMINISTRATION', 'module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'])->syncRoles([$rootAdministrationRole]);
         Permission::updateOrCreate(['name' => 'ADM_EDIT_PAYMENT_DATA'], ['type' => 'ADMINISTRATION', 'module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'])->syncRoles([$rootAdministrationRole]);
+        // Scholarship profile config (scholarship-profile-config-to-admin,
+        // design D9): NO read-gate — the GET route is shared infrastructure
+        // with psicol-panel (see design D9 rationale). Granted only to
+        // ROOT_ADMINISTRATION, same updateOrCreate rationale as above.
+        Permission::updateOrCreate(['name' => 'ADM_EDIT_SCHOLARSHIP_PROFILE'], ['type' => 'ADMINISTRATION', 'module' => 'Datos de pago', 'description' => 'Editar la configuración de beca de un becario'])->syncRoles([$rootAdministrationRole]);
         // Control (Roles + Accesos), control-accesos-administration-panel PR2
         // (design obs #1593, tasks obs #1594 Phase 2 note): these 4 were
         // originally planned for PR1 but deferred here, since the

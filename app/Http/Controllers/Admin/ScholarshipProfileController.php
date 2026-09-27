@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreScholarshipProfileRequest;
+use App\Http\Requests\UpdateScholarshipProfileConfigRequest;
 use App\Http\Requests\UpdateScholarshipProfileRequest;
 use App\Models\ScholarshipProfile;
 use Illuminate\Http\Request;
@@ -68,6 +69,22 @@ class ScholarshipProfileController extends Controller
         $profile->update($data);
 
         return response()->json(['res' => true, 'data' => $profile->fresh(['user', 'grantedBy:id,first_name,last_name'])]);
+    }
+
+    /**
+     * Actualiza los 4 campos de configuración de beca (scholarship_type,
+     * monthly_amount, monto_apoyo, advance_payment_eligible). Gateado por
+     * el middleware `permission:ADM_EDIT_SCHOLARSHIP_PROFILE` en la ruta
+     * (design D2/D9, sdd/scholarship-profile-config-to-admin). Distinto de
+     * update() (que ahora prohíbe estos 4 campos, design D3).
+     */
+    public function updateConfig(UpdateScholarshipProfileConfigRequest $request, int $userId)
+    {
+        $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
+
+        $profile->update($request->safe()->toArray());
+
+        return response()->json(['res' => true, 'data' => $profile->fresh()]);
     }
 
     /**

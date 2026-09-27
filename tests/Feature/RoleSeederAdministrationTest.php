@@ -45,13 +45,14 @@ class RoleSeederAdministrationTest extends TestCase
      * control-accesos-administration-panel PR2 (design obs #1593, spec obs
      * #1592 R5) for the 4 Control permissions. Updated again by
      * becario-payment-bank-file-export PR4 (design "New permission") for
-     * ADM_EXPORT_PAYMENTS — the closed set is now these 10 ADM_*
-     * permissions specifically (still zero PS_* — covered by a separate
-     * test below).
+     * ADM_EXPORT_PAYMENTS, and by scholarship-profile-config-to-admin
+     * (design D9) for ADM_EDIT_SCHOLARSHIP_PROFILE — the closed set is now
+     * these 11 ADM_* permissions specifically (still zero PS_* — covered by
+     * a separate test below).
      *
      * @test
      */
-    public function seeder_grants_exactly_the_ten_expected_adm_permissions_to_root_administration(): void
+    public function seeder_grants_exactly_the_eleven_expected_adm_permissions_to_root_administration(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -64,6 +65,7 @@ class RoleSeederAdministrationTest extends TestCase
                 'ADM_READ_USERS',
                 'ADM_READ_PAYMENT_DATA',
                 'ADM_EDIT_PAYMENT_DATA',
+                'ADM_EDIT_SCHOLARSHIP_PROFILE',
                 'ADM_READ_ROLES',
                 'ADM_MANAGE_ROLES',
                 'ADM_READ_ADMINS',
@@ -73,7 +75,7 @@ class RoleSeederAdministrationTest extends TestCase
                 'ADM_EXPORT_PAYMENTS',
             ],
             $permissionNames,
-            'ROOT_ADMINISTRATION must hold exactly these ten ADM_* permissions and nothing else.'
+            'ROOT_ADMINISTRATION must hold exactly these eleven ADM_* permissions and nothing else.'
         );
     }
 
@@ -197,31 +199,33 @@ class RoleSeederAdministrationTest extends TestCase
     }
 
     /**
-     * Covers spec "ADM_* permissions carry approved copy" — all 10 rows must
+     * Covers spec "ADM_* permissions carry approved copy" — all 11 rows must
      * carry the exact user-approved Spanish description/module after
      * seeding (design obs #1601 "RoleSeeder.php — replacement lines";
      * extended by becario-payment-file-generation PR1 design "New
-     * Permissions" for the 2 Pagos permissions, and by
+     * Permissions" for the 2 Pagos permissions, by
      * becario-payment-bank-file-export PR4 design "New permission" for
-     * ADM_EXPORT_PAYMENTS).
+     * ADM_EXPORT_PAYMENTS, and by scholarship-profile-config-to-admin
+     * (design D9) for ADM_EDIT_SCHOLARSHIP_PROFILE).
      *
      * @test
      */
-    public function all_ten_adm_permissions_carry_the_exact_approved_copy(): void
+    public function all_eleven_adm_permissions_carry_the_exact_approved_copy(): void
     {
         $this->seed(RoleSeeder::class);
 
         $expected = [
-            'ADM_READ_USERS'         => ['module' => 'Usuarios', 'description' => 'Ver la lista de becarios y egresados'],
-            'ADM_READ_PAYMENT_DATA'  => ['module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'],
-            'ADM_EDIT_PAYMENT_DATA'  => ['module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'],
-            'ADM_READ_ROLES'         => ['module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos'],
-            'ADM_MANAGE_ROLES'       => ['module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'],
-            'ADM_READ_ADMINS'        => ['module' => 'Accesos', 'description' => 'Ver la lista de administradores'],
-            'ADM_MANAGE_ADMINS'      => ['module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'],
-            'ADM_READ_PAYMENTS'      => ['module' => 'Pagos', 'description' => 'Ver el listado de pagos y el documento de pago de un becario'],
-            'ADM_PROCESS_PAYMENTS'   => ['module' => 'Pagos', 'description' => 'Procesar el pago de un grupo de becarios'],
-            'ADM_EXPORT_PAYMENTS'    => ['module' => 'Pagos', 'description' => 'Descargar el archivo bancario de dispersión de un lote de pago procesado'],
+            'ADM_READ_USERS'                => ['module' => 'Usuarios', 'description' => 'Ver la lista de becarios y egresados'],
+            'ADM_READ_PAYMENT_DATA'         => ['module' => 'Datos de pago', 'description' => 'Ver los datos de pago de un becario'],
+            'ADM_EDIT_PAYMENT_DATA'         => ['module' => 'Datos de pago', 'description' => 'Editar los datos de pago de un becario'],
+            'ADM_EDIT_SCHOLARSHIP_PROFILE'  => ['module' => 'Datos de pago', 'description' => 'Editar la configuración de beca de un becario'],
+            'ADM_READ_ROLES'                => ['module' => 'Roles', 'description' => 'Ver la lista de roles y sus permisos'],
+            'ADM_MANAGE_ROLES'              => ['module' => 'Roles', 'description' => 'Crear roles y editar sus permisos'],
+            'ADM_READ_ADMINS'               => ['module' => 'Accesos', 'description' => 'Ver la lista de administradores'],
+            'ADM_MANAGE_ADMINS'             => ['module' => 'Accesos', 'description' => 'Crear administradores y asignarles un rol'],
+            'ADM_READ_PAYMENTS'             => ['module' => 'Pagos', 'description' => 'Ver el listado de pagos y el documento de pago de un becario'],
+            'ADM_PROCESS_PAYMENTS'          => ['module' => 'Pagos', 'description' => 'Procesar el pago de un grupo de becarios'],
+            'ADM_EXPORT_PAYMENTS'           => ['module' => 'Pagos', 'description' => 'Descargar el archivo bancario de dispersión de un lote de pago procesado'],
         ];
 
         foreach ($expected as $name => $copy) {

@@ -24,53 +24,11 @@ class ScholarshipProfileEndpointTest extends TestCase
         ]);
     }
 
-    // ── advance_payment_eligible (beca-pago-adelantado-cert) ───────────────────
-
-    /** @test */
-    public function updating_a_profile_persists_advance_payment_eligible_true(): void
-    {
-        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
-        ScholarshipProfile::factory()->create([
-            'user_id'                  => $becario->id,
-            'advance_payment_eligible' => false,
-        ]);
-
-        $response = $this->actingAs($this->admin)->putJson(
-            "/api/admin/scholarship-profiles/{$becario->id}",
-            ['advance_payment_eligible' => true]
-        );
-
-        $response->assertStatus(200);
-        $this->assertTrue((bool) $response->json('data.advance_payment_eligible'));
-
-        $this->assertDatabaseHas('scholarship_profiles', [
-            'user_id'                  => $becario->id,
-            'advance_payment_eligible' => true,
-        ]);
-    }
-
-    /** @test */
-    public function updating_a_profile_persists_advance_payment_eligible_false(): void
-    {
-        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
-        ScholarshipProfile::factory()->create([
-            'user_id'                  => $becario->id,
-            'advance_payment_eligible' => true,
-        ]);
-
-        $response = $this->actingAs($this->admin)->putJson(
-            "/api/admin/scholarship-profiles/{$becario->id}",
-            ['advance_payment_eligible' => false]
-        );
-
-        $response->assertStatus(200);
-        $this->assertFalse((bool) $response->json('data.advance_payment_eligible'));
-
-        $this->assertDatabaseHas('scholarship_profiles', [
-            'user_id'                  => $becario->id,
-            'advance_payment_eligible' => false,
-        ]);
-    }
+    // NOTE: the `advance_payment_eligible` via-shared-PUT tests that used to
+    // live here were relocated to ScholarshipProfileConfigEndpointTest.php
+    // (sdd/scholarship-profile-config-to-admin design D3/D9) — that field is
+    // now only writable via the admin-gated
+    // `PUT scholarship-profiles/{userId}/config` endpoint.
 
     // ── Aumento temporal — validación de rango ─────────────────────────────
 
@@ -427,8 +385,6 @@ class ScholarshipProfileEndpointTest extends TestCase
             '/api/admin/scholarship-profiles',
             [
                 'user_id'                    => $becario->id,
-                'scholarship_type'           => 'IU',
-                'monthly_amount'             => 2000,
                 'active_discount_percentage' => 10,
                 'discount_valid_until'       => Carbon::tomorrow()->toDateString(),
             ]
@@ -439,13 +395,160 @@ class ScholarshipProfileEndpointTest extends TestCase
     }
 
     // NOTE: an HTTP-level "store succeeds with a temporary increase" test was
-    // considered here but is blocked by a PRE-EXISTING, out-of-scope issue:
-    // `payment_start_date` is NOT NULL on the SQLite test schema (the legacy
-    // column-drop migration is skipped for sqlite — see
-    // ScholarshipProfileFactory) yet it has no validation rule in
-    // StoreScholarshipProfileRequest, so ScholarshipProfile::create() with
-    // $request->safe() data always violates that constraint under the test
-    // suite regardless of this change. `granted_by_id`-on-create is instead
-    // covered at the model/service level; the update() path (already tested
-    // above) exercises the identical assignment logic.
+    // previously blocked by `payment_start_date` being NOT NULL on the
+    // SQLite test schema (legacy column-drop migration skips sqlite — see
+    // ScholarshipProfileFactory). sdd/scholarship-profile-config-to-admin's
+    // migration (2026_09_27_100000_default_monthly_amount_on_scholarship_
+    // profiles_table) guard-fixes that column to nullable on sqlite, so this
+    // blocker no longer applies; adding that specific test remains out of
+    // scope for this change and is left as a follow-up.
+    // `granted_by_id`-on-create is instead covered at the model/service
+    // level; the update() path (already tested above) exercises the
+    // identical assignment logic.
+
+    // ── Config fields prohibited on the shared endpoint (design D3) ────────
+    // scholarship_type, monthly_amount, monto_apoyo, and
+    // advance_payment_eligible moved to the admin-only PUT
+    // scholarship-profiles/{userId}/config endpoint — see
+    // ScholarshipProfileConfigEndpointTest.php for the authorized-write
+    // coverage of those 4 fields.
+
+    /** @test */
+    public function update_rejects_scholarship_type_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            ['scholarship_type' => 'TELMEX']
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('scholarship_type');
+    }
+
+    /** @test */
+    public function update_rejects_monthly_amount_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            ['monthly_amount' => 3000]
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('monthly_amount');
+    }
+
+    /** @test */
+    public function update_rejects_monto_apoyo_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            ['monto_apoyo' => 100]
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('monto_apoyo');
+    }
+
+    /** @test */
+    public function update_rejects_advance_payment_eligible_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            ['advance_payment_eligible' => true]
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('advance_payment_eligible');
+    }
+
+    /** @test */
+    public function store_rejects_scholarship_type_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $response = $this->actingAs($this->admin)->postJson('/api/admin/scholarship-profiles', [
+            'user_id'          => $becario->id,
+            'scholarship_type' => 'IU',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('scholarship_type');
+    }
+
+    /** @test */
+    public function store_rejects_monthly_amount_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $response = $this->actingAs($this->admin)->postJson('/api/admin/scholarship-profiles', [
+            'user_id'        => $becario->id,
+            'monthly_amount' => 2000,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('monthly_amount');
+    }
+
+    /** @test */
+    public function store_rejects_monto_apoyo_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $response = $this->actingAs($this->admin)->postJson('/api/admin/scholarship-profiles', [
+            'user_id'     => $becario->id,
+            'monto_apoyo' => 100,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('monto_apoyo');
+    }
+
+    /** @test */
+    public function store_rejects_advance_payment_eligible_as_prohibited(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $response = $this->actingAs($this->admin)->postJson('/api/admin/scholarship-profiles', [
+            'user_id'                  => $becario->id,
+            'advance_payment_eligible' => true,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('advance_payment_eligible');
+    }
+
+    /** @test */
+    public function update_still_allows_the_6_owned_fields_to_persist(): void
+    {
+        $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->admin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}",
+            [
+                'active_discount_percentage' => 15,
+                'discount_valid_from'        => Carbon::today()->toDateString(),
+                'discount_valid_until'       => Carbon::tomorrow()->toDateString(),
+                'discount_reason'            => 'Promedio destacado',
+            ]
+        );
+
+        $response->assertStatus(200);
+        $this->assertDatabaseHas('scholarship_profiles', [
+            'user_id'         => $becario->id,
+            'discount_reason' => 'Promedio destacado',
+        ]);
+    }
 }

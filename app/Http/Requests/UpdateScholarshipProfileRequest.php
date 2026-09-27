@@ -2,12 +2,10 @@
 
 namespace App\Http\Requests;
 
-use App\Enums\ScholarshipType;
 use App\Models\ScholarshipProfile;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\Validator as ValidatorContract;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class UpdateScholarshipProfileRequest extends FormRequest
 {
@@ -19,10 +17,16 @@ class UpdateScholarshipProfileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'scholarship_type'           => ['sometimes', Rule::in(array_column(ScholarshipType::cases(), 'value'))],
-            'monthly_amount'             => 'sometimes|numeric|min:0',
-            'monto_apoyo'                => 'nullable|numeric|min:0|max:99999.99',
-            'advance_payment_eligible'   => 'sometimes|boolean',
+            // sdd/scholarship-profile-config-to-admin design D3: these 4
+            // fields moved to the admin-only
+            // PUT scholarship-profiles/{userId}/config endpoint. psicol-panel
+            // must not write them via this shared update endpoint —
+            // `prohibited` surfaces a named-field 422 instead of silently
+            // stripping the value (design D3 rationale).
+            'scholarship_type'           => 'prohibited',
+            'monthly_amount'             => 'prohibited',
+            'monto_apoyo'                => 'prohibited',
+            'advance_payment_eligible'   => 'prohibited',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_valid_from'        => 'nullable|date|required_with:active_discount_percentage|before_or_equal:discount_valid_until',
             'discount_valid_until'       => 'nullable|date|required_with:active_discount_percentage',
