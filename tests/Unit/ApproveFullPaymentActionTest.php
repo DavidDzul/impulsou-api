@@ -8,6 +8,7 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ClassModel;
 use App\Models\Generation;
+use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipLateConsumption;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
@@ -256,5 +257,72 @@ class ApproveFullPaymentActionTest extends TestCase
         $this->expectException(\DomainException::class);
 
         $this->action->execute($refrend, $this->admin->id);
+    }
+
+    // ── Advance-payment reconciliation (live bug report 2026-09-27) ─────────
+    //
+    // This is staff's most natural way to approve a becario at 100% — it
+    // MUST go through the same reconciliation as RecordPaymentSituationAction's
+    // 8 branches, or an arrived advance-paid month could be silently
+    // double-paid with zero audit trail.
+
+    private function linkAdvanceMonth(ScholarshipRefrend $refrend, float $amount): ScholarshipAdvancePaymentMonth
+    {
+        return ScholarshipAdvancePaymentMonth::factory()->create([
+            'user_id'      => $refrend->user_id,
+            'period_year'  => $refrend->period_year,
+            'period_month' => $refrend->period_month,
+            'amount'       => number_format($amount, 2, '.', ''),
+            'refrend_id'   => $refrend->id,
+            'status'       => 'PENDING',
+        ]);
+    }
+
+    /** @test */
+    public function approving_an_advance_paid_refrend_without_a_reason_is_rejected(): void
+    {
+        $user         = $this->makeBecario();
+        $refrend      = $this->makeDraftRefrend($user);
+        $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
+
+        $this->expectException(\App\Exceptions\AdvanceDivergenceRequiredException::class);
+
+        try {
+            $this->action->execute($refrend, $this->admin->id);
+        } finally {
+            $refrend->refresh();
+            $this->assertSame('DRAFT', $refrend->workflow_status, 'Whole transaction must roll back.');
+            $advanceMonth->refresh();
+            $this->assertSame('PENDING', $advanceMonth->status);
+        }
+    }
+
+    /** @test */
+    public function approving_an_advance_paid_refrend_with_a_reason_succeeds_and_annotates_the_advance_month(): void
+    {
+        $user         = $this->makeBecario();
+        $refrend      = $this->makeDraftRefrend($user);
+        $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
+
+        $result = $this->action->execute($refrend, $this->admin->id, 'Autorizado por dirección.');
+
+        $this->assertSame('LISTO_PARA_PAGO', $result->workflow_status);
+        $advanceMonth->refresh();
+        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
+        $this->assertSame('BECA_MES', $advanceMonth->settled_resolution_type);
+        $this->assertSame('Autorizado por dirección.', $advanceMonth->divergence_reason);
+        $this->assertNotNull($advanceMonth->reached_at);
+    }
+
+    /** @test */
+    public function a_refrend_with_no_advance_history_is_completely_unaffected(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeDraftRefrend($user);
+
+        $result = $this->action->execute($refrend, $this->admin->id);
+
+        $this->assertSame('LISTO_PARA_PAGO', $result->workflow_status);
+        $this->assertSame(0, ScholarshipAdvancePaymentMonth::count());
     }
 }

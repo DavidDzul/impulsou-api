@@ -3,13 +3,12 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
-use App\Exceptions\AdvanceDivergenceRequiredException;
 use App\Exceptions\WithholdingAmountMismatchException;
-use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Services\AttendancePenaltyService;
+use App\Services\Scholarship\AdvancePaymentReconciler;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Services\Scholarship\RefrendPaymentTotalsSyncer;
 use App\Services\ScholarshipLoggingService;
@@ -22,7 +21,8 @@ class RecordPaymentSituationAction
     public function __construct(
         private ScholarshipLoggingService $logging,
         private RefrendPaymentTotalsSyncer $totalsSyncer,
-        private AttendancePenaltyService $attendancePenalty
+        private AttendancePenaltyService $attendancePenalty,
+        private AdvancePaymentReconciler $advanceReconciler
     ) {}
 
     /**
@@ -274,40 +274,14 @@ class RecordPaymentSituationAction
                 $this->totalsSyncer->sync($refrend);
             }
 
-            // Advance-payment arrival reconciliation (design D4): if this refrend
-            // was pre-created by RecordAdvancePaymentAction (PR3) — i.e. it has a
-            // linked scholarship_advance_payment_months row — annotate that child
-            // row with whatever resolution staff just applied. Zero changes to the
-            // 8 branches above: this is purely additive and a complete no-op (one
-            // indexed lookup, no writes) for the normal case of a refrend with no
-            // advance history. Locked inside this same transaction so a diverging
-            // resolution without a reason rolls back everything above it too.
-            $advanceMonth = ScholarshipAdvancePaymentMonth::where('refrend_id', $refrend->id)
-                ->lockForUpdate()
-                ->first();
-            if ($advanceMonth) {
-                // Divergence means "staff is paying something THIS month on
-                // top of what the becario already received via the advance"
-                // — the real double-payment risk, and the case that needs an
-                // explanation. Corrected 2026-09-25 (live user feedback): the
-                // previous check compared against $advanceMonth->amount and
-                // required a reason whenever the two differed, which was
-                // backwards — it silently allowed a full re-payment
-                // (matching the advance amount) and demanded a reason for
-                // the safe, expected $0 case (SIN_PAGO/BAJA_DEFINITIVA/a
-                // 100% RETENIDA), which is precisely when NOTHING further is
-                // being paid.
-                $diverged = (float) $refrend->final_amount > 0.01;
-                if ($diverged && empty($data['advance_divergence_reason'])) {
-                    throw new AdvanceDivergenceRequiredException();
-                }
-                $advanceMonth->update([
-                    'status'                  => $diverged ? 'OVERRIDDEN' : 'REACHED',
-                    'settled_resolution_type' => $type,
-                    'divergence_reason'       => $data['advance_divergence_reason'] ?? null,
-                    'reached_at'              => now(),
-                ]);
-            }
+            // Advance-payment arrival reconciliation (design D4), extracted
+            // into AdvancePaymentReconciler 2026-09-27 so ApproveFullPaymentAction
+            // can share it too. Zero changes to the 8 branches above: this is
+            // purely additive and a complete no-op for a refrend with no
+            // advance history. Called inside this same transaction so a
+            // diverging resolution without a reason rolls back everything
+            // above it too.
+            $this->advanceReconciler->reconcile($refrend, $type, $data['advance_divergence_reason'] ?? null);
 
             $fresh = $refrend->fresh();
             $this->logging->log($refrend, 'SITUATION_RECORDED', $old, $this->logging->snapshotRefrend($fresh));

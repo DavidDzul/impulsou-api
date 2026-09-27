@@ -309,12 +309,28 @@ class ScholarshipRefrendController extends Controller
     // ── New workflow endpoints ─────────────────────────────────────────────────
 
     /** Removes all auto-discounts, forces final = base, advances to LISTO_PARA_PAGO. */
-    public function approveFullPayment(ScholarshipRefrend $refrend): JsonResponse
+    public function approveFullPayment(Request $request, ScholarshipRefrend $refrend): JsonResponse
     {
+        // Capturable (not mandatory — the reconciler enforces "required only
+        // on divergence" server-side, mirroring recordSituation's
+        // advance_divergence_reason rule).
+        $data = $request->validate([
+            'advance_divergence_reason' => 'nullable|string|max:200',
+        ]);
+
         try {
-            $updated = app(ApproveFullPaymentAction::class)->execute($refrend, auth()->id());
+            $updated = app(ApproveFullPaymentAction::class)->execute(
+                $refrend,
+                auth()->id(),
+                $data['advance_divergence_reason'] ?? null
+            );
         } catch (\DomainException $e) {
-            return response()->json(['res' => false, 'message' => $e->getMessage()], 422);
+            $payload = ['res' => false, 'message' => $e->getMessage()];
+            if (defined(get_class($e) . '::CODE')) {
+                $payload['code'] = $e::CODE;
+            }
+
+            return response()->json($payload, 422);
         }
 
         return response()->json(['res' => true, 'data' => $updated]);

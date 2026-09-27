@@ -13,13 +13,18 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * HTTP-level coverage for the divergence-reason contract on
- * POST /api/admin/scholarship-refrends/{id}/situation (sdd/pago-adelantado,
- * design D4 — corrected 2026-09-25). Unit-level behavior of the divergence
- * check itself is covered by RecordPaymentSituationAdvanceReconciliationTest;
- * this file only proves the machine-readable `code` the frontend needs to
- * distinguish "please retry with a reason" from a plain rejection actually
- * reaches the HTTP response.
+ * HTTP-level coverage for the divergence-reason contract, shared (via
+ * AdvancePaymentReconciler, extracted 2026-09-27) by BOTH
+ * POST /api/admin/scholarship-refrends/{id}/situation AND
+ * POST /api/admin/scholarship-refrends/{id}/approve-full (sdd/pago-adelantado,
+ * design D4 — corrected 2026-09-25, extended 2026-09-27 to cover the quick
+ * "Aprobar" path, which previously bypassed this reconciliation entirely —
+ * a live bug report). Unit-level behavior of the divergence check itself is
+ * covered by RecordPaymentSituationAdvanceReconciliationTest and
+ * ApproveFullPaymentActionTest; this file only proves the machine-readable
+ * `code` the frontend needs to distinguish "please retry with a reason"
+ * from a plain rejection actually reaches the HTTP response, for both
+ * endpoints.
  */
 class AdvanceDivergenceReasonEndpointTest extends TestCase
 {
@@ -55,6 +60,7 @@ class AdvanceDivergenceReasonEndpointTest extends TestCase
             'final_amount'                 => 1000.00,
             'amount_pending_from_previous' => 0,
             'snapshot_name'                => 'Test Becario',
+            'snapshot_gross_amount'        => 1000.00,
             'snapshot_generation'          => null,
             'snapshot_generation_id'       => null,
             'snapshot_campus'              => 'MERIDA',
@@ -76,6 +82,11 @@ class AdvanceDivergenceReasonEndpointTest extends TestCase
     private function url(int $refrendId): string
     {
         return "/api/admin/scholarship-refrends/{$refrendId}/situation";
+    }
+
+    private function approveFullUrl(int $refrendId): string
+    {
+        return "/api/admin/scholarship-refrends/{$refrendId}/approve-full";
     }
 
     /** @test */
@@ -115,6 +126,35 @@ class AdvanceDivergenceReasonEndpointTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson($this->url($refrend->id), [
             'resolution_type' => 'SIN_PAGO',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['res' => true]);
+    }
+
+    // ── approve-full (quick "Aprobar") — same contract, live bug report ─────
+
+    /** @test */
+    public function approve_full_returns_422_with_the_divergence_code_when_the_refrend_is_advance_paid_and_no_reason_is_supplied(): void
+    {
+        $refrend = $this->makeAdvancePaidRefrend();
+
+        $response = $this->actingAs($this->admin)->postJson($this->approveFullUrl($refrend->id), []);
+
+        $response->assertStatus(422);
+        $response->assertJson([
+            'res'  => false,
+            'code' => AdvanceDivergenceRequiredException::CODE,
+        ]);
+    }
+
+    /** @test */
+    public function approve_full_succeeds_once_the_divergence_reason_is_supplied_on_retry(): void
+    {
+        $refrend = $this->makeAdvancePaidRefrend();
+
+        $response = $this->actingAs($this->admin)->postJson($this->approveFullUrl($refrend->id), [
+            'advance_divergence_reason' => 'Autorizado por dirección.',
         ]);
 
         $response->assertStatus(200);
