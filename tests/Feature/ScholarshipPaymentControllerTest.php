@@ -643,6 +643,43 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertSame(0, ScholarshipPaymentBatch::count());
     }
 
+    // ── process(): duplicate batch key (live bug report 2026-09-27) ─────────
+    //
+    // scholarship_payment_batches has a unique key on
+    // (generation_id, campus, period_year, period_month). Previously
+    // process() called ScholarshipPaymentBatch::create() unconditionally —
+    // if a batch row already existed for this exact key (e.g. an orphaned
+    // row left over from a prior attempt, or a genuine re-submit), the
+    // unique-constraint violation surfaced as an unhandled 500 with the raw
+    // SQL exception message exposed to the client.
+
+    /** @test */
+    public function process_returns_409_when_a_batch_already_exists_for_this_key_and_writes_nothing_new(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        ScholarshipPaymentBatch::create([
+            'generation_id'   => self::GENERATION_ID,
+            'campus'          => self::CAMPUS,
+            'period_year'     => self::YEAR,
+            'period_month'    => self::MONTH,
+            'refrend_count'   => 1,
+            'total_amount'    => '1000.00',
+            'processed_by_id' => $this->rootAdmin->id,
+            'processed_at'    => now(),
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        );
+
+        $response->assertStatus(409);
+        $response->assertJson(['res' => false]);
+        $refrend->refresh();
+        $this->assertNull($refrend->locked_at, 'Nothing should be mutated when the batch key already exists.');
+        $this->assertSame(1, ScholarshipPaymentBatch::count(), 'No second batch row should be created.');
+    }
+
     // ── process(): happy path ────────────────────────────────────────────────
 
     /** @test */

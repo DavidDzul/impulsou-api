@@ -194,6 +194,26 @@ class ScholarshipPaymentController extends Controller
             ], 409);
         }
 
+        // Guard against the unique key (generation_id, campus, period_year,
+        // period_month) — without this, a batch row already existing for
+        // this exact key (a genuine re-submit, or an orphaned row left over
+        // from an earlier attempt) surfaces as an unhandled 500 with the raw
+        // SQL "Duplicate entry" exception exposed to the client (live bug
+        // report 2026-09-27), instead of a clean, actionable response.
+        $existingBatch = ScholarshipPaymentBatch::where('generation_id', $data['generation_id'])
+            ->where('campus', $data['campus'])
+            ->where('period_year', $data['period_year'])
+            ->where('period_month', $data['period_month'])
+            ->first();
+
+        if ($existingBatch) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => 'Este lote ya fue procesado anteriormente.',
+                'data' => ['batch_id' => $existingBatch->id],
+            ], 409);
+        }
+
         $batch = ScholarshipPaymentBatch::create([
             'generation_id'   => $data['generation_id'],
             'campus'          => $data['campus'],
