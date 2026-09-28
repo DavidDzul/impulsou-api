@@ -108,6 +108,13 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('{userId}', [ScholarshipProfileController::class, 'show']);
         Route::post('/', [ScholarshipProfileController::class, 'store']);
         Route::put('{userId}', [ScholarshipProfileController::class, 'update']);
+        // sdd/scholarship-profile-config-to-admin design D2/D9: gated,
+        // admin-only write for the 4 config fields. `{userId}/config` is
+        // 2 segments vs `{userId}`'s 1, so it is segment-count-disjoint —
+        // no route shadowing regardless of declaration order (same
+        // reasoning already documented for `batches/{batch}/export` below).
+        Route::put('{userId}/config', [ScholarshipProfileController::class, 'updateConfig'])
+            ->middleware('permission:ADM_EDIT_SCHOLARSHIP_PROFILE');
         Route::post('{userId}/reticula', [ScholarshipProfileController::class, 'updateReticula']);
     });
 
