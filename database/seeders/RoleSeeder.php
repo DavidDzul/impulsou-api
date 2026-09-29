@@ -135,5 +135,13 @@ class RoleSeeder extends Seeder
         // syncing only affects THIS permission's role list, not any other
         // permission any role already holds (no stripping risk).
         Permission::updateOrCreate(['name' => 'ADM_EXPORT_PAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Pagos', 'description' => 'Descargar el archivo bancario de dispersión de un lote de pago procesado'])->syncRoles([$rootAdministrationRole]);
+        // Telmex settings (sdd/scholarship-telmex-iu-split, design D8): the
+        // GET endpoint has NO permission gate (shared reference data), so
+        // only the write capability is seeded. A NEW permission, not
+        // ADM_EDIT_SCHOLARSHIP_PROFILE — that one is scoped to a single
+        // becario's profile (module "Datos de pago"); this is an org-wide
+        // yearly reference value with a different blast radius. Granted only
+        // to ROOT_ADMINISTRATION, same updateOrCreate rationale as above.
+        Permission::updateOrCreate(['name' => 'ADM_MANAGE_SCHOLARSHIP_SETTINGS'], ['type' => 'ADMINISTRATION', 'module' => 'Configuración de becas', 'description' => 'Editar el monto de referencia global de Telmex'])->syncRoles([$rootAdministrationRole]);
     }
 }

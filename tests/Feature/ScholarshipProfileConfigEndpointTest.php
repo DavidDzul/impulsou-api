@@ -187,6 +187,105 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
         $response->assertJsonValidationErrors('monto_apoyo');
     }
 
+    // ── iu_payment_amount conditional rule (sdd/scholarship-telmex-iu-split) ──
+
+    /** @test */
+    public function iu_payment_amount_is_required_when_type_is_telmex_iu(): void
+    {
+        $becario = $this->becario();
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->rootAdmin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}/config",
+            [
+                'scholarship_type'         => 'TELMEX_IU',
+                'monthly_amount'           => 1800,
+                'monto_apoyo'              => 150,
+                'advance_payment_eligible' => false,
+            ]
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('iu_payment_amount');
+    }
+
+    /** @test */
+    public function iu_payment_amount_is_accepted_and_persisted_for_telmex_iu(): void
+    {
+        $becario = $this->becario();
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->rootAdmin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}/config",
+            [
+                'scholarship_type'         => 'TELMEX_IU',
+                'monthly_amount'           => 1800,
+                'monto_apoyo'              => 150,
+                'iu_payment_amount'        => 300,
+                'advance_payment_eligible' => false,
+            ]
+        );
+
+        $response->assertStatus(200);
+        $this->assertEquals(300, (float) $response->json('data.iu_payment_amount'));
+
+        $this->assertDatabaseHas('scholarship_profiles', [
+            'user_id'           => $becario->id,
+            'scholarship_type'  => 'TELMEX_IU',
+            'iu_payment_amount' => 300,
+        ]);
+    }
+
+    /** @test */
+    public function iu_payment_amount_is_nulled_when_switching_a_profile_away_from_telmex_iu(): void
+    {
+        $becario = $this->becario();
+        ScholarshipProfile::factory()->create([
+            'user_id'           => $becario->id,
+            'scholarship_type'  => 'TELMEX_IU',
+            'iu_payment_amount' => 300,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}/config",
+            [
+                'scholarship_type'         => 'IU',
+                'monthly_amount'           => 2500,
+                'monto_apoyo'              => 0,
+                'advance_payment_eligible' => false,
+            ]
+        );
+
+        $response->assertStatus(200);
+        $this->assertNull($response->json('data.iu_payment_amount'));
+
+        $this->assertDatabaseHas('scholarship_profiles', [
+            'user_id'           => $becario->id,
+            'scholarship_type'  => 'IU',
+            'iu_payment_amount' => null,
+        ]);
+    }
+
+    /** @test */
+    public function iu_payment_amount_is_not_required_for_iu_or_telmex(): void
+    {
+        $becario = $this->becario();
+        ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
+
+        $response = $this->actingAs($this->rootAdmin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}/config",
+            [
+                'scholarship_type'         => 'TELMEX',
+                'monthly_amount'           => 1800,
+                'monto_apoyo'              => 150,
+                'advance_payment_eligible' => false,
+            ]
+        );
+
+        $response->assertStatus(200);
+        $this->assertNull($response->json('data.iu_payment_amount'));
+    }
+
     // ── Store endpoint — create without the 4 config fields (D1 unblock) ──
 
     /** @test */

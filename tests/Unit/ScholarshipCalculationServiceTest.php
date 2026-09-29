@@ -338,4 +338,182 @@ class ScholarshipCalculationServiceTest extends TestCase
 
         $this->assertSame(2430.0, $result['final_amount']);
     }
+
+    // ── sdd/scholarship-telmex-iu-split, design D2: type-conditional gross composition ──
+
+    /** @test */
+    public function iu_snapshot_is_byte_identical_to_the_pre_change_formula(): void
+    {
+        // Regression guard (spec "IU is byte-identical"): monthly_amount,
+        // monto_apoyo, and an active increase — same numbers as the
+        // pre-existing test above, asserted again explicitly for the IU
+        // branch of the new match().
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::IU->value,
+            'active_discount_percentage'      => null,
+            'discount_valid_from'             => null,
+            'discount_valid_until'            => null,
+            'monthly_amount'                  => 2000.00,
+            'monto_apoyo'                      => 200.00,
+            'temporary_increase_amount'       => 500.00,
+            'temporary_increase_valid_from'   => '2026-09-01',
+            'temporary_increase_valid_until'  => '2026-09-30',
+            'temporary_increase_reason'       => 'Apoyo transporte',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(2700.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(2000.0, $snapshot['base_amount']);
+        $this->assertNull($snapshot['snapshot_telmex_covered_amount']);
+    }
+
+    /** @test */
+    public function pure_telmex_with_no_active_increase_has_zero_gross_and_covered_bookkeeping(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::TELMEX->value,
+            'active_discount_percentage'      => null,
+            'discount_valid_from'             => null,
+            'discount_valid_until'            => null,
+            'monthly_amount'                  => 1800.00,
+            'monto_apoyo'                      => 150.00,
+            'temporary_increase_amount'       => null,
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(0.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(1950.0, $snapshot['snapshot_telmex_covered_amount']);
+        $this->assertSame(0.0, $snapshot['base_amount']);
+    }
+
+    /** @test */
+    public function pure_telmex_with_an_active_increase_is_increase_only_never_monthly_or_apoyo(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::TELMEX->value,
+            'active_discount_percentage'      => null,
+            'discount_valid_from'             => null,
+            'discount_valid_until'            => null,
+            'monthly_amount'                  => 1800.00,
+            'monto_apoyo'                      => 150.00,
+            'temporary_increase_amount'       => 500.00,
+            'temporary_increase_valid_from'   => '2026-09-01',
+            'temporary_increase_valid_until'  => '2026-09-30',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(500.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(1950.0, $snapshot['snapshot_telmex_covered_amount']);
+        $this->assertSame(0.0, $snapshot['base_amount']);
+    }
+
+    /** @test */
+    public function telmex_iu_with_no_active_increase_uses_iu_payment_amount_only(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::TELMEX_IU->value,
+            'active_discount_percentage'      => null,
+            'discount_valid_from'             => null,
+            'discount_valid_until'            => null,
+            'monthly_amount'                  => 1800.00,
+            'monto_apoyo'                      => 150.00,
+            'iu_payment_amount'               => 300.00,
+            'temporary_increase_amount'       => null,
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(300.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(1950.0, $snapshot['snapshot_telmex_covered_amount']);
+        $this->assertSame(300.0, $snapshot['base_amount']);
+    }
+
+    /** @test */
+    public function telmex_iu_with_an_active_increase_sums_iu_payment_and_increase(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::TELMEX_IU->value,
+            'active_discount_percentage'      => null,
+            'discount_valid_from'             => null,
+            'discount_valid_until'            => null,
+            'monthly_amount'                  => 1800.00,
+            'monto_apoyo'                      => 150.00,
+            'iu_payment_amount'               => 300.00,
+            'temporary_increase_amount'       => 500.00,
+            'temporary_increase_valid_from'   => '2026-09-01',
+            'temporary_increase_valid_until'  => '2026-09-30',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(800.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(1950.0, $snapshot['snapshot_telmex_covered_amount']);
+        $this->assertSame(300.0, $snapshot['base_amount']);
+    }
+
+    /** @test */
+    public function telmex_iu_discount_applies_only_to_the_iu_sourced_gross_never_to_covered_amount(): void
+    {
+        // Spec scenario: TELMEX_IU discount applies only to the payable
+        // gross (Pago IU + increase = 800), snapshot_telmex_covered_amount
+        // (monthly_amount + monto_apoyo) is untouched by the discount engine
+        // — discounts/retentions read only snapshot_gross_amount.
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::TELMEX_IU->value,
+            'active_discount_percentage'      => 100.00,
+            'discount_valid_from'             => Carbon::parse('2026-09-01'),
+            'discount_valid_until'            => Carbon::parse('2026-09-30'),
+            'monthly_amount'                  => 1800.00,
+            'monto_apoyo'                      => 150.00,
+            'iu_payment_amount'               => 300.00,
+            'temporary_increase_amount'       => 500.00,
+            'temporary_increase_valid_from'   => '2026-09-01',
+            'temporary_increase_valid_until'  => '2026-09-30',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(800.0, $snapshot['snapshot_gross_amount']);
+        $this->assertSame(1950.0, $snapshot['snapshot_telmex_covered_amount']);
+        $this->assertSame(100.0, $snapshot['snapshot_discount_percentage']);
+
+        $refrend = $this->makeRefrend($profile->user_id);
+        $refrend->update([
+            'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
+            'snapshot_discount_percentage' => $snapshot['snapshot_discount_percentage'],
+        ]);
+
+        $result = $this->service->calculateFinalAmount($refrend->fresh());
+
+        // max(0, $finalAmount) (calculateFinalAmount()'s existing clamp)
+        // returns the int literal 0 when clamped, not a float — assertEquals
+        // (loose) matches this file's convention for the zero case.
+        $this->assertEquals(0, $result['final_amount']);
+    }
+
+    // ── D6: base_amount is type-aware (phantom-debt fix) ────────────────────
+
+    /** @test */
+    public function base_amount_is_zero_for_pure_telmex_never_monthly_amount(): void
+    {
+        // The bug this fixes: leaving base_amount = monthly_amount for a
+        // pure TELMEX profile would let BackfillWithholdingLedgerService
+        // record never-payable money as withheld debt.
+        $profile = $this->makeProfile([
+            'scholarship_type'                => ScholarshipType::TELMEX->value,
+            'active_discount_percentage'      => null,
+            'discount_valid_from'             => null,
+            'discount_valid_until'            => null,
+            'monthly_amount'                  => 2500.00,
+            'monto_apoyo'                      => 300.00,
+            'temporary_increase_amount'       => null,
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame(0.0, $snapshot['base_amount']);
+    }
 }

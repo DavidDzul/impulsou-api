@@ -46,13 +46,15 @@ class RoleSeederAdministrationTest extends TestCase
      * #1592 R5) for the 4 Control permissions. Updated again by
      * becario-payment-bank-file-export PR4 (design "New permission") for
      * ADM_EXPORT_PAYMENTS, and by scholarship-profile-config-to-admin
-     * (design D9) for ADM_EDIT_SCHOLARSHIP_PROFILE — the closed set is now
-     * these 11 ADM_* permissions specifically (still zero PS_* — covered by
-     * a separate test below).
+     * (design D9) for ADM_EDIT_SCHOLARSHIP_PROFILE. Updated again by
+     * sdd/scholarship-telmex-iu-split (design D8) for
+     * ADM_MANAGE_SCHOLARSHIP_SETTINGS — the closed set is now these 12
+     * ADM_* permissions specifically (still zero PS_* — covered by a
+     * separate test below).
      *
      * @test
      */
-    public function seeder_grants_exactly_the_eleven_expected_adm_permissions_to_root_administration(): void
+    public function seeder_grants_exactly_the_twelve_expected_adm_permissions_to_root_administration(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -73,9 +75,10 @@ class RoleSeederAdministrationTest extends TestCase
                 'ADM_READ_PAYMENTS',
                 'ADM_PROCESS_PAYMENTS',
                 'ADM_EXPORT_PAYMENTS',
+                'ADM_MANAGE_SCHOLARSHIP_SETTINGS',
             ],
             $permissionNames,
-            'ROOT_ADMINISTRATION must hold exactly these eleven ADM_* permissions and nothing else.'
+            'ROOT_ADMINISTRATION must hold exactly these twelve ADM_* permissions and nothing else.'
         );
     }
 

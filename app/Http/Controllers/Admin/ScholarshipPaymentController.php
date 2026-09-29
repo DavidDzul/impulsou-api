@@ -324,9 +324,14 @@ class ScholarshipPaymentController extends Controller
         $rows = app(PaymentBatchService::class)->paidRows($batch);
 
         if (empty($rows)) {
+            // Reworded (sdd/scholarship-telmex-iu-split, design D4): this
+            // path is now also reachable when Filter B excludes every row in
+            // an otherwise-paid batch (e.g. a batch of only $0 TELMEX rows)
+            // — "no becarios pagados" would be misleading since the becarios
+            // WERE paid, they simply have nothing to disperse via bank file.
             return response()->json([
                 'res' => false,
-                'msg' => 'El lote no tiene becarios pagados.',
+                'msg' => 'El lote no tiene becarios con monto a dispersar.',
             ], 422);
         }
 

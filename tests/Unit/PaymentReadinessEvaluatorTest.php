@@ -349,4 +349,74 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertSame($resultWithoutFields, $resultWithFields);
     }
+
+    // ── Filter A guard: TELMEX_NOT_PAYABLE (sdd/scholarship-telmex-iu-split, design D1/D3) ──
+
+    /** @test */
+    public function telmex_not_payable_when_pure_telmex_and_no_active_increase(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'TELMEX',
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertFalse($result['is_payable']);
+        $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
+    }
+
+    /** @test */
+    public function pure_telmex_with_an_active_increase_is_not_blocked_by_telmex_not_payable(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'TELMEX',
+            'snapshot_temporary_increase_amount' => 500.00,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    /** @test */
+    public function iu_is_never_blocked_by_telmex_not_payable_regardless_of_increase(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'IU',
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    /** @test */
+    public function telmex_iu_is_never_blocked_by_telmex_not_payable_regardless_of_increase(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'TELMEX_IU',
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    /** @test */
+    public function evaluator_is_safe_when_snapshot_scholarship_type_column_is_absent(): void
+    {
+        // Defensive `??` null-coalescing (design D3): a caller/fixture that
+        // omits these two columns entirely must never crash or accidentally
+        // block payment.
+        $result = $this->evaluate($this->makeRow(), hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
 }

@@ -6,12 +6,14 @@ enum ScholarshipType: string
 {
     case IU = 'IU';
     case TELMEX = 'TELMEX';
+    case TELMEX_IU = 'TELMEX_IU';
 
     public function label(): string
     {
         return match($this) {
-            self::IU     => 'IU',
-            self::TELMEX => 'TELMEX',
+            self::IU        => 'IU',
+            self::TELMEX    => 'TELMEX',
+            self::TELMEX_IU => 'Telmex - IU',
         };
     }
 

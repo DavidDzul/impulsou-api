@@ -203,4 +203,60 @@ class BackfillWithholdingLedgerServiceTest extends TestCase
         $this->assertSame(0, ScholarshipWithholding::count());
         $this->assertSame(0, ScholarshipWithholdingPayment::count());
     }
+
+    // ── D6 regression: TELMEX backfills 0 withheld, never monthly_amount ────
+    // (sdd/scholarship-telmex-iu-split, design D6 — the phantom-debt fix).
+    // A TELMEX refrend's base_amount is type-aware and is 0.00 when there is
+    // no active increase (buildSnapshot()'s new branching); this service must
+    // never fall back to a nonzero monthly_amount for that refrend.
+
+    /** @test */
+    public function telmex_refrend_with_zero_base_amount_backfills_no_withheld_debt(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $this->makeRefrend($user->id, [
+            'period_month'               => 1,
+            'resolution_type'            => 'RETENIDA',
+            'status'                     => RefrendStatus::WITHHELD->value,
+            'snapshot_scholarship_type'  => ScholarshipType::TELMEX->value,
+            'base_amount'                => 0.00,
+            'discount_amount'            => 0.00,
+            'final_amount'               => 0.00,
+        ]);
+
+        $this->service->run();
+
+        $this->assertSame(
+            0,
+            ScholarshipWithholding::where('user_id', $user->id)->count(),
+            'A TELMEX refrend with base_amount=0.00 (never-payable money) must never backfill a withheld-debt ledger row.'
+        );
+    }
+
+    /** @test */
+    public function telmex_refrend_with_a_positive_discount_amount_still_backfills_that_amount(): void
+    {
+        // A TELMEX refrend CAN still carry withheld debt if it had a
+        // positive discount_amount (e.g. an increase that was partially
+        // retained) — only the base_amount fallback is affected by D6, not
+        // the discount_amount branch.
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $this->makeRefrend($user->id, [
+            'period_month'               => 1,
+            'resolution_type'            => 'RETENIDA',
+            'status'                     => RefrendStatus::WITHHELD->value,
+            'snapshot_scholarship_type'  => ScholarshipType::TELMEX->value,
+            'base_amount'                => 0.00,
+            'discount_amount'            => 200.00,
+            'final_amount'               => 0.00,
+        ]);
+
+        $this->service->run();
+
+        $ledger = ScholarshipWithholding::where('user_id', $user->id)->first();
+        $this->assertNotNull($ledger);
+        $this->assertSame('200.00', $ledger->withheld_amount);
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\ScholarshipType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreScholarshipProfileRequest;
 use App\Http\Requests\UpdateScholarshipProfileConfigRequest;
@@ -82,7 +83,20 @@ class ScholarshipProfileController extends Controller
     {
         $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
 
-        $profile->update($request->safe()->toArray());
+        $data = $request->safe()->toArray();
+
+        // iu_payment_amount (sdd/scholarship-telmex-iu-split): `exclude_unless`
+        // (request rules) only drops the field from the VALIDATED payload
+        // when the type isn't TELMEX_IU — it does not touch the DB. Without
+        // this explicit clear, switching a profile away from TELMEX_IU would
+        // leave a stale iu_payment_amount behind (mass-update only writes
+        // present keys). Mirrors the explicit-null-on-type-change pattern
+        // already used for temporary_increase_* in update() above.
+        if ($data['scholarship_type'] !== ScholarshipType::TELMEX_IU->value) {
+            $data['iu_payment_amount'] = null;
+        }
+
+        $profile->update($data);
 
         return response()->json(['res' => true, 'data' => $profile->fresh()]);
     }
