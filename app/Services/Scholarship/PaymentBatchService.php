@@ -3,6 +3,7 @@
 namespace App\Services\Scholarship;
 
 use App\Models\ScholarshipPaymentBatch;
+use App\Support\Scholarship\TelmexPaymentPolicy;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -81,13 +82,20 @@ class PaymentBatchService
      */
     public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
     {
-        $refrends = DB::table('scholarship_refrends as r')
+        $query = DB::table('scholarship_refrends as r')
             ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
             ->leftJoin('scholarship_payment_data as spd', 'spd.user_id', '=', 'r.user_id')
             ->where('r.snapshot_generation_id', $generationId)
             ->where('r.snapshot_campus', $campus)
             ->where('r.period_year', $periodYear)
-            ->where('r.period_month', $periodMonth)
+            ->where('r.period_month', $periodMonth);
+
+        // Filter A (sdd/scholarship-telmex-iu-split, design D1/D3): a pure
+        // TELMEX row without a currently active temporary increase has
+        // nothing payable and is not a batch candidate at all.
+        TelmexPaymentPolicy::applyBatchCandidacy($query, 'r');
+
+        $refrends = $query
             ->orderBy('r.snapshot_name')
             ->get([
                 'r.id as refrend_id',
@@ -112,6 +120,14 @@ class PaymentBatchService
                 // string|null — never a BackedEnum, no normalization needed.
                 'r.resolution_type',
                 'r.resolution_cause',
+                // snapshot_scholarship_type/snapshot_temporary_increase_amount
+                // (sdd/scholarship-telmex-iu-split, design D3/D9): required
+                // both by PaymentReadinessEvaluator's TELMEX_NOT_PAYABLE guard
+                // and by the excluded_from_bank_file chip below. Raw string
+                // here (DB::table() bypasses the Eloquent enum cast) —
+                // TelmexPaymentPolicy::type() normalizes both shapes.
+                'r.snapshot_scholarship_type',
+                'r.snapshot_temporary_increase_amount',
                 'u.enrollment',
                 // scholarship_payment_data columns are NOT NULL (migration
                 // 2026_09_11_000000_...:14-16), so a NULL here (from the
@@ -164,6 +180,8 @@ class PaymentBatchService
                 $row->rfc
             );
 
+            $totalToPay = $this->totalToPay($row);
+
             return [
                 'refrend_id'                => $row->refrend_id,
                 'user_id'                   => $row->user_id,
@@ -173,7 +191,7 @@ class PaymentBatchService
                 'account_number'            => $row->account_number,
                 'rfc'                       => $row->rfc,
                 'payment_batch_id'          => $row->payment_batch_id,
-                'total_to_pay'              => $this->totalToPay($row),
+                'total_to_pay'              => $totalToPay,
                 'is_payable'                => $evaluation['is_payable'],
                 'blocking_reasons'          => $evaluation['blocking_reasons'],
                 'outcome'                   => null,
@@ -205,6 +223,17 @@ class PaymentBatchService
                 // origin-refrend indicator — see the docblock above for why
                 // this is NOT the same concept as advance_paid_amount.
                 'advance_payment_amount'    => number_format((float) ($row->advance_payment_amount ?? 0), 2, '.', ''),
+                // excluded_from_bank_file (sdd/scholarship-telmex-iu-split,
+                // design D9): server-computed prediction of Filter B
+                // (paidRows()'s export-time exclusion), using the exact same
+                // policy and the exact same total_to_pay this row already
+                // shows — never re-derived client-side. Purely informational,
+                // like every other chip field: MUST NOT be read by
+                // PaymentReadinessEvaluator or influence is_payable.
+                'excluded_from_bank_file'   => TelmexPaymentPolicy::isExcludedFromBankFile(
+                    $row->snapshot_scholarship_type,
+                    $totalToPay
+                ),
             ];
         })->values()->all();
     }
@@ -248,18 +277,35 @@ class PaymentBatchService
                 // advance_paid indicator fields, which paidRows() never
                 // exposes (design's explicit scope boundary).
                 'scholarship_refrends.advance_payment_amount',
+                // snapshot_scholarship_type (sdd/scholarship-telmex-iu-split,
+                // design D4): needed by Filter B below. This is an Eloquent
+                // relation query (not DB::table()), so this column arrives
+                // enum-cast as a ScholarshipType object — the OPPOSITE shape
+                // from rows()'s raw string (design D5) — never assume both
+                // call sites see the same PHP type.
+                'scholarship_refrends.snapshot_scholarship_type',
                 'spd.account_number',
                 'spd.rfc',
             ]);
 
-        return $rows->map(fn ($row) => [
-            'refrend_id'     => $row->refrend_id,
-            'user_id'        => $row->user_id,
-            'snapshot_name'  => $row->snapshot_name,
-            'rfc'            => $row->rfc,
-            'account_number' => $row->account_number,
-            'total_to_pay'   => $this->totalToPay($row),
-        ])->values()->all();
+        // Filter B (design D4): excluded BEFORE map(), so the row never
+        // reaches ScholarshipPaymentController::paidAndBankValidatedRows()'s
+        // BankDataValidator gate — that ordering is the entire point (a
+        // TELMEX row with total_to_pay<=0 must silently vanish from the
+        // export instead of 422-ing the whole batch).
+        return $rows
+            ->reject(fn ($row) => TelmexPaymentPolicy::isExcludedFromBankFile(
+                $row->snapshot_scholarship_type,
+                $this->totalToPay($row)
+            ))
+            ->map(fn ($row) => [
+                'refrend_id'     => $row->refrend_id,
+                'user_id'        => $row->user_id,
+                'snapshot_name'  => $row->snapshot_name,
+                'rfc'            => $row->rfc,
+                'account_number' => $row->account_number,
+                'total_to_pay'   => $this->totalToPay($row),
+            ])->values()->all();
     }
 
     /**

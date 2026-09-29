@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\ScholarshipPaymentDataController;
 use App\Http\Controllers\Admin\ScholarshipProfileController;
 use App\Http\Controllers\Admin\ScholarshipRefrendController;
 use App\Http\Controllers\Admin\ScholarshipSemesterGradeController;
+use App\Http\Controllers\Admin\ScholarshipSettingController;
 use App\Http\Controllers\Admin\ScholarshipWithholdingController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -116,6 +117,15 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::put('{userId}/config', [ScholarshipProfileController::class, 'updateConfig'])
             ->middleware('permission:ADM_EDIT_SCHOLARSHIP_PROFILE');
         Route::post('{userId}/reticula', [ScholarshipProfileController::class, 'updateReticula']);
+    });
+
+    // ── Scholarship Settings (sdd/scholarship-telmex-iu-split, design D8) ─────
+    Route::prefix('scholarship-settings')->group(function () {
+        // No read-gate — shared reference data (design D9 rationale, same as
+        // the scholarship-profile config GET).
+        Route::get('/', [ScholarshipSettingController::class, 'show']);
+        Route::put('/', [ScholarshipSettingController::class, 'update'])
+            ->middleware('permission:ADM_MANAGE_SCHOLARSHIP_SETTINGS');
     });
 
     // ── Semester Grades ───────────────────────────────────────────────────────

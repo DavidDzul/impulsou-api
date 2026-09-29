@@ -7,6 +7,7 @@ use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendDiscount;
 use App\Enums\DiscountType;
 use App\Enums\RefrendType;
+use App\Enums\ScholarshipType;
 use Carbon\Carbon;
 
 class ScholarshipCalculationService
@@ -106,14 +107,30 @@ class ScholarshipCalculationService
 
     /**
      * Construye el snapshot de datos históricos del becario al momento de generar el refrendo.
-     * Si el perfil tiene un descuento base vigente, lo aplica directamente sobre monthly_amount
-     * para que los descuentos mensuales posteriores operen sobre el monto ya reducido.
+     * Si el perfil tiene un descuento base vigente, lo aplica directamente sobre el monto
+     * mensual pagable para que los descuentos mensuales posteriores operen sobre el monto
+     * ya reducido.
      *
      * El aumento temporal vigente (monto fijo, evaluado por fecha exacta, sin
-     * prorrateo) se suma DENTRO de snapshot_gross_amount, igual que
-     * monto_apoyo, por lo que queda sujeto al descuento académico (no exento).
-     * base_amount NO incluye el aumento (bug preexistente de la variable
-     * muerta, fuera de scope de este cambio).
+     * prorrateo) se suma DENTRO de snapshot_gross_amount para todos los
+     * tipos, por lo que queda sujeto al descuento académico (no exento).
+     *
+     * La composición de snapshot_gross_amount (monto pagable) es
+     * condicional por scholarship_type (sdd/scholarship-telmex-iu-split,
+     * design D2):
+     *   - IU:        monthly_amount + monto_apoyo + increase (comportamiento previo, sin cambios).
+     *   - TELMEX_IU: iu_payment_amount + increase.
+     *   - TELMEX:    increase (0.00 sin aumento activo).
+     * monthly_amount + monto_apoyo para TELMEX/TELMEX_IU se registran en
+     * snapshot_telmex_covered_amount como bookkeeping — NUNCA son pagables ni
+     * quedan sujetos a descuentos/retenciones.
+     *
+     * base_amount refleja el monto base pagable por tipo (design D6): para
+     * IU es monthly_amount (comportamiento previo, sin cambios); para
+     * TELMEX_IU es iu_payment_amount; para TELMEX es 0.00. Esto es, además
+     * de comportamiento correcto, la corrección de un bug: dejar
+     * base_amount = monthly_amount para TELMEX registraría dinero que nunca
+     * es pagable como deuda retenida en BackfillWithholdingLedgerService.
      */
     public function buildSnapshot(ScholarshipProfile $profile, ?Carbon $on = null): array
     {
@@ -126,20 +143,21 @@ class ScholarshipCalculationService
 
         $monthlyAmount = (float) $profile->monthly_amount;
         $montoApoyo    = (float) ($profile->monto_apoyo ?? 0);
+        $iuPayment     = (float) ($profile->iu_payment_amount ?? 0);
 
         $increaseActive = $profile->isTemporaryIncreaseActiveOn($on);
         $increaseAmount = $increaseActive ? (float) $profile->temporary_increase_amount : 0.0;
 
-        $totalMonthly = $monthlyAmount + $montoApoyo + $increaseAmount;
+        [$totalMonthly, $telmexCovered, $baseAmount] = match ($profile->scholarship_type) {
+            ScholarshipType::IU        => [$monthlyAmount + $montoApoyo + $increaseAmount, null, $monthlyAmount],
+            ScholarshipType::TELMEX_IU => [$iuPayment + $increaseAmount, $monthlyAmount + $montoApoyo, $iuPayment],
+            ScholarshipType::TELMEX    => [$increaseAmount, $monthlyAmount + $montoApoyo, 0.0],
+        };
 
         $discountPct    = $profile->active_discount_percentage !== null
             ? (float) $profile->active_discount_percentage
             : 0.0;
         $discountActive = $discountPct > 0 && $profile->isDiscountActiveOn($on);
-
-        $baseAmount = $discountActive
-            ? round($totalMonthly * (1 - $discountPct / 100), 2)
-            : $totalMonthly;
 
         return [
             'snapshot_name'                       => trim("{$user->first_name} {$user->last_name}"),
@@ -149,7 +167,8 @@ class ScholarshipCalculationService
             'snapshot_scholarship_type'           => $profile->scholarship_type->value,
             'snapshot_gross_amount'               => $totalMonthly,
             'snapshot_monto_apoyo'                => $montoApoyo,
-            'base_amount'                         => $monthlyAmount,
+            'snapshot_telmex_covered_amount'      => $telmexCovered,
+            'base_amount'                         => $baseAmount,
             'snapshot_discount_percentage'        => $discountActive ? $discountPct : null,
             'snapshot_discount_reason'             => $discountActive ? $profile->discount_reason : null,
             'snapshot_temporary_increase_amount'  => $increaseActive ? $increaseAmount : null,

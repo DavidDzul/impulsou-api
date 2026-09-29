@@ -420,6 +420,136 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         $response->assertStatus(400);
     }
 
+    // ── Filter B: TELMEX $0 rows silently excluded (sdd/scholarship-telmex-iu-split, design D4) ──
+
+    /** @test */
+    public function export_excludes_a_zero_total_telmex_row_but_succeeds_with_200_for_the_rest(): void
+    {
+        // The proposal's #1 risk: a batch with one $0 TELMEX row (increase
+        // fully discounted) must NOT 422 the whole export — it must succeed
+        // with that row silently absent from the file.
+        $batch = $this->makeLegacyPaidBatch([
+            ['refrendOverrides' => ['snapshot_name' => 'Becario IU Normal']],
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'               => 'Becario Telmex Cero',
+                    'snapshot_scholarship_type'   => ScholarshipType::TELMEX->value,
+                    'final_amount'                => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+
+        $response->assertStatus(200);
+
+        $body  = $response->streamedContent();
+        $lines = array_values(array_filter(explode("\r\n", $body)));
+        $this->assertCount(1, $lines, 'Only the IU row should be present in the file — the $0 TELMEX row must be silently excluded.');
+    }
+
+    /** @test */
+    public function export_summary_excludes_the_same_zero_total_telmex_row_and_matches_export_exactly(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            ['refrendOverrides' => ['snapshot_name' => 'Becario IU Normal']],
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'               => 'Becario Telmex Cero',
+                    'snapshot_scholarship_type'   => ScholarshipType::TELMEX->value,
+                    'final_amount'                => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+        ]);
+
+        $summaryResponse = $this->actingAs($this->rootAdmin)->getJson($this->summaryUrl($batch->id));
+        $summaryResponse->assertStatus(200);
+
+        $fileResponse = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+        $fileResponse->assertStatus(200);
+
+        $lines = array_values(array_filter(explode("\r\n", $fileResponse->streamedContent())));
+
+        $this->assertSame(1, $summaryResponse->json('data.count'));
+        $this->assertSame(count($lines), $summaryResponse->json('data.count'));
+        $this->assertSame('1000.00', $summaryResponse->json('data.total_amount'));
+    }
+
+    /** @test */
+    public function telmex_row_with_pending_from_previous_still_exports_despite_zero_final_amount(): void
+    {
+        // Guards the final_amount-vs-total_to_pay mistake: this row's
+        // final_amount is 0 this period, but total_to_pay > 0 via
+        // amount_pending_from_previous — Filter B reads total_to_pay, so it
+        // must NOT exclude this row.
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                 => 'Becario Telmex Pendiente',
+                    'snapshot_scholarship_type'     => ScholarshipType::TELMEX->value,
+                    'final_amount'                  => 0.00,
+                    'amount_pending_from_previous'  => 300.00,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+
+        $response->assertStatus(200);
+        $lines = array_values(array_filter(explode("\r\n", $response->streamedContent())));
+        $this->assertCount(1, $lines, 'A TELMEX row with a positive total_to_pay (via amount_pending_from_previous) must still export.');
+    }
+
+    /** @test */
+    public function iu_zero_total_row_still_blocks_the_whole_export_with_nothing_to_pay(): void
+    {
+        // No behavior change outside TELMEX: an IU row at total_to_pay<=0
+        // still 422s the whole export, exactly as before this change.
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                => 'Becario IU Cero',
+                    'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+                    'final_amount'                 => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->exportUrl($batch->id));
+
+        $response->assertStatus(422);
+        $this->assertContains(
+            'NOTHING_TO_PAY',
+            array_column($response->json('data.invalid_rows.0.reasons'), 'code')
+        );
+    }
+
+    /** @test */
+    public function telmex_iu_zero_total_row_still_blocks_the_whole_export_with_nothing_to_pay(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                => 'Becario Telmex IU Cero',
+                    'snapshot_scholarship_type'    => ScholarshipType::TELMEX_IU->value,
+                    'final_amount'                 => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->exportUrl($batch->id));
+
+        $response->assertStatus(422);
+        $this->assertContains(
+            'NOTHING_TO_PAY',
+            array_column($response->json('data.invalid_rows.0.reasons'), 'code')
+        );
+    }
+
     // ── Route ordering (static segments before {refrend} param) ────────────
 
     /** @test */

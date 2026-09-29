@@ -681,6 +681,8 @@ class PaymentBatchServiceTest extends TestCase
             'has_pending_from_previous', 'only_pending_from_previous', 'resolution_type', 'resolution_cause',
             'advance_paid', 'advance_paid_amount', 'advance_paid_origin_year', 'advance_paid_origin_month',
             'advance_paid_divergence_reason', 'advance_payment_amount',
+            // sdd/scholarship-telmex-iu-split, design D9:
+            'excluded_from_bank_file',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -860,5 +862,228 @@ class PaymentBatchServiceTest extends TestCase
         $rows = $this->rows();
 
         $this->assertSame('0.00', $rows[0]['advance_payment_amount']);
+    }
+
+    // ── Filter A: candidacy (sdd/scholarship-telmex-iu-split, design D1/D3) ──
+
+    /** @test */
+    public function pure_telmex_without_an_active_increase_is_absent_from_rows(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(0, $rows, 'A pure TELMEX row without an active increase has nothing payable and must not be a batch candidate.');
+    }
+
+    /** @test */
+    public function pure_telmex_with_an_active_increase_is_present_at_the_increase_only_amount(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 500.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('500.00', $rows[0]['total_to_pay']);
+        $this->assertTrue($rows[0]['is_payable']);
+    }
+
+    /** @test */
+    public function telmex_iu_is_always_a_candidate_in_rows_regardless_of_increase(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX_IU->value,
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+    }
+
+    /** @test */
+    public function filter_a_combines_correctly_with_the_batch_key_where_clauses(): void
+    {
+        // A TELMEX row without increase, IN the batch key, must be excluded;
+        // an IU row OUTSIDE the batch key must also be excluded — Filter A's
+        // grouped OR must not accidentally widen or narrow the existing
+        // AND chain of batch-key where()s.
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+        $this->makeReadyRefrend(['period_month' => self::MONTH + 1]);
+        $this->makeReadyRefrend();
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+    }
+
+    // ── excluded_from_bank_file chip (sdd/scholarship-telmex-iu-split, design D9) ──
+
+    /** @test */
+    public function excluded_from_bank_file_is_true_when_telmex_final_amount_is_zero(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 0.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['excluded_from_bank_file']);
+    }
+
+    /** @test */
+    public function excluded_from_bank_file_is_false_for_a_positive_telmex_row(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 500.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['excluded_from_bank_file']);
+    }
+
+    /** @test */
+    public function excluded_from_bank_file_is_false_for_a_zero_amount_iu_row(): void
+    {
+        // Never true for IU/TELMEX_IU — this chip predicts Filter B, which
+        // only ever excludes TELMEX rows.
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['excluded_from_bank_file']);
+    }
+
+    /** @test */
+    public function excluded_from_bank_file_never_influences_is_payable_or_blocking_reasons(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 0.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertTrue($rows[0]['excluded_from_bank_file']);
+        $this->assertTrue($rows[0]['is_payable'], 'excluded_from_bank_file is informational-only and must never gate is_payable.');
+        $this->assertSame([], $rows[0]['blocking_reasons']);
+    }
+
+    // ── Filter B: paidRows() exclusion (sdd/scholarship-telmex-iu-split, design D4) ──
+
+    /** @test */
+    public function paid_rows_excludes_a_zero_total_telmex_row(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertSame([], $rows);
+    }
+
+    /** @test */
+    public function paid_rows_excludes_only_the_zero_telmex_row_others_remain(): void
+    {
+        $batch = $this->makeBatch(['refrend_count' => 2, 'total_amount' => '1000.00']);
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_name'              => 'Becario IU',
+            'snapshot_scholarship_type'  => ScholarshipType::IU->value,
+            'final_amount'               => 1000.00,
+        ]);
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_name'              => 'Becario Telmex Cero',
+            'snapshot_scholarship_type'  => ScholarshipType::TELMEX->value,
+            'final_amount'               => 0.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario IU', $rows[0]['snapshot_name']);
+    }
+
+    /** @test */
+    public function paid_rows_never_excludes_a_zero_total_iu_row(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows, 'IU rows at total_to_pay<=0 are NOT Filter B\'s concern — they must remain so BankDataValidator can 422 the export.');
+    }
+
+    /** @test */
+    public function paid_rows_never_excludes_a_zero_total_telmex_iu_row(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+    }
+
+    /** @test */
+    public function paid_rows_does_not_exclude_a_telmex_row_with_positive_pending_from_previous(): void
+    {
+        // Guards the final_amount-vs-total_to_pay mistake at the paidRows()
+        // layer directly.
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX->value,
+            'final_amount'                 => 0.00,
+            'amount_pending_from_previous' => 300.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('300.00', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function paid_rows_never_exposes_snapshot_scholarship_type_in_the_returned_shape(): void
+    {
+        // Filter B consumes it internally; it must not leak into the
+        // returned row shape (which paidRows() has always kept minimal —
+        // same boundary-lock convention as resolution_type/advance_paid).
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertArrayNotHasKey('snapshot_scholarship_type', $rows[0]);
     }
 }
