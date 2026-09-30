@@ -503,16 +503,78 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
     }
 
     /** @test */
-    public function iu_zero_total_row_still_blocks_the_whole_export_with_nothing_to_pay(): void
+    public function iu_zero_total_row_now_floors_to_one_cent_and_exports_successfully(): void
     {
-        // No behavior change outside TELMEX: an IU row at total_to_pay<=0
-        // still 422s the whole export, exactly as before this change.
+        // sdd/bank-file-minimum-deposit: an IU row at total_to_pay == 0.00
+        // now floors to 0.01 and exports successfully instead of 422-ing
+        // the whole batch (previous behavior, before this change).
         $batch = $this->makeLegacyPaidBatch([
             [
                 'refrendOverrides' => [
                     'snapshot_name'                => 'Becario IU Cero',
                     'snapshot_scholarship_type'    => ScholarshipType::IU->value,
                     'final_amount'                 => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+
+        $response->assertStatus(200);
+
+        $body  = $response->streamedContent();
+        $lines = array_values(array_filter(explode("\r\n", $body)));
+        $this->assertCount(1, $lines);
+        // Consecutivo (cols 1-9, zero-padded) confirms this is the single
+        // row's own record, position 1.
+        $this->assertStringStartsWith('000000001', $lines[0]);
+
+        // Importe occupies cols 48-62 (0-indexed offset 47, width 15) —
+        // centavos, per BankPaymentFileSerializer::importe(). 0.01 -> "1".
+        $centavos = (int) substr($lines[0], 47, 15);
+        $this->assertSame(1, $centavos);
+    }
+
+    /** @test */
+    public function telmex_iu_zero_total_row_now_floors_to_one_cent_and_exports_successfully(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                => 'Becario Telmex IU Cero',
+                    'snapshot_scholarship_type'    => ScholarshipType::TELMEX_IU->value,
+                    'final_amount'                 => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+
+        $response->assertStatus(200);
+
+        $body  = $response->streamedContent();
+        $lines = array_values(array_filter(explode("\r\n", $body)));
+        $this->assertCount(1, $lines);
+        $this->assertStringStartsWith('000000001', $lines[0]);
+
+        $centavos = (int) substr($lines[0], 47, 15);
+        $this->assertSame(1, $centavos);
+    }
+
+    /** @test */
+    public function negative_total_row_still_blocks_the_whole_export_with_nothing_to_pay_and_is_never_floored(): void
+    {
+        // The floor's exact-zero predicate (design D3) must never catch a
+        // negative total — that stays a hard failure, unreachable via any
+        // validated write path but must fail loudly if it ever occurs.
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                => 'Becario IU Negativo',
+                    'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+                    'final_amount'                 => -10.00,
                     'amount_pending_from_previous' => 0,
                 ],
             ],
@@ -528,26 +590,117 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
     }
 
     /** @test */
-    public function telmex_iu_zero_total_row_still_blocks_the_whole_export_with_nothing_to_pay(): void
+    public function telmex_iu_with_active_increase_covering_the_discount_is_unaffected_by_the_floor(): void
     {
+        // Net total_to_pay > 0 after the discount — the floor never fires.
         $batch = $this->makeLegacyPaidBatch([
             [
                 'refrendOverrides' => [
-                    'snapshot_name'                => 'Becario Telmex IU Cero',
-                    'snapshot_scholarship_type'    => ScholarshipType::TELMEX_IU->value,
-                    'final_amount'                 => 0.00,
-                    'amount_pending_from_previous' => 0,
+                    'snapshot_name'                       => 'Becario Telmex IU Con Incremento',
+                    'snapshot_scholarship_type'           => ScholarshipType::TELMEX_IU->value,
+                    'snapshot_temporary_increase_amount'  => 500.00,
+                    'final_amount'                        => 500.00,
+                    'amount_pending_from_previous'        => 0,
                 ],
             ],
         ]);
 
-        $response = $this->actingAs($this->rootAdmin)->getJson($this->exportUrl($batch->id));
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
 
-        $response->assertStatus(422);
-        $this->assertContains(
-            'NOTHING_TO_PAY',
-            array_column($response->json('data.invalid_rows.0.reasons'), 'code')
-        );
+        $response->assertStatus(200);
+        $lines = array_values(array_filter(explode("\r\n", $response->streamedContent())));
+        $this->assertCount(1, $lines);
+
+        $centavos = (int) substr($lines[0], 47, 15);
+        $this->assertSame(50000, $centavos, 'The floor must not alter a positive total_to_pay.');
+    }
+
+    /** @test */
+    public function pure_telmex_with_no_active_increase_stays_absent_from_everything_unaffected_by_the_floor(): void
+    {
+        // Pre-existing Filter A/B behavior (sdd/scholarship-telmex-iu-split)
+        // — confirms no accidental regression from this change.
+        $batch = $this->makeLegacyPaidBatch([
+            ['refrendOverrides' => ['snapshot_name' => 'Becario IU Normal']],
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                       => 'Becario Telmex Sin Incremento',
+                    'snapshot_scholarship_type'           => ScholarshipType::TELMEX->value,
+                    'snapshot_temporary_increase_amount'  => null,
+                    'final_amount'                        => 0.00,
+                    'amount_pending_from_previous'        => 0,
+                ],
+            ],
+        ]);
+
+        $summaryResponse = $this->actingAs($this->rootAdmin)->getJson($this->summaryUrl($batch->id));
+        $summaryResponse->assertStatus(200);
+        $this->assertSame(1, $summaryResponse->json('data.count'));
+
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+        $response->assertStatus(200);
+        $lines = array_values(array_filter(explode("\r\n", $response->streamedContent())));
+        $this->assertCount(1, $lines, 'Only the normal IU row should be present — the pure TELMEX row without an increase stays absent, unfloored.');
+    }
+
+    /**
+     * Mixed batch reconciles across all layers (spec "Mixed batch
+     * reconciles across all layers" / "Cross-layer amount consistency for
+     * floored rows"): normal row + $0.00 IU row (floored) + excluded pure
+     * TELMEX row (fully discounted by an active increase) -> Pagos-table
+     * equivalent (rows()), summary card (summary()), exportSummary(), and
+     * the bank file all agree.
+     */
+    /** @test */
+    public function mixed_batch_reconciles_the_floored_row_and_the_excluded_row_across_every_layer(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                => 'Becario Normal',
+                    'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+                    'final_amount'                 => 1000.00,
+                ],
+            ],
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                => 'Becario IU Cero',
+                    'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+                    'final_amount'                 => 0.00,
+                    'amount_pending_from_previous' => 0,
+                ],
+            ],
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                       => 'Becario Telmex Excluido',
+                    'snapshot_scholarship_type'           => ScholarshipType::TELMEX->value,
+                    'snapshot_temporary_increase_amount'  => 500.00,
+                    'final_amount'                        => 0.00,
+                    'amount_pending_from_previous'        => 0,
+                ],
+            ],
+        ]);
+
+        $rows = app(PaymentBatchService::class)->paidRows($batch->fresh());
+        $this->assertCount(2, $rows, 'The excluded TELMEX row must not reach paidRows() at all.');
+
+        $summaryResponse = $this->actingAs($this->rootAdmin)->getJson($this->summaryUrl($batch->id));
+        $summaryResponse->assertStatus(200);
+        $this->assertSame(2, $summaryResponse->json('data.count'));
+        $this->assertSame('1000.01', $summaryResponse->json('data.total_amount'));
+
+        $fileResponse = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+        $fileResponse->assertStatus(200);
+        $lines = array_values(array_filter(explode("\r\n", $fileResponse->streamedContent())));
+        $this->assertCount(2, $lines, 'The excluded TELMEX row must be absent from the file, the normal + floored IU rows must both be present.');
+
+        $sumFromFile = array_reduce($lines, function (float $carry, string $line) {
+            $centavos = (int) substr($line, 47, 15);
+
+            return $carry + ($centavos / 100);
+        }, 0.0);
+        $this->assertSame('1000.01', number_format($sumFromFile, 2, '.', ''));
+        $this->assertSame($summaryResponse->json('data.total_amount'), number_format($sumFromFile, 2, '.', ''), 'exportSummary() and the file must agree exactly, including the floored cent.');
     }
 
     // ── Route ordering (static segments before {refrend} param) ────────────

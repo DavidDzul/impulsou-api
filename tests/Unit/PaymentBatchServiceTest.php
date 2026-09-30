@@ -581,7 +581,13 @@ class PaymentBatchServiceTest extends TestCase
     // NOTHING_TO_PAY reason for the same zero amount is explicitly discarded
     // by the evaluator (PaymentReadinessEvaluator:85-91) regardless. Payable
     // with $0.00 — exactly the "blind spot" this whole change makes visible
-    // (design D5).
+    // (design D5). UPDATED (sdd/bank-file-minimum-deposit): this IU row's
+    // total_to_pay is now floored to '0.01' by PaymentAmountFloor::apply()
+    // inside rows() — the literal below was deliberately bumped from '0.00'
+    // to '0.01' (and the summary total_amount from '2300.00' to '2300.01')
+    // to reflect the new intended behavior, NOT a regression. The floor's
+    // own isolation (never altering is_payable/blocking_reasons) is what
+    // this test still locks.
     // Row 3: BECA_MES — ordinary ready refrend, resolution_type set but
     // nothing else changed. Payable.
     // Row 4: null resolution_type — the ordinary bulk-approve path. Payable.
@@ -621,7 +627,7 @@ class PaymentBatchServiceTest extends TestCase
 
         $this->assertSame([
             ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '300.00'],
-            ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '0.00'],
+            ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '0.01'],
             ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '1000.00'],
             ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '1000.00'],
         ], $captured);
@@ -630,7 +636,7 @@ class PaymentBatchServiceTest extends TestCase
             'total'        => 4,
             'ready'        => 4,
             'blocking'     => 0,
-            'total_amount' => '2300.00',
+            'total_amount' => '2300.01',
         ], $summary);
     }
 
@@ -1085,5 +1091,141 @@ class PaymentBatchServiceTest extends TestCase
         $rows = $this->service->paidRows($batch);
 
         $this->assertArrayNotHasKey('snapshot_scholarship_type', $rows[0]);
+    }
+
+    // ── Shared payable-floor rule (sdd/bank-file-minimum-deposit, design D2) ──
+
+    /** @test */
+    public function rows_floors_a_zero_total_iu_row_to_one_cent(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertSame('0.01', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function rows_floors_a_zero_total_telmex_iu_row_to_one_cent(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertSame('0.01', $rows[0]['total_to_pay']);
+    }
+
+    /**
+     * R1 regression lock (design risk R1, High severity) — a pure TELMEX
+     * row with an active temporary increase fully consumed by a discount
+     * (net total_to_pay = 0.00) must:
+     *   (a) still show excluded_from_bank_file = true in rows()'s output,
+     *       unaffected by the floor (chip NOT inverted); AND
+     *   (b) still be silently absent from paidRows()'s output (Filter B
+     *       unchanged, floor never applies).
+     * Both assertions are locked in the SAME test to guard the cross-layer
+     * contract as one unit.
+     */
+    /** @test */
+    public function pure_telmex_row_fully_discounted_by_an_active_increase_keeps_the_exclusion_chip_true_and_stays_absent_from_the_export(): void
+    {
+        $batch = $this->makeBatch();
+        $refrend = $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount'  => 500.00,
+            'final_amount'                        => 0.00,
+        ]);
+
+        $rows = $this->rows();
+        $this->assertCount(1, $rows);
+        $this->assertSame('0.00', $rows[0]['total_to_pay'], 'The floor must NOT apply to a pure TELMEX row — chip inversion guard.');
+        $this->assertTrue($rows[0]['excluded_from_bank_file'], 'excluded_from_bank_file must stay true — the floor must never invert this chip (design R1).');
+
+        $paidRows = $this->service->paidRows($batch);
+        $this->assertSame([], $paidRows, 'The row must remain silently absent from paidRows() — Filter B is unaffected by the floor.');
+    }
+
+    /** @test */
+    public function telmex_iu_with_an_active_increase_covering_the_discount_is_unaffected_by_the_floor(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX_IU->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 500.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertSame('500.00', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function paid_rows_floors_a_zero_total_iu_row_to_one_cent(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('0.01', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function paid_rows_floors_a_zero_total_telmex_iu_row_to_one_cent(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('0.01', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function paid_rows_never_floors_a_negative_total(): void
+    {
+        // Unreachable via any validated write path, but locks the floor's
+        // exact-zero predicate (design D3) at the paidRows() layer too:
+        // never `<= 0`.
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+            'final_amount'                 => -10.00,
+            'amount_pending_from_previous' => 0,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('-10.00', $rows[0]['total_to_pay']);
+    }
+
+    /** @test */
+    public function summary_includes_a_floored_iu_row_alongside_normal_rows(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'final_amount'              => 0.00,
+        ]);
+        $this->makeReadyRefrend();
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('1000.01', $summary['total_amount']);
     }
 }
