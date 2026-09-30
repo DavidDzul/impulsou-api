@@ -3,6 +3,7 @@
 namespace App\Services\Scholarship;
 
 use App\Models\ScholarshipPaymentBatch;
+use App\Support\Scholarship\PaymentAmountFloor;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use Illuminate\Support\Facades\DB;
 
@@ -180,7 +181,11 @@ class PaymentBatchService
                 $row->rfc
             );
 
-            $totalToPay = $this->totalToPay($row);
+            // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
+            // design D2): IU/TELMEX_IU rows at exactly total_to_pay == 0.00
+            // floor to 0.01. Order-insensitive by construction — never
+            // inverts the excluded_from_bank_file chip below (design R1).
+            $totalToPay = PaymentAmountFloor::apply($row->snapshot_scholarship_type, $this->totalToPay($row));
 
             return [
                 'refrend_id'                => $row->refrend_id,
@@ -304,7 +309,10 @@ class PaymentBatchService
                 'snapshot_name'  => $row->snapshot_name,
                 'rfc'            => $row->rfc,
                 'account_number' => $row->account_number,
-                'total_to_pay'   => $this->totalToPay($row),
+                // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
+                // design D2), applied AFTER Filter B's reject() above, which
+                // still evaluates the raw (unfloored) total.
+                'total_to_pay'   => PaymentAmountFloor::apply($row->snapshot_scholarship_type, $this->totalToPay($row)),
             ])->values()->all();
     }
 
