@@ -689,6 +689,8 @@ class PaymentBatchServiceTest extends TestCase
             'advance_paid_divergence_reason', 'advance_payment_amount',
             // sdd/scholarship-telmex-iu-split, design D9:
             'excluded_from_bank_file',
+            // sdd/temporary-increase-visibility, design D7:
+            'snapshot_temporary_increase_amount', 'snapshot_temporary_increase_reason',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -832,6 +834,26 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertArrayNotHasKey('advance_paid_origin_year', $rows[0]);
         $this->assertArrayNotHasKey('advance_paid_origin_month', $rows[0]);
         $this->assertArrayNotHasKey('advance_paid_divergence_reason', $rows[0]);
+    }
+
+    // Boundary-lock (sdd/temporary-increase-visibility, task 1.7): paidRows()
+    // must NEVER gain these two keys either — the export path only needs the
+    // money term, already wired into totalToPay(), same explicit scope
+    // boundary as resolution_type/advance_paid above.
+    /** @test */
+    public function paid_rows_never_exposes_snapshot_temporary_increase_amount_or_reason(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_temporary_increase_amount' => 500.00,
+            'snapshot_temporary_increase_reason' => 'Ajuste especial autorizado por dirección.',
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey('snapshot_temporary_increase_amount', $rows[0]);
+        $this->assertArrayNotHasKey('snapshot_temporary_increase_reason', $rows[0]);
     }
 
     // ── PR8: advance_payment_amount as its own row field (origin-refrend indicator) ──
@@ -991,6 +1013,72 @@ class PaymentBatchServiceTest extends TestCase
 
         $this->assertTrue($rows[0]['excluded_from_bank_file']);
         $this->assertTrue($rows[0]['is_payable'], 'excluded_from_bank_file is informational-only and must never gate is_payable.');
+        $this->assertSame([], $rows[0]['blocking_reasons']);
+    }
+
+    // ── snapshot_temporary_increase_amount/_reason exposure (sdd/temporary-increase-visibility, design D7) ──
+    //
+    // Both columns already exist on scholarship_refrends and the amount was
+    // already SELECTed (consumed internally by TelmexPaymentPolicy) — this
+    // only locks that both fields now also survive into rows()'s returned
+    // row shape. Purely informational, same convention as every other chip
+    // field: MUST NOT be read by PaymentReadinessEvaluator or influence
+    // is_payable/blocking_reasons, and MUST NOT touch has_incident /
+    // scholarship_refrend_incidents (disproven-"Incidencia"-bug
+    // non-regression — the two are unrelated data sources).
+
+    /** @test */
+    public function rows_passes_through_snapshot_temporary_increase_amount_and_reason_when_present(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_temporary_increase_amount' => 500.00,
+            'snapshot_temporary_increase_reason' => 'Ajuste especial autorizado por dirección.',
+        ]);
+
+        $rows = $this->rows();
+
+        // Raw pass-through (design D7/no casting applied) — assertEquals,
+        // not assertSame: this column has numeric affinity in the sqlite
+        // test driver, which returns it as a native int/float rather than a
+        // formatted decimal string (unlike MySQL in production). The point
+        // under test is that the VALUE survives unchanged, not its exact
+        // PHP type.
+        $this->assertEquals(500.00, $rows[0]['snapshot_temporary_increase_amount']);
+        $this->assertSame('Ajuste especial autorizado por dirección.', $rows[0]['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function rows_returns_null_for_snapshot_temporary_increase_amount_and_reason_when_absent(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_temporary_increase_amount' => null,
+            'snapshot_temporary_increase_reason' => null,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertNull($rows[0]['snapshot_temporary_increase_amount']);
+        $this->assertNull($rows[0]['snapshot_temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function snapshot_temporary_increase_fields_never_influence_has_incident_or_is_payable(): void
+    {
+        // Regression lock: has_incident is driven exclusively by
+        // scholarship_refrend_incidents rows, never by the snapshot
+        // temporary-increase columns — the two are independent data
+        // sources and must stay that way (the disproven-"Incidencia"-bug
+        // hypothesis this non-regression test exists to prevent from
+        // resurfacing).
+        $this->makeReadyRefrend([
+            'snapshot_temporary_increase_amount' => 500.00,
+            'snapshot_temporary_increase_reason' => 'Ajuste especial autorizado por dirección.',
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertFalse($rows[0]['has_incident']);
+        $this->assertTrue($rows[0]['is_payable']);
         $this->assertSame([], $rows[0]['blocking_reasons']);
     }
 

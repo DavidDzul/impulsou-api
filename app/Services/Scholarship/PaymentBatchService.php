@@ -56,6 +56,8 @@ class PaymentBatchService
      *     advance_paid_origin_month: ?int,
      *     advance_paid_divergence_reason: ?string,
      *     advance_payment_amount: string,
+     *     snapshot_temporary_increase_amount: ?string,
+     *     snapshot_temporary_increase_reason: ?string,
      * }>
      *
      * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
@@ -129,6 +131,13 @@ class PaymentBatchService
                 // TelmexPaymentPolicy::type() normalizes both shapes.
                 'r.snapshot_scholarship_type',
                 'r.snapshot_temporary_increase_amount',
+                // snapshot_temporary_increase_reason (sdd/temporary-increase-visibility,
+                // design D7): the amount above was already selected (consumed
+                // internally by TelmexPaymentPolicy); the reason was not —
+                // both are now also surfaced on the returned row (see below)
+                // for the row-level chip. Purely informational, like every
+                // other chip field here.
+                'r.snapshot_temporary_increase_reason',
                 'u.enrollment',
                 // scholarship_payment_data columns are NOT NULL (migration
                 // 2026_09_11_000000_...:14-16), so a NULL here (from the
@@ -239,6 +248,20 @@ class PaymentBatchService
                     $row->snapshot_scholarship_type,
                     $totalToPay
                 ),
+                // snapshot_temporary_increase_amount/_reason
+                // (sdd/temporary-increase-visibility, design D7): row-level
+                // chip data, raw pass-through of two frozen snapshot columns
+                // — DB::table() bypasses the decimal:2 cast, so the amount
+                // arrives as a raw string|null exactly as stored. Purely
+                // informational, same invariant as every other flag here:
+                // MUST NOT be read by PaymentReadinessEvaluator or influence
+                // is_payable/blocking_reasons, and MUST NOT be derived from
+                // or influence has_incident/scholarship_refrend_incidents —
+                // the two are unrelated data sources. Deliberately NOT added
+                // to paidRows() (same scope boundary as resolution_type/
+                // advance_paid — see the boundary-lock test).
+                'snapshot_temporary_increase_amount' => $row->snapshot_temporary_increase_amount,
+                'snapshot_temporary_increase_reason' => $row->snapshot_temporary_increase_reason,
             ];
         })->values()->all();
     }
