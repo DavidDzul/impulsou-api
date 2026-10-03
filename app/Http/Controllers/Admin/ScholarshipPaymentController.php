@@ -129,6 +129,8 @@ class ScholarshipPaymentController extends Controller
                 'resolution_notes'        => $refrend->resolution_notes,
                 'amount_breakdown' => [
                     'base_amount'                   => $refrend->base_amount,
+                    'temporary_increase_amount'     => $refrend->snapshot_temporary_increase_amount,
+                    'temporary_increase_reason'     => $refrend->snapshot_temporary_increase_reason,
                     'discount_percentage'           => $refrend->discount_percentage,
                     'discount_amount'                => $refrend->discount_amount,
                     'amount_pending_from_previous'  => $refrend->amount_pending_from_previous,

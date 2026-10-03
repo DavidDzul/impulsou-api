@@ -411,6 +411,43 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertSame('1450.00', $data['amount_breakdown']['total_to_pay']);
     }
 
+    // ── document(): temporary increase (sdd/payment-document-temp-increase-breakdown) ──
+
+    /** @test */
+    public function document_exposes_the_frozen_temporary_increase_in_the_amount_breakdown(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_temporary_increase_amount' => 500.00,
+            'snapshot_temporary_increase_reason' => 'Apoyo transporte',
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+
+        $this->assertSame('500.00', $data['amount_breakdown']['temporary_increase_amount']);
+        $this->assertSame('Apoyo transporte', $data['amount_breakdown']['temporary_increase_reason']);
+    }
+
+    /** @test */
+    public function document_returns_null_temporary_increase_keys_when_none_was_frozen(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+
+        $this->assertArrayHasKey('temporary_increase_amount', $data['amount_breakdown']);
+        $this->assertArrayHasKey('temporary_increase_reason', $data['amount_breakdown']);
+        $this->assertNull($data['amount_breakdown']['temporary_increase_amount']);
+        $this->assertNull($data['amount_breakdown']['temporary_increase_reason']);
+    }
+
     // ── document(): retentions (sdd/withholding-detail-display, PR2) ───────────
 
     /** @test */
