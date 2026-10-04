@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Scholarship\GraduateBecarioAction;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
@@ -16,13 +17,16 @@ class GenerateMonthlyRefrendsService
 {
     private ScholarshipCalculationService $calculationService;
     private AttendancePenaltyService $penaltyService;
+    private GraduateBecarioAction $graduateBecario;
 
     public function __construct(
         ScholarshipCalculationService $calculationService,
-        AttendancePenaltyService $penaltyService
+        AttendancePenaltyService $penaltyService,
+        GraduateBecarioAction $graduateBecario
     ) {
         $this->calculationService = $calculationService;
         $this->penaltyService     = $penaltyService;
+        $this->graduateBecario    = $graduateBecario;
     }
 
     /**
@@ -194,6 +198,11 @@ class GenerateMonthlyRefrendsService
             && $snapshot['snapshot_discount_percentage'] !== null
             && (float) $snapshot['snapshot_discount_percentage'] > 0;
 
+        // sdd/egresado-status-timing, design D2: computed once before the
+        // transaction closure. When true, this period IS the becario's
+        // retícula month+2 — the automatic $0 egreso refrendo.
+        $isEgreso = $profile->isEgresoReticulaPeriod($year, $month);
+
         $initialWorkflowStatus = $hasProfileDiscount ? 'CON_INCIDENCIA' : 'DRAFT';
         $incidentDescription   = null;
 
@@ -214,7 +223,7 @@ class GenerateMonthlyRefrendsService
             $incidentDescription = implode(', ', $parts) . '.';
         }
 
-        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount) {
+        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,
@@ -249,7 +258,10 @@ class GenerateMonthlyRefrendsService
                 'attendance_summary_snapshot'  => $attendanceSummary,
             ]);
 
-            if ($hasProfileDiscount && $incidentDescription !== null) {
+            // sdd/egresado-status-timing, design D2: a CLOSED $0 egreso row
+            // must not carry a DESCUENTO_PERFIL incident nor attendance
+            // penalties for a becario who graduated — skip both blocks.
+            if (!$isEgreso && $hasProfileDiscount && $incidentDescription !== null) {
                 $refrend->incidents()->create([
                     'incident_category' => 'ACADEMICO',
                     'incident_type'     => 'DESCUENTO_PERFIL',
@@ -259,13 +271,40 @@ class GenerateMonthlyRefrendsService
                 ]);
             }
 
-            // Evaluar penalizaciones automáticas de asistencia
             $user = $profile->user;
-            $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $referenceDate);
-            $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $year, $month);
+
+            if (!$isEgreso) {
+                // Evaluar penalizaciones automáticas de asistencia
+                $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $referenceDate);
+                $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $year, $month);
+            }
 
             // Recalcular montos finales
             $this->calculationService->recalculate($refrend);
+
+            if ($isEgreso) {
+                $notes = "Egreso automático por vencimiento de retícula al {$profile->egreso_administrativo}.";
+
+                $refrend->update([
+                    'final_amount'                 => 0,
+                    'amount_pending_from_previous' => 0,
+                    'refund_amount_from_previous'  => 0,
+                    'advance_payment_amount'       => 0,
+                    'resolution_type'              => ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+                    'resolution_notes'             => $notes,
+                    'workflow_status'              => 'CLOSED',
+                    'locked_at'                    => now(),
+                    'locked_by_id'                 => null,
+                ]);
+
+                // R3: graduation (user_type flip) is gated on the GENERATION
+                // path only — generateFutureForAdvance() shares this method,
+                // and flipping user_type for a FUTURE month would be wrong.
+                // The money mutation above stays ungated as defense-in-depth.
+                if ($createdVia === 'GENERATION') {
+                    $this->graduateBecario->execute($user, $refrend, $notes, null);
+                }
+            }
 
             return $refrend->fresh();
         });
@@ -320,9 +359,9 @@ class GenerateMonthlyRefrendsService
             );
         }
 
-        $egresoAdministrativo = $profile->reticula_end_date
-            ? Carbon::parse($profile->reticula_end_date)->addMonths(2)
-            : null;
+        // sdd/egresado-status-timing, design D1: shared cutoff primitive —
+        // no other formula for this boundary may exist in the codebase.
+        $egresoAdministrativo = $profile->egresoAdministrativoDate();
 
         if ($egresoAdministrativo && $periodStart->gt($egresoAdministrativo)) {
             throw new \DomainException(

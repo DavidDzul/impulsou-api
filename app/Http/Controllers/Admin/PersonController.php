@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Scholarship\GraduateBecarioAction;
 use App\Http\Controllers\Controller;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
@@ -16,6 +17,10 @@ use App\Mail\WelcomeMail;
 
 class PersonController extends Controller
 {
+    public function __construct(private GraduateBecarioAction $graduateBecario)
+    {
+    }
+
     public function store(Request $request): JsonResponse
     {
         $rules = array_merge(User::createRulesUser(), [
@@ -68,9 +73,11 @@ class PersonController extends Controller
         }
 
         DB::transaction(function () use ($person, $data) {
-            $person->update(['user_type' => 'BEC_INACTIVE']);
-
-            // Cancelar refrendo activo del mes actual si existe
+            // Cancelar refrendo activo del mes actual si existe. Esto se
+            // queda en el controlador (sdd/egresado-status-timing, design
+            // D3) — no forma parte de GraduateBecarioAction, que solo
+            // encapsula el flip de user_type + el log 'graduated' comunes a
+            // ambos flujos (manual y automático).
             $activeRefrend = ScholarshipRefrend::where('user_id', $person->id)
                 ->whereIn('status', [
                     RefrendStatus::DRAFT->value,
@@ -92,15 +99,7 @@ class PersonController extends Controller
                 ]);
             }
 
-            ScholarshipRefrendLog::create([
-                // Se registra en el refrendo cancelado o, si no hay, se crea un log suelto
-                // usando el último refrendo del becario como referencia.
-                'scholarship_refrend_id' => $activeRefrend?->id
-                    ?? ScholarshipRefrend::where('user_id', $person->id)->latest()->value('id'),
-                'performed_by_id' => auth()->id(),
-                'action'          => 'graduated',
-                'notes'           => $data['comment'],
-            ]);
+            $this->graduateBecario->execute($person, $activeRefrend, $data['comment'], auth()->id());
         });
 
         return response()->json([

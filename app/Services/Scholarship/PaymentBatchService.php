@@ -3,6 +3,7 @@
 namespace App\Services\Scholarship;
 
 use App\Models\ScholarshipPaymentBatch;
+use App\Models\ScholarshipRefrend;
 use App\Support\Scholarship\PaymentAmountFloor;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,17 @@ class PaymentBatchService
      * purely informational: they are never read by PaymentReadinessEvaluator
      * and never participate in is_payable/blocking_reasons.
      *
+     * ONE narrow, deliberate exception (sdd/egresado-status-timing, design
+     * D5): resolution_type = 'EGRESO_RETICULA' — the server-only value
+     * written by GenerateMonthlyRefrendsService for a becario's retícula
+     * month+2 — is excluded in SQL by Filter C in rows() below. This does
+     * NOT make resolution_type a payability input: Filter C REMOVES a row
+     * from candidacy entirely (identical semantics and placement to Filter
+     * A / TelmexPaymentPolicy::applyBatchCandidacy), it never grades one,
+     * and PaymentReadinessEvaluator still reads no resolution_type at all.
+     * Any future value stays purely informational unless it is added here
+     * as an explicit candidacy exclusion with this same reasoning.
+     *
      * advance_paid/advance_paid_amount/advance_paid_origin_year/
      * advance_paid_origin_month (sdd/pago-adelantado, design D6) follow the
      * exact same isolation — purely informational, never read by
@@ -97,6 +109,18 @@ class PaymentBatchService
         // TELMEX row without a currently active temporary increase has
         // nothing payable and is not a batch candidate at all.
         TelmexPaymentPolicy::applyBatchCandidacy($query, 'r');
+
+        // Filter C (sdd/egresado-status-timing, design D5): the
+        // auto-generated retícula month+2 egreso row is not a batch
+        // candidate at all. Grouped whereNull OR != is MANDATORY — a bare
+        // `!=` would evaluate NULL for every unresolved row and silently
+        // drop the entire normal payroll (SQL NULL semantics). Filter A
+        // gets away with a bare `!=` only because snapshot_scholarship_type
+        // is NOT NULL.
+        $query->where(function ($where) {
+            $where->whereNull('r.resolution_type')
+                ->orWhere('r.resolution_type', '!=', ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA);
+        });
 
         $refrends = $query
             ->orderBy('r.snapshot_name')

@@ -1316,4 +1316,74 @@ class PaymentBatchServiceTest extends TestCase
 
         $this->assertSame('1000.01', $summary['total_amount']);
     }
+
+    // ── Filter C: EGRESO_RETICULA candidacy exclusion (sdd/egresado-status-timing, design D5, risk R2) ──
+
+    /**
+     * THE regression gate (design risk R2, High severity, "the single
+     * highest-value test in this change"): a bare
+     * where('r.resolution_type', '!=', 'EGRESO_RETICULA') would evaluate
+     * SQL NULL for every row whose resolution_type is NULL (the ordinary
+     * unresolved-refrend case) and silently drop the ENTIRE normal payroll
+     * from the Pagos table. This test asserts a normal NULL-resolution_type
+     * row is NOT excluded.
+     */
+    /** @test */
+    public function a_normal_row_with_null_resolution_type_is_not_excluded_by_the_egreso_reticula_filter(): void
+    {
+        $this->makeReadyRefrend([
+            'resolution_type' => null,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows, 'A normal row with resolution_type=NULL must NOT be dropped by Filter C (the R2 NULL-trap regression).');
+    }
+
+    /** @test */
+    public function an_egreso_reticula_row_is_absent_entirely_from_candidates(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'     => 0.00,
+            'resolution_type'  => \App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(0, $rows, 'An EGRESO_RETICULA row must be absent entirely — not shown as $0.00 or floored to $0.01.');
+    }
+
+    /** @test */
+    public function an_egreso_reticula_row_is_excluded_while_a_normal_row_in_the_same_batch_still_appears(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario Normal',
+            'resolution_type'  => null,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario Egresado',
+            'final_amount'     => 0.00,
+            'resolution_type'  => \App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario Normal', $rows[0]['snapshot_name']);
+    }
+
+    /** @test */
+    public function other_resolution_types_are_never_excluded_by_filter_c(): void
+    {
+        $this->makeReadyRefrend(['resolution_type' => 'BECA_MES']);
+        $this->makeReadyRefrend(['resolution_type' => 'EGRESADO']);
+
+        $rows = $this->rows();
+
+        $this->assertCount(2, $rows, 'Filter C must only ever exclude resolution_type=EGRESO_RETICULA, never any other value.');
+    }
 }
