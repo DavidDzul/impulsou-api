@@ -59,14 +59,39 @@ class ScholarshipProfile extends Model
     protected $appends = ['egreso_administrativo'];
 
     /**
-     * Fecha límite administrativa: fin de retícula + 2 meses de gracia.
-     * Null si no hay fecha de fin de retícula. No es columna de BD.
+     * Fecha límite administrativa (egreso): fin de retícula + 2 meses de
+     * gracia, anclada al fin del mes resultante. Null si no hay fecha de fin
+     * de retícula. No es columna de BD.
+     *
+     * sdd/egresado-status-timing, design D1: this is the ONE shared formula
+     * for this boundary — assertPeriodWithinReticula() and the
+     * advance-payment guard both call this method instead of duplicating
+     * the calculation. startOfMonth() first makes day-of-month overflow
+     * structurally impossible (day 1 exists in every month).
      */
-    public function getEgresoAdministrativoAttribute(): ?string
+    public function egresoAdministrativoDate(): ?Carbon
     {
         return $this->reticula_end_date
-            ? Carbon::parse($this->reticula_end_date)->addMonths(2)->toDateString()
+            ? Carbon::parse($this->reticula_end_date)->startOfMonth()->addMonths(2)->endOfMonth()
             : null;
+    }
+
+    public function getEgresoAdministrativoAttribute(): ?string
+    {
+        return $this->egresoAdministrativoDate()?->toDateString();
+    }
+
+    /**
+     * True iff (year, month) IS the becario's retícula month+2 — the exact
+     * period the automatic $0 egreso refrendo must generate for. Explicit
+     * year/month comparison, NOT isSameMonth() — Carbon's year-sensitivity
+     * default varies by version and this cannot regress silently.
+     */
+    public function isEgresoReticulaPeriod(int $year, int $month): bool
+    {
+        $cutoff = $this->egresoAdministrativoDate();
+
+        return $cutoff !== null && $cutoff->year === $year && $cutoff->month === $month;
     }
 
     public static function createRules(): array

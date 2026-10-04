@@ -15,6 +15,15 @@ class ScholarshipRefrend extends Model
 {
     use HasFactory;
 
+    /**
+     * sdd/egresado-status-timing, design D2: server-only resolution_type,
+     * written exclusively by GenerateMonthlyRefrendsService for a becario's
+     * retícula month+2. Deliberately NEVER added to
+     * ScholarshipRefrendController.php:352's whitelist — same precedent as
+     * 'BAJA'. Distinct from the staff-selectable 'EGRESADO' value.
+     */
+    public const RESOLUTION_EGRESO_RETICULA = 'EGRESO_RETICULA';
+
     protected $table = 'scholarship_refrends';
 
     protected $fillable = [

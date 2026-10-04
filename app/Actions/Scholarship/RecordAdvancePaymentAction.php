@@ -9,6 +9,7 @@ use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Services\GenerateMonthlyRefrendsService;
 use App\Services\ScholarshipLoggingService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -128,6 +129,19 @@ class RecordAdvancePaymentAction
                     ->exists();
                 if ($existingRealRefrend) {
                     throw new \DomainException("Ya existe un refrendo para el periodo {$mon}/{$year}.");
+                }
+
+                // sdd/egresado-status-timing, design D6: reject a requested
+                // future period landing ON OR AFTER the becario's retícula
+                // month+2 boundary, before any future refrendo is generated.
+                // A CLOSED EGRESO_RETICULA refrend is also ineligible as an
+                // advance-payment ORIGIN, but that is already enforced by
+                // ALLOWED_WORKFLOW_STATUSES above — no new code needed there.
+                $cutoff = $profile->egresoAdministrativoDate();
+                if ($cutoff !== null && Carbon::create($year, $mon, 1)->gte($cutoff->copy()->startOfMonth())) {
+                    throw new \DomainException(
+                        "El periodo {$mon}/{$year} no puede pagarse por adelantado: cae en o después del mes de egreso administrativo del becario ({$cutoff->toDateString()})."
+                    );
                 }
 
                 $refrend = $this->generator->generateFutureForAdvance($profile, $year, $mon);

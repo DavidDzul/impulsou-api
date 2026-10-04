@@ -395,4 +395,95 @@ class RecordAdvancePaymentActionTest extends TestCase
             \Illuminate\Support\Facades\Event::forget('eloquent.creating: ' . ScholarshipAdvancePaymentMonth::class);
         }
     }
+
+    // ── sdd/egresado-status-timing, design D6 (tasks 3.1, 3.2, 4.5) ─────────
+
+    /** @test */
+    public function a_prospective_request_landing_on_the_reticula_boundary_month_is_rejected_before_generating_anything(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 8, 15));
+        $profile = $this->makeProfile(['reticula_end_date' => '2026-07-31']);
+        // cutoff (egreso administrativo) = 2026-09-30, so September 2026 is
+        // the boundary month ("on" the boundary).
+        $origin = $this->makeOriginRefrend($profile->user_id, ['period_year' => 2026, 'period_month' => 8]);
+
+        $this->expectException(\DomainException::class);
+
+        $this->action->execute($origin, [
+            'months' => [['year' => 2026, 'month' => 9]],
+        ], $this->admin->id);
+
+        $this->assertTrue(
+            ScholarshipRefrend::where('user_id', $profile->user_id)
+                ->where('period_year', 2026)
+                ->where('period_month', 9)
+                ->doesntExist()
+        );
+    }
+
+    /** @test */
+    public function a_prospective_request_landing_strictly_after_the_reticula_boundary_month_is_also_rejected(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 8, 15));
+        $profile = $this->makeProfile(['reticula_end_date' => '2026-07-31']);
+        $origin  = $this->makeOriginRefrend($profile->user_id, ['period_year' => 2026, 'period_month' => 8]);
+
+        $this->expectException(\DomainException::class);
+
+        $this->action->execute($origin, [
+            'months' => [['year' => 2026, 'month' => 10]],
+        ], $this->admin->id);
+    }
+
+    /** @test */
+    public function a_prospective_request_strictly_before_the_reticula_boundary_month_is_accepted(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 7, 15));
+        $profile = $this->makeProfile(['reticula_end_date' => '2026-07-31']);
+        // cutoff (egreso administrativo) = 2026-09-30. Origin is July 2026
+        // so August 2026 is both strictly after the origin period and
+        // strictly before the boundary month (September).
+        $origin = $this->makeOriginRefrend($profile->user_id, ['period_year' => 2026, 'period_month' => 7]);
+
+        $header = $this->action->execute($origin, [
+            'months' => [['year' => 2026, 'month' => 8]],
+        ], $this->admin->id);
+
+        $this->assertNotNull($header);
+    }
+
+    /** @test */
+    public function a_profile_with_no_reticula_end_date_is_never_blocked_by_the_boundary_guard(): void
+    {
+        $profile = $this->makeProfile(['reticula_end_date' => null]);
+        $origin  = $this->makeOriginRefrend($profile->user_id);
+
+        $header = $this->action->execute($origin, [
+            'months' => [['year' => 2027, 'month' => 6]],
+        ], $this->admin->id);
+
+        $this->assertNotNull($header);
+    }
+
+    /**
+     * Retrospective (origin) guard lock-in — design D6 confirms zero new
+     * code is needed: ALLOWED_WORKFLOW_STATUSES already excludes CLOSED,
+     * which is what an EGRESO_RETICULA refrend always carries.
+     */
+    /** @test */
+    public function a_closed_egreso_reticula_refrend_cannot_be_an_advance_payment_origin(): void
+    {
+        $profile = $this->makeProfile();
+        $origin  = $this->makeOriginRefrend($profile->user_id, [
+            'workflow_status' => 'CLOSED',
+            'resolution_type' => \App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'locked_at'       => now(),
+        ]);
+
+        $this->expectException(\DomainException::class);
+
+        $this->action->execute($origin, [
+            'months' => [['year' => 2026, 'month' => 12]],
+        ], $this->admin->id);
+    }
 }
