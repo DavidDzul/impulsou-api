@@ -21,7 +21,7 @@ use App\Models\ScholarshipPaymentBatch;
  */
 class BankPaymentFileName
 {
-    private const FORMAT = 'PAGO_%d_%s_%04d%02d_%d.TXT';
+    private const FORMAT = 'PAGO_%s_%04d%02d_%d.TXT';
 
     /** @var array<string, string> */
     private const ACCENT_MAP = [
@@ -33,7 +33,6 @@ class BankPaymentFileName
     {
         return sprintf(
             self::FORMAT,
-            $batch->generation_id,
             self::slugCampus($batch->campus),
             $batch->period_year,
             $batch->period_month,

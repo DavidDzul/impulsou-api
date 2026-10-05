@@ -13,12 +13,14 @@ use Illuminate\Support\Facades\DB;
  * review table (this PR) and the post-payment outcome report (a later PR
  * populates `outcome`/`outcome_reason` after BulkPayAction runs).
  *
- * Batch key is generation_id + campus + period_year + period_month, all
- * required (design D1 — a single generación+sede can have two different
- * periods simultaneously LISTO_PARA_PAGO, so the period must be part of the
- * key or "Pagar todos" could silently pay two payrolls at once).
+ * Batch key is campus + period_year + period_month only (sdd/pagos-batch-sede-totals:
+ * generation_id dropped from the key — a batch's rows may span multiple
+ * generaciones at the same campus/period; design D1's original period
+ * requirement still holds — a single sede can have two different periods
+ * simultaneously LISTO_PARA_PAGO, so the period must be part of the key or
+ * "Pagar todos" could silently pay two payrolls at once).
  *
- * Deviation from the design sketch: `rows()` takes the four batch-key scalars
+ * Deviation from the design sketch: `rows()` takes the batch-key scalars
  * directly rather than a `BatchKey` value object — no such PHP class is
  * listed in the design's File Changes table (only a TS interface of the same
  * name for the frontend), and this mirrors the existing
@@ -95,12 +97,11 @@ class PaymentBatchService
      * at its NOT NULL DEFAULT 0 — same convention as every other money field
      * in this row shape.
      */
-    public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
+    public function rows(string $campus, int $periodYear, int $periodMonth): array
     {
         $query = DB::table('scholarship_refrends as r')
             ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
             ->leftJoin('scholarship_payment_data as spd', 'spd.user_id', '=', 'r.user_id')
-            ->where('r.snapshot_generation_id', $generationId)
             ->where('r.snapshot_campus', $campus)
             ->where('r.period_year', $periodYear)
             ->where('r.period_month', $periodMonth);

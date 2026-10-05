@@ -40,7 +40,7 @@ class BankPaymentFileNameTest extends TestCase
 
         $filename = BankPaymentFileName::forBatch($batch);
 
-        $this->assertSame('PAGO_5_MERIDA_202609_42.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_202609_42.TXT', $filename);
     }
 
     /** @test */
@@ -56,7 +56,7 @@ class BankPaymentFileNameTest extends TestCase
 
         $filename = BankPaymentFileName::forBatch($batch);
 
-        $this->assertSame('PAGO_1_MERIDA_202605_1.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_202605_1.TXT', $filename);
     }
 
     /** @test */
@@ -72,7 +72,7 @@ class BankPaymentFileNameTest extends TestCase
 
         $filename = BankPaymentFileName::forBatch($batch);
 
-        $this->assertSame('PAGO_3_CIUDAD_DE_MEXICO_202601_8.TXT', $filename);
+        $this->assertSame('PAGO_CIUDAD_DE_MEXICO_202601_8.TXT', $filename);
     }
 
     /** @test */
@@ -88,7 +88,7 @@ class BankPaymentFileNameTest extends TestCase
 
         $filename = BankPaymentFileName::forBatch($batch);
 
-        $this->assertSame('PAGO_3_MERIDA_202601_9.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_202601_9.TXT', $filename);
     }
 
     /** @test */

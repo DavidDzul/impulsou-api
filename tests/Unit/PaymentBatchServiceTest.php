@@ -88,7 +88,7 @@ class PaymentBatchServiceTest extends TestCase
 
     private function rows(): array
     {
-        return $this->service->rows(self::GENERATION_ID, self::CAMPUS, self::YEAR, self::MONTH);
+        return $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
     }
 
     // ── Row shape ────────────────────────────────────────────────────────────
@@ -330,19 +330,37 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertContains('MISSING_ENROLLMENT', array_column($rows[0]['blocking_reasons'], 'code'));
     }
 
-    // ── Filtering by batch key (D1) ─────────────────────────────────────────
+    // ── Filtering by batch key (sdd/pagos-batch-sede-totals: campus + period only) ──
 
     /** @test */
-    public function rows_excludes_refrends_outside_the_batch_key(): void
+    public function rows_excludes_refrends_outside_the_campus_and_period_batch_key(): void
     {
         $this->makeReadyRefrend();
         $this->makeReadyRefrend(['period_month' => self::MONTH + 1]);
         $this->makeReadyRefrend(['snapshot_campus' => 'CANCUN']);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows, 'Only refrends matching campus + period_year + period_month must be returned — generation_id no longer narrows the key.');
+    }
+
+    /**
+     * INVERTED (sdd/pagos-batch-sede-totals): previously a different
+     * generation_id excluded a refrend from the batch (one batch per
+     * generación per sede). The batch key is now campus + period only, so
+     * a refrend from a DIFFERENT generación at the SAME campus+period
+     * MUST now be included — a batch spans multiple generaciones.
+     *
+     * @test
+     */
+    public function rows_includes_a_refrend_from_a_different_generation_at_the_same_campus_and_period(): void
+    {
+        $this->makeReadyRefrend();
         $this->makeReadyRefrend(['snapshot_generation_id' => self::GENERATION_ID + 1]);
 
         $rows = $this->rows();
 
-        $this->assertCount(1, $rows, 'Only refrends matching generation_id + campus + period_year + period_month must be returned.');
+        $this->assertCount(2, $rows, 'A batch must span multiple generaciones at the same campus+period — generation_id must not narrow the key.');
     }
 
     // ── total_to_pay formula (cross-checked against RefrendBulkQueryServiceTest fixtures) ──
