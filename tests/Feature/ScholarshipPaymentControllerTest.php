@@ -152,20 +152,18 @@ class ScholarshipPaymentControllerTest extends TestCase
     private function indexUrl(): string
     {
         return '/api/admin/scholarship-payments?' . http_build_query([
-            'generation_id' => self::GENERATION_ID,
-            'campus'        => self::CAMPUS,
-            'period_year'   => self::YEAR,
-            'period_month'  => self::MONTH,
+            'campus'       => self::CAMPUS,
+            'period_year'  => self::YEAR,
+            'period_month' => self::MONTH,
         ]);
     }
 
     private function processPayload(array $overrides = []): array
     {
         return array_merge([
-            'generation_id' => self::GENERATION_ID,
-            'campus'        => self::CAMPUS,
-            'period_year'   => self::YEAR,
-            'period_month'  => self::MONTH,
+            'campus'       => self::CAMPUS,
+            'period_year'  => self::YEAR,
+            'period_month' => self::MONTH,
         ], $overrides);
     }
 
@@ -224,6 +222,84 @@ class ScholarshipPaymentControllerTest extends TestCase
         $response->assertStatus(403);
         $refrend->refresh();
         $this->assertNull($refrend->locked_at);
+    }
+
+    // ── Validation (sdd/pagos-batch-sede-totals: batch key is campus + period only) ──
+
+    /** @test */
+    public function index_succeeds_with_no_generation_id_in_the_request(): void
+    {
+        $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->indexUrl());
+
+        $response->assertStatus(200);
+    }
+
+    /** @test */
+    public function index_returns_422_when_campus_is_missing(): void
+    {
+        $url = '/api/admin/scholarship-payments?' . http_build_query([
+            'period_year'  => self::YEAR,
+            'period_month' => self::MONTH,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($url);
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function index_returns_422_when_period_year_is_missing(): void
+    {
+        $url = '/api/admin/scholarship-payments?' . http_build_query([
+            'campus'       => self::CAMPUS,
+            'period_month' => self::MONTH,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($url);
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function index_returns_422_when_period_month_is_missing(): void
+    {
+        $url = '/api/admin/scholarship-payments?' . http_build_query([
+            'campus'      => self::CAMPUS,
+            'period_year' => self::YEAR,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($url);
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function process_succeeds_with_no_generation_id_in_the_request(): void
+    {
+        $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        );
+
+        $response->assertStatus(200);
+    }
+
+    /** @test */
+    public function process_returns_422_when_campus_is_missing(): void
+    {
+        $payload = $this->processPayload(['expected_count' => 0, 'expected_total' => '0.00']);
+        unset($payload['campus']);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $payload
+        );
+
+        $response->assertStatus(422);
     }
 
     // ── index() ──────────────────────────────────────────────────────────────
@@ -813,7 +889,6 @@ class ScholarshipPaymentControllerTest extends TestCase
 
         $this->assertDatabaseHas('scholarship_payment_batches', [
             'id'              => $batchId,
-            'generation_id'   => self::GENERATION_ID,
             'campus'          => self::CAMPUS,
             'period_year'     => self::YEAR,
             'period_month'    => self::MONTH,

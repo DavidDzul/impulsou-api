@@ -47,7 +47,6 @@ class ScholarshipPaymentBatchModelTest extends TestCase
     {
         $this->assertEqualsCanonicalizing(
             [
-                'generation_id',
                 'campus',
                 'period_year',
                 'period_month',

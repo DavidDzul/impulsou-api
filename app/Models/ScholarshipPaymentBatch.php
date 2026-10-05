@@ -11,7 +11,6 @@ class ScholarshipPaymentBatch extends Model
     protected $table = 'scholarship_payment_batches';
 
     protected $fillable = [
-        'generation_id',
         'campus',
         'period_year',
         'period_month',

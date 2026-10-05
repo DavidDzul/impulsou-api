@@ -23,7 +23,10 @@ use Illuminate\Http\Request;
  * `admin/scholarship-payments` (design D6 — the near-collision between these
  * two names is intentional/accepted, mitigated by this docblock).
  *
- * index()    -> pre-payment readiness list + summary for a batch key.
+ * index()    -> pre-payment readiness list + summary for a batch key
+ *               (campus + period_year + period_month — sdd/pagos-batch-sede-totals
+ *               dropped generation_id from the key; a batch's rows may span
+ *               multiple generaciones at the same campus/period).
  * document() -> single-becario payment document (matrícula, incidencias,
  *               retenciones, comentarios, desglose de monto).
  * process()  -> the money gate: re-derives batch membership from the key
@@ -38,7 +41,6 @@ class ScholarshipPaymentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'generation_id' => 'required|integer',
             'campus'        => 'required|string|max:50',
             'period_year'   => 'required|integer|min:2020|max:2100',
             'period_month'  => 'required|integer|min:1|max:12',
@@ -46,7 +48,6 @@ class ScholarshipPaymentController extends Controller
 
         $service = app(PaymentBatchService::class);
         $rows    = $service->rows(
-            (int) $data['generation_id'],
             $data['campus'],
             (int) $data['period_year'],
             (int) $data['period_month']
@@ -158,7 +159,6 @@ class ScholarshipPaymentController extends Controller
     public function process(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'generation_id'  => 'required|integer',
             'campus'         => 'required|string|max:50',
             'period_year'    => 'required|integer|min:2020|max:2100',
             'period_month'   => 'required|integer|min:1|max:12',
@@ -168,7 +168,6 @@ class ScholarshipPaymentController extends Controller
 
         $service = app(PaymentBatchService::class);
         $rows    = $service->rows(
-            (int) $data['generation_id'],
             $data['campus'],
             (int) $data['period_year'],
             (int) $data['period_month']
@@ -198,14 +197,13 @@ class ScholarshipPaymentController extends Controller
             ], 409);
         }
 
-        // Guard against the unique key (generation_id, campus, period_year,
-        // period_month) — without this, a batch row already existing for
-        // this exact key (a genuine re-submit, or an orphaned row left over
-        // from an earlier attempt) surfaces as an unhandled 500 with the raw
-        // SQL "Duplicate entry" exception exposed to the client (live bug
+        // Guard against the unique key (campus, period_year, period_month)
+        // — without this, a batch row already existing for this exact key
+        // (a genuine re-submit, or an orphaned row left over from an
+        // earlier attempt) surfaces as an unhandled 500 with the raw SQL
+        // "Duplicate entry" exception exposed to the client (live bug
         // report 2026-09-27), instead of a clean, actionable response.
-        $existingBatch = ScholarshipPaymentBatch::where('generation_id', $data['generation_id'])
-            ->where('campus', $data['campus'])
+        $existingBatch = ScholarshipPaymentBatch::where('campus', $data['campus'])
             ->where('period_year', $data['period_year'])
             ->where('period_month', $data['period_month'])
             ->first();
@@ -219,7 +217,6 @@ class ScholarshipPaymentController extends Controller
         }
 
         $batch = ScholarshipPaymentBatch::create([
-            'generation_id'   => $data['generation_id'],
             'campus'          => $data['campus'],
             'period_year'     => $data['period_year'],
             'period_month'    => $data['period_month'],
