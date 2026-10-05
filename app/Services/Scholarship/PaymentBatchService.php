@@ -2,6 +2,7 @@
 
 namespace App\Services\Scholarship;
 
+use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Support\Scholarship\PaymentAmountFloor;
@@ -13,12 +14,14 @@ use Illuminate\Support\Facades\DB;
  * review table (this PR) and the post-payment outcome report (a later PR
  * populates `outcome`/`outcome_reason` after BulkPayAction runs).
  *
- * Batch key is generation_id + campus + period_year + period_month, all
- * required (design D1 — a single generación+sede can have two different
- * periods simultaneously LISTO_PARA_PAGO, so the period must be part of the
- * key or "Pagar todos" could silently pay two payrolls at once).
+ * Batch key is campus + period_year + period_month only (sdd/pagos-batch-sede-totals:
+ * generation_id dropped from the key — a batch's rows may span multiple
+ * generaciones at the same campus/period; design D1's original period
+ * requirement still holds — a single sede can have two different periods
+ * simultaneously LISTO_PARA_PAGO, so the period must be part of the key or
+ * "Pagar todos" could silently pay two payrolls at once).
  *
- * Deviation from the design sketch: `rows()` takes the four batch-key scalars
+ * Deviation from the design sketch: `rows()` takes the batch-key scalars
  * directly rather than a `BatchKey` value object — no such PHP class is
  * listed in the design's File Changes table (only a TS interface of the same
  * name for the frontend), and this mirrors the existing
@@ -59,6 +62,9 @@ class PaymentBatchService
      *     advance_payment_amount: string,
      *     snapshot_temporary_increase_amount: ?string,
      *     snapshot_temporary_increase_reason: ?string,
+     *     snapshot_scholarship_type: string,
+     *     base_amount: string,
+     *     snapshot_monto_apoyo: ?string,
      * }>
      *
      * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
@@ -94,13 +100,21 @@ class PaymentBatchService
      * in the same batch. Always a decimal string, "0.00" when the column is
      * at its NOT NULL DEFAULT 0 — same convention as every other money field
      * in this row shape.
+     *
+     * snapshot_scholarship_type/base_amount/snapshot_monto_apoyo
+     * (sdd/pagos-batch-sede-totals, design D9) are raw pass-throughs added
+     * for the batch summary's type-partitioned money totals (see
+     * summary() below). Purely informational, same invariant as every
+     * other flag here: MUST NOT be read by PaymentReadinessEvaluator or
+     * influence is_payable/blocking_reasons. Deliberately NOT added to
+     * paidRows() — same scope boundary as resolution_type/advance_paid/
+     * snapshot_temporary_increase_amount.
      */
-    public function rows(int $generationId, string $campus, int $periodYear, int $periodMonth): array
+    public function rows(string $campus, int $periodYear, int $periodMonth): array
     {
         $query = DB::table('scholarship_refrends as r')
             ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
             ->leftJoin('scholarship_payment_data as spd', 'spd.user_id', '=', 'r.user_id')
-            ->where('r.snapshot_generation_id', $generationId)
             ->where('r.snapshot_campus', $campus)
             ->where('r.period_year', $periodYear)
             ->where('r.period_month', $periodMonth);
@@ -173,6 +187,12 @@ class PaymentBatchService
                 // added for PR3 so the readiness evaluator can enforce
                 // BankDataValidator's RFC rule (design D2).
                 'spd.rfc',
+                // base_amount/snapshot_monto_apoyo (sdd/pagos-batch-sede-totals,
+                // design D9): raw pass-throughs feeding summary()'s type-
+                // partitioned money totals. r.snapshot_scholarship_type is
+                // already selected above.
+                'r.base_amount',
+                'r.snapshot_monto_apoyo',
             ]);
 
         // Quick-glance indicator for has_incident: the same incidents()
@@ -286,6 +306,18 @@ class PaymentBatchService
                 // advance_paid — see the boundary-lock test).
                 'snapshot_temporary_increase_amount' => $row->snapshot_temporary_increase_amount,
                 'snapshot_temporary_increase_reason' => $row->snapshot_temporary_increase_reason,
+                // snapshot_scholarship_type/base_amount/snapshot_monto_apoyo
+                // (sdd/pagos-batch-sede-totals, design D9): raw pass-through,
+                // DB::table() bypasses the decimal:2/enum casts, so these
+                // arrive exactly as stored. Purely informational, like every
+                // other chip field above: MUST NOT be read by
+                // PaymentReadinessEvaluator or influence is_payable/
+                // blocking_reasons. Deliberately NOT added to paidRows()
+                // (same scope boundary as the other informational fields —
+                // see the boundary-lock test).
+                'snapshot_scholarship_type' => $row->snapshot_scholarship_type,
+                'base_amount'               => $row->base_amount,
+                'snapshot_monto_apoyo'      => $row->snapshot_monto_apoyo,
             ];
         })->values()->all();
     }
@@ -368,8 +400,33 @@ class PaymentBatchService
      * per-row status and summary"). `total_amount` sums `total_to_pay` across
      * READY rows only — a blocked row's amount is not yet a committed payout.
      *
-     * @param array<int, array{is_payable: bool, total_to_pay: string}> $rows
-     * @return array{total: int, ready: int, blocking: int, total_amount: string}
+     * beca_amount/apoyo_amount/pago_iu_amount/difference_amount
+     * (sdd/pagos-batch-sede-totals, design D9-D12) are the 5-card money
+     * breakdown, also computed over $readyRows only, same scope as
+     * total_amount. base_amount is already the nominal, frozen,
+     * type-partitioned figure (IU -> monthly_amount, TELMEX_IU ->
+     * iu_payment_amount, TELMEX -> 0.00) — no discount/withholding/floor
+     * adjustment is applied to cards 1-3 (design's explicit requirement).
+     * difference_amount MAY be negative (design D13 — the UI formats the
+     * sign, this method only computes the raw value).
+     *
+     * @param array<int, array{
+     *     is_payable: bool,
+     *     total_to_pay: string,
+     *     snapshot_scholarship_type: string,
+     *     base_amount: string,
+     *     snapshot_monto_apoyo: ?string,
+     * }> $rows
+     * @return array{
+     *     total: int,
+     *     ready: int,
+     *     blocking: int,
+     *     beca_amount: string,
+     *     apoyo_amount: string,
+     *     pago_iu_amount: string,
+     *     total_amount: string,
+     *     difference_amount: string,
+     * }
      */
     public function summary(array $rows): array
     {
@@ -381,11 +438,32 @@ class PaymentBatchService
             0.0
         );
 
+        // Type-filtered nominal sums (design D10/D11). snapshot_scholarship_type
+        // is a raw string here — rows() reads it via DB::table(), which
+        // bypasses the enum cast — so a direct ->value comparison is correct
+        // and no normalization is needed (unlike paidRows(), which sees the
+        // cast object).
+        $sumByType = fn (string $field, string $type): float => array_reduce(
+            $readyRows,
+            fn (float $carry, array $row) => $row['snapshot_scholarship_type'] === $type
+                ? $carry + (float) ($row[$field] ?? 0)
+                : $carry,
+            0.0
+        );
+
+        $becaAmount   = $sumByType('base_amount', ScholarshipType::IU->value);
+        $apoyoAmount  = $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value);
+        $pagoIuAmount = $sumByType('base_amount', ScholarshipType::TELMEX_IU->value);
+
         return [
-            'total'        => count($rows),
-            'ready'        => count($readyRows),
-            'blocking'     => count($rows) - count($readyRows),
-            'total_amount' => number_format($totalAmount, 2, '.', ''),
+            'total'             => count($rows),
+            'ready'             => count($readyRows),
+            'blocking'          => count($rows) - count($readyRows),
+            'beca_amount'       => number_format($becaAmount, 2, '.', ''),
+            'apoyo_amount'      => number_format($apoyoAmount, 2, '.', ''),
+            'pago_iu_amount'    => number_format($pagoIuAmount, 2, '.', ''),
+            'total_amount'      => number_format($totalAmount, 2, '.', ''),
+            'difference_amount' => number_format($becaAmount + $apoyoAmount + $pagoIuAmount - $totalAmount, 2, '.', ''),
         ];
     }
 

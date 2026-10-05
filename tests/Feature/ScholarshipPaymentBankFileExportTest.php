@@ -103,7 +103,6 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
             'amount_pending_from_previous' => 0,
             'snapshot_name'                => 'Test Becario',
             'snapshot_generation'          => null,
-            'snapshot_generation_id'       => self::GENERATION_ID,
             'snapshot_campus'              => self::CAMPUS,
             'snapshot_scholarship_type'    => ScholarshipType::IU->value,
         ], $refrendOverrides));
@@ -112,10 +111,9 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
     private function processPayload(array $overrides = []): array
     {
         return array_merge([
-            'generation_id' => self::GENERATION_ID,
-            'campus'        => self::CAMPUS,
-            'period_year'   => self::YEAR,
-            'period_month'  => self::MONTH,
+            'campus'       => self::CAMPUS,
+            'period_year'  => self::YEAR,
+            'period_month' => self::MONTH,
         ], $overrides);
     }
 
@@ -150,7 +148,6 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
     private function makeLegacyPaidBatch(array $refrendSpecs): ScholarshipPaymentBatch
     {
         $batch = ScholarshipPaymentBatch::create([
-            'generation_id'   => self::GENERATION_ID,
             'campus'          => self::CAMPUS,
             'period_year'     => self::YEAR,
             'period_month'    => self::MONTH,
@@ -361,7 +358,6 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
     public function export_returns_422_for_a_batch_with_zero_paid_refrends(): void
     {
         $batch = ScholarshipPaymentBatch::create([
-            'generation_id'   => self::GENERATION_ID,
             'campus'          => self::CAMPUS,
             'period_year'     => self::YEAR,
             'period_month'    => self::MONTH,
@@ -380,7 +376,6 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
     public function export_summary_returns_422_for_a_batch_with_zero_paid_refrends(): void
     {
         $batch = ScholarshipPaymentBatch::create([
-            'generation_id'   => self::GENERATION_ID,
             'campus'          => self::CAMPUS,
             'period_year'     => self::YEAR,
             'period_month'    => self::MONTH,

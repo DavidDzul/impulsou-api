@@ -88,7 +88,7 @@ class PaymentBatchServiceTest extends TestCase
 
     private function rows(): array
     {
-        return $this->service->rows(self::GENERATION_ID, self::CAMPUS, self::YEAR, self::MONTH);
+        return $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
     }
 
     // ── Row shape ────────────────────────────────────────────────────────────
@@ -330,19 +330,37 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertContains('MISSING_ENROLLMENT', array_column($rows[0]['blocking_reasons'], 'code'));
     }
 
-    // ── Filtering by batch key (D1) ─────────────────────────────────────────
+    // ── Filtering by batch key (sdd/pagos-batch-sede-totals: campus + period only) ──
 
     /** @test */
-    public function rows_excludes_refrends_outside_the_batch_key(): void
+    public function rows_excludes_refrends_outside_the_campus_and_period_batch_key(): void
     {
         $this->makeReadyRefrend();
         $this->makeReadyRefrend(['period_month' => self::MONTH + 1]);
         $this->makeReadyRefrend(['snapshot_campus' => 'CANCUN']);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows, 'Only refrends matching campus + period_year + period_month must be returned — generation_id no longer narrows the key.');
+    }
+
+    /**
+     * INVERTED (sdd/pagos-batch-sede-totals): previously a different
+     * generation_id excluded a refrend from the batch (one batch per
+     * generación per sede). The batch key is now campus + period only, so
+     * a refrend from a DIFFERENT generación at the SAME campus+period
+     * MUST now be included — a batch spans multiple generaciones.
+     *
+     * @test
+     */
+    public function rows_includes_a_refrend_from_a_different_generation_at_the_same_campus_and_period(): void
+    {
+        $this->makeReadyRefrend();
         $this->makeReadyRefrend(['snapshot_generation_id' => self::GENERATION_ID + 1]);
 
         $rows = $this->rows();
 
-        $this->assertCount(1, $rows, 'Only refrends matching generation_id + campus + period_year + period_month must be returned.');
+        $this->assertCount(2, $rows, 'A batch must span multiple generaciones at the same campus+period — generation_id must not narrow the key.');
     }
 
     // ── total_to_pay formula (cross-checked against RefrendBulkQueryServiceTest fixtures) ──
@@ -632,11 +650,24 @@ class PaymentBatchServiceTest extends TestCase
             ['is_payable' => true, 'blocking_reasons' => [], 'total_to_pay' => '1000.00'],
         ], $captured);
 
+        // beca_amount/apoyo_amount/pago_iu_amount/difference_amount
+        // (sdd/pagos-batch-sede-totals, design D9-D12) are a side effect of
+        // this test's fixtures, all defaulting to IU/base_amount=1000.00/
+        // snapshot_monto_apoyo=null via makeReadyRefrend() — not evidence
+        // about resolution_type/resolution_cause, which this test exists to
+        // lock. The point under test (is_payable/blocking_reasons/
+        // total_to_pay/total_amount unaffected by resolution_type) still
+        // holds; these 4 new keys are included only so the assertion stays
+        // an exact, non-partial match.
         $this->assertSame([
-            'total'        => 4,
-            'ready'        => 4,
-            'blocking'     => 0,
-            'total_amount' => '2300.01',
+            'total'             => 4,
+            'ready'             => 4,
+            'blocking'          => 0,
+            'beca_amount'       => '4000.00',
+            'apoyo_amount'      => '0.00',
+            'pago_iu_amount'    => '0.00',
+            'total_amount'      => '2300.01',
+            'difference_amount' => '1699.99',
         ], $summary);
     }
 
@@ -691,6 +722,9 @@ class PaymentBatchServiceTest extends TestCase
             'excluded_from_bank_file',
             // sdd/temporary-increase-visibility, design D7:
             'snapshot_temporary_increase_amount', 'snapshot_temporary_increase_reason',
+            // sdd/pagos-batch-sede-totals, design D9 (Part 2 — PR3): raw
+            // pass-through type-partition fields, purely informational.
+            'snapshot_scholarship_type', 'base_amount', 'snapshot_monto_apoyo',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -1385,5 +1419,205 @@ class PaymentBatchServiceTest extends TestCase
         $rows = $this->rows();
 
         $this->assertCount(2, $rows, 'Filter C must only ever exclude resolution_type=EGRESO_RETICULA, never any other value.');
+    }
+
+    // ── Part 2 (sdd/pagos-batch-sede-totals, design D9-D12): rows() additive
+    // type-partition fields + summary() 5 money totals ──────────────────────
+
+    /** @test */
+    public function rows_emits_the_three_new_type_partition_fields_without_altering_any_previously_existing_field(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'snapshot_monto_apoyo'      => 150.00,
+        ]);
+
+        $rows = $this->rows();
+
+        // New fields — raw pass-through, numeric affinity under sqlite (same
+        // assertEquals convention as snapshot_temporary_increase_amount above).
+        $this->assertEquals(ScholarshipType::IU->value, $rows[0]['snapshot_scholarship_type']);
+        $this->assertEquals(1000.00, $rows[0]['base_amount']);
+        $this->assertEquals(150.00, $rows[0]['snapshot_monto_apoyo']);
+
+        // Previously-existing fields must survive unchanged.
+        $this->assertSame('1000.00', $rows[0]['total_to_pay']);
+        $this->assertTrue($rows[0]['is_payable']);
+        $this->assertSame([], $rows[0]['blocking_reasons']);
+    }
+
+    /** @test */
+    public function rows_returns_null_for_snapshot_monto_apoyo_when_absent(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'snapshot_monto_apoyo'      => null,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertNull($rows[0]['snapshot_monto_apoyo']);
+    }
+
+    /** @test */
+    public function paid_rows_never_exposes_base_amount_or_snapshot_monto_apoyo(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_monto_apoyo' => 150.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey('base_amount', $rows[0]);
+        $this->assertArrayNotHasKey('snapshot_monto_apoyo', $rows[0]);
+    }
+
+    /** @test */
+    public function summary_computes_beca_and_apoyo_totals_for_an_iu_only_batch(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => 150.00,
+            'final_amount'              => 1150.00,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 500.00,
+            'snapshot_monto_apoyo'      => 100.00,
+            'final_amount'              => 600.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('1500.00', $summary['beca_amount']);
+        $this->assertSame('250.00', $summary['apoyo_amount']);
+        $this->assertSame('0.00', $summary['pago_iu_amount']);
+        $this->assertSame('1750.00', $summary['total_amount'], 'total_amount must stay unchanged by this addition.');
+        $this->assertSame('0.00', $summary['difference_amount'], 'No discounts or increases active — card 5 nets to zero.');
+    }
+
+    /** @test */
+    public function summary_computes_pago_iu_amount_independently_from_beca_and_apoyo_in_a_mixed_batch(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => 150.00,
+            'final_amount'              => 1150.00,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'base_amount'               => 800.00,
+            // Telmex-covered bookkeeping money — must NOT leak into card 2
+            // (design D11's correctness-gate rationale).
+            'snapshot_monto_apoyo'      => 200.00,
+            'final_amount'              => 800.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('1000.00', $summary['beca_amount']);
+        $this->assertSame('150.00', $summary['apoyo_amount']);
+        $this->assertSame('800.00', $summary['pago_iu_amount']);
+        $this->assertSame('1950.00', $summary['total_amount']);
+    }
+
+    /** @test */
+    public function summary_treats_null_snapshot_monto_apoyo_as_zero_in_apoyo_amount(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => null,
+            'final_amount'              => 1000.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('0.00', $summary['apoyo_amount']);
+    }
+
+    /** @test */
+    public function summary_difference_amount_is_negative_when_active_increases_or_discounts_dominate(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => null,
+            'final_amount'              => 2000.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('-1000.00', $summary['difference_amount']);
+    }
+
+    /** @test */
+    public function egreso_reticula_refrend_is_absent_from_all_five_summary_totals(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => 150.00,
+            'final_amount'              => 1150.00,
+        ]);
+        $this->makeReadyRefrend([
+            'final_amount'     => 0.00,
+            'resolution_type'  => \App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('1000.00', $summary['beca_amount']);
+        $this->assertSame('150.00', $summary['apoyo_amount']);
+        $this->assertSame('0.00', $summary['pago_iu_amount']);
+        $this->assertSame('1150.00', $summary['total_amount']);
+        $this->assertSame('0.00', $summary['difference_amount']);
+    }
+
+    /**
+     * Lock-in regression test (spec "Pure-TELMEX non-representation in
+     * cards 1-3 is an accepted non-requirement") — NOT a fix. A pure TELMEX
+     * becario has base_amount=0.00 by the type-partition formula and is
+     * excluded from card 2's IU-only filter, so an active temporary
+     * increase that makes it a batch candidate (Filter A) surfaces ONLY
+     * inside card 4/card 5 — cards 1-3 stay unaffected.
+     */
+    /** @test */
+    public function pure_telmex_with_an_active_increase_affects_only_card_four_and_cards_one_through_three_remain_unaffected(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => 150.00,
+            'final_amount'              => 1150.00,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'base_amount'                        => 0.00,
+            'snapshot_monto_apoyo'               => null,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 500.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('1000.00', $summary['beca_amount'], 'The pure TELMEX increase must not leak into card 1.');
+        $this->assertSame('150.00', $summary['apoyo_amount'], 'The pure TELMEX increase must not leak into card 2.');
+        $this->assertSame('0.00', $summary['pago_iu_amount'], 'A pure TELMEX row is never TELMEX_IU — card 3 stays unaffected.');
+        $this->assertSame('1650.00', $summary['total_amount'], 'Card 4 includes the TELMEX increase amount.');
+        $this->assertSame('-500.00', $summary['difference_amount'], "The TELMEX becario's contribution surfaces only inside card 5's net difference.");
     }
 }
