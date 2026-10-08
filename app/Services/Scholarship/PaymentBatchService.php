@@ -2,6 +2,7 @@
 
 namespace App\Services\Scholarship;
 
+use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
@@ -44,6 +45,7 @@ class PaymentBatchService
      *     account_number: ?string,
      *     rfc: ?string,
      *     payment_batch_id: ?int,
+     *     status: string,
      *     total_to_pay: string,
      *     is_payable: bool,
      *     blocking_reasons: array<int, array{code: string, message: string}>,
@@ -265,6 +267,15 @@ class PaymentBatchService
                 'account_number'            => $row->account_number,
                 'rfc'                       => $row->rfc,
                 'payment_batch_id'          => $row->payment_batch_id,
+                // status (sdd/pagos-por-generacion-estado-pago, design D2):
+                // raw pass-through of the already-SELECTed r.status column.
+                // DB::table() bypasses the enum cast, so this arrives as a
+                // raw string. Purely informational, same invariant as every
+                // other chip field above: MUST NOT be read by
+                // PaymentReadinessEvaluator or influence is_payable/
+                // blocking_reasons (it is read internally by the evaluator
+                // off the raw DB row object, not off this returned array).
+                'status'                    => $row->status,
                 'total_to_pay'              => $totalToPay,
                 'is_payable'                => $evaluation['is_payable'],
                 'blocking_reasons'          => $evaluation['blocking_reasons'],
@@ -448,8 +459,153 @@ class PaymentBatchService
     {
         $readyRows = array_values(array_filter($rows, fn (array $row) => $row['is_payable']));
 
-        $totalAmount = array_reduce(
-            $readyRows,
+        $totals = $this->moneyTotals($readyRows);
+
+        return [
+            'total'             => count($rows),
+            'ready'             => count($readyRows),
+            'blocking'          => count($rows) - count($readyRows),
+            'beca_amount'       => number_format($totals['beca'], 2, '.', ''),
+            'apoyo_amount'      => number_format($totals['apoyo'], 2, '.', ''),
+            'pago_iu_amount'    => number_format($totals['pago_iu'], 2, '.', ''),
+            'total_amount'      => number_format($totals['total'], 2, '.', ''),
+            'difference_amount' => number_format(
+                $totals['beca'] + $totals['apoyo'] + $totals['pago_iu'] - $totals['total'],
+                2,
+                '.',
+                ''
+            ),
+        ];
+    }
+
+    /**
+     * Status partition + money breakdown for the by-generación summary
+     * (sdd/pagos-por-generacion-estado-pago, design D1/D4). Unlike summary()
+     * (ready/blocking, Lotes de pago), this partitions into THREE mutually
+     * exclusive, exhaustive groups: paid, pending, blocked — always
+     * paid + pending + blocked === total.
+     *
+     * isPaid is evaluated FIRST (design D1): a row with payment_batch_id set
+     * OR status === PAID counts as Pagados even if is_payable happens to be
+     * false (ALREADY_PAID) or — for a legacy PAID row with no batch/lock —
+     * even if is_payable is still true. Only after that check does
+     * is_payable decide pending vs blocked.
+     *
+     * Money is computed over paid+pending rows only (design D4) — a blocked
+     * row's amount is not a committed or expected payout. beca_amount/
+     * apoyo_amount/pago_iu_amount are the nominal, type-partitioned figures
+     * (moneyTotals() over paid+pending); paid_amount/pending_amount are each
+     * group's own total_to_pay sum; total_amount is their sum;
+     * difference_amount MAY be negative (same convention as summary()).
+     *
+     * @param array<int, array{
+     *     is_payable: bool,
+     *     payment_batch_id: ?int,
+     *     status: string,
+     *     total_to_pay: string,
+     *     snapshot_scholarship_type: string,
+     *     base_amount: string,
+     *     snapshot_monto_apoyo: ?string,
+     * }> $rows
+     * @return array{
+     *     total: int,
+     *     paid: int,
+     *     pending: int,
+     *     blocked: int,
+     *     beca_amount: string,
+     *     apoyo_amount: string,
+     *     pago_iu_amount: string,
+     *     paid_amount: string,
+     *     pending_amount: string,
+     *     total_amount: string,
+     *     difference_amount: string,
+     * }
+     */
+    public function generationSummary(array $rows): array
+    {
+        $groups = array_map(fn (array $row) => $this->partitionGroup($row), $rows);
+
+        $paid    = [];
+        $pending = [];
+        $blocked = [];
+
+        foreach ($rows as $i => $row) {
+            match ($groups[$i]) {
+                'paid'    => $paid[]    = $row,
+                'pending' => $pending[] = $row,
+                'blocked' => $blocked[] = $row,
+            };
+        }
+
+        $counted = array_values(array_filter(
+            $rows,
+            fn (array $row, int $i) => $groups[$i] !== 'blocked',
+            ARRAY_FILTER_USE_BOTH
+        ));
+
+        $nominal       = $this->moneyTotals($counted);
+        $paidAmount    = $this->moneyTotals($paid)['total'];
+        $pendingAmount = $this->moneyTotals($pending)['total'];
+        $totalAmount   = $nominal['total'];
+
+        return [
+            'total'             => count($rows),
+            'paid'              => count($paid),
+            'pending'           => count($pending),
+            'blocked'           => count($blocked),
+            'beca_amount'       => number_format($nominal['beca'], 2, '.', ''),
+            'apoyo_amount'      => number_format($nominal['apoyo'], 2, '.', ''),
+            'pago_iu_amount'    => number_format($nominal['pago_iu'], 2, '.', ''),
+            'paid_amount'       => number_format($paidAmount, 2, '.', ''),
+            'pending_amount'    => number_format($pendingAmount, 2, '.', ''),
+            'total_amount'      => number_format($totalAmount, 2, '.', ''),
+            'difference_amount' => number_format(
+                $nominal['beca'] + $nominal['apoyo'] + $nominal['pago_iu'] - $totalAmount,
+                2,
+                '.',
+                ''
+            ),
+        ];
+    }
+
+    /**
+     * isPaid first (design D1): payment_batch_id !== null OR
+     * status === RefrendStatus::PAID->value. status is a raw string here
+     * (DB::table() bypasses the enum cast), so a direct ->value comparison
+     * is correct, same convention as summary()'s snapshot_scholarship_type
+     * checks.
+     *
+     * @param array{is_payable: bool, payment_batch_id: ?int, status: string} $row
+     */
+    private function partitionGroup(array $row): string
+    {
+        $isPaid = $row['payment_batch_id'] !== null || $row['status'] === RefrendStatus::PAID->value;
+
+        if ($isPaid) {
+            return 'paid';
+        }
+
+        return $row['is_payable'] ? 'pending' : 'blocked';
+    }
+
+    /**
+     * Shared money-reduction core (design D3), extracted byte-identically
+     * from summary()'s original inline math — same operations, same order,
+     * same casts. summary() and generationSummary() both call this and then
+     * apply their own number_format()/key-shape on top.
+     *
+     * @param array<int, array{
+     *     total_to_pay: string,
+     *     snapshot_scholarship_type: string,
+     *     base_amount: string,
+     *     snapshot_monto_apoyo: ?string,
+     * }> $rows
+     * @return array{beca: float, apoyo: float, pago_iu: float, total: float}
+     */
+    private function moneyTotals(array $rows): array
+    {
+        $total = array_reduce(
+            $rows,
             fn (float $carry, array $row) => $carry + (float) $row['total_to_pay'],
             0.0
         );
@@ -460,26 +616,18 @@ class PaymentBatchService
         // and no normalization is needed (unlike paidRows(), which sees the
         // cast object).
         $sumByType = fn (string $field, string $type): float => array_reduce(
-            $readyRows,
+            $rows,
             fn (float $carry, array $row) => $row['snapshot_scholarship_type'] === $type
                 ? $carry + (float) ($row[$field] ?? 0)
                 : $carry,
             0.0
         );
 
-        $becaAmount   = $sumByType('base_amount', ScholarshipType::IU->value);
-        $apoyoAmount  = $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value);
-        $pagoIuAmount = $sumByType('base_amount', ScholarshipType::TELMEX_IU->value);
-
         return [
-            'total'             => count($rows),
-            'ready'             => count($readyRows),
-            'blocking'          => count($rows) - count($readyRows),
-            'beca_amount'       => number_format($becaAmount, 2, '.', ''),
-            'apoyo_amount'      => number_format($apoyoAmount, 2, '.', ''),
-            'pago_iu_amount'    => number_format($pagoIuAmount, 2, '.', ''),
-            'total_amount'      => number_format($totalAmount, 2, '.', ''),
-            'difference_amount' => number_format($becaAmount + $apoyoAmount + $pagoIuAmount - $totalAmount, 2, '.', ''),
+            'beca'    => $sumByType('base_amount', ScholarshipType::IU->value),
+            'apoyo'   => $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value),
+            'pago_iu' => $sumByType('base_amount', ScholarshipType::TELMEX_IU->value),
+            'total'   => $total,
         ];
     }
 
