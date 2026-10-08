@@ -79,10 +79,14 @@ class ScholarshipPaymentController extends Controller
      * matches ScholarshipRefrendController's own validated-id convention) —
      * `findOrFail` only guards a delete race after validation passes.
      *
-     * Response is summary-only (design D4): no `rows` key, mirroring
-     * index()'s `res`/`data` envelope. `generation` echoes the
-     * server-resolved campus so the UI can display it without re-deriving
-     * it client-side.
+     * Response is summary-only (sdd/pagos-por-generacion-estado-pago, design
+     * D5): no `rows` key, mirroring index()'s `res`/`data` envelope.
+     * `generation` echoes the server-resolved campus so the UI can display
+     * it without re-deriving it client-side. `summary` comes from
+     * `generationSummary()` — NOT `summary()`, which Lotes de pago
+     * (index()/process()) keeps unchanged — and partitions rows into
+     * paid/pending/blocked instead of ready/blocking (see
+     * PaymentBatchService::generationSummary() docblock).
      */
     public function byGeneration(Request $request): JsonResponse
     {
@@ -101,7 +105,7 @@ class ScholarshipPaymentController extends Controller
             (int) $data['period_month'],
             (int) $data['generation_id']
         );
-        $summary = $service->summary($rows);
+        $summary = $service->generationSummary($rows);
 
         return response()->json([
             'res'  => true,
