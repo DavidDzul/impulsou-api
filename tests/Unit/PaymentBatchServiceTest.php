@@ -1620,4 +1620,73 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame('1650.00', $summary['total_amount'], 'Card 4 includes the TELMEX increase amount.');
         $this->assertSame('-500.00', $summary['difference_amount'], "The TELMEX becario's contribution surfaces only inside card 5's net difference.");
     }
+
+    // ── Generación filter (sdd/pagos-consulta-por-generacion, design D1/D2) ──
+
+    /** @test */
+    public function rows_called_with_three_args_returns_the_same_rows_as_before_this_change(): void
+    {
+        $this->makeReadyRefrend();
+        $this->makeReadyRefrend(['snapshot_generation_id' => self::GENERATION_ID + 1]);
+
+        $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
+
+        $this->assertCount(2, $rows, 'A 3-arg rows() call must stay unaffected by the new optional 4th param — no generación filter applied.');
+    }
+
+    /** @test */
+    public function generation_id_narrows_rows_to_only_that_generation(): void
+    {
+        $this->makeReadyRefrend(['snapshot_name' => 'Becario Gen 1']);
+        $this->makeReadyRefrend([
+            'snapshot_name'          => 'Becario Gen 2',
+            'snapshot_generation_id' => self::GENERATION_ID + 1,
+        ]);
+
+        $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH, self::GENERATION_ID);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario Gen 1', $rows[0]['snapshot_name']);
+    }
+
+    /** @test */
+    public function generation_id_filter_still_applies_filters_a_and_c(): void
+    {
+        // Filter A: pure TELMEX without active increase.
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+        // Filter C: EGRESO_RETICULA.
+        $this->makeReadyRefrend([
+            'final_amount'     => 0.00,
+            'resolution_type'  => \App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+        $this->makeReadyRefrend(['snapshot_name' => 'Becario Normal']);
+
+        $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH, self::GENERATION_ID);
+
+        $this->assertCount(1, $rows, 'Filters A and C must still apply when a generationId is given.');
+        $this->assertSame('Becario Normal', $rows[0]['snapshot_name']);
+    }
+
+    /**
+     * Lock-in (design D2, #1886 out-of-scope mismatch): snapshot_campus is
+     * ANDed alongside snapshot_generation_id — a becario whose frozen
+     * snapshot_campus differs from the generación's current campus is
+     * excluded from rows($campus, ..., $generationId) despite matching
+     * generation_id. This is NOT a defect; it mirrors buildTable()'s
+     * existing semantics.
+     */
+    /** @test */
+    public function a_row_whose_snapshot_campus_differs_from_the_queried_campus_is_excluded_despite_matching_generation_id(): void
+    {
+        $this->makeReadyRefrend(['snapshot_campus' => 'VALLADOLID']);
+
+        $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH, self::GENERATION_ID);
+
+        $this->assertCount(0, $rows, 'snapshot_campus != queried campus must exclude the row even when generation_id matches (AND semantics, design D2).');
+    }
 }

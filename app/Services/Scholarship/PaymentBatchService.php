@@ -109,8 +109,20 @@ class PaymentBatchService
      * influence is_payable/blocking_reasons. Deliberately NOT added to
      * paidRows() — same scope boundary as resolution_type/advance_paid/
      * snapshot_temporary_increase_amount.
+     *
+     * @param ?int $generationId (sdd/pagos-consulta-por-generacion, design
+     *     D1/D2): optional, additive, backward-compatible filter. When
+     *     non-null, ANDs `r.snapshot_generation_id = $generationId`
+     *     alongside the existing snapshot_campus/period where()s and
+     *     Filters A/C — mirrors RefrendBulkQueryService::buildTable()'s
+     *     `?int $generationId` precedent. The AND with snapshot_campus is
+     *     intentional (kept, not dropped): a becario whose frozen
+     *     snapshot_campus differs from the generación's current campus is
+     *     excluded despite a matching generation_id — inherited from
+     *     buildTable(), not a defect. When null (both existing 3-arg
+     *     callers), output is byte-identical to pre-change behavior.
      */
-    public function rows(string $campus, int $periodYear, int $periodMonth): array
+    public function rows(string $campus, int $periodYear, int $periodMonth, ?int $generationId = null): array
     {
         $query = DB::table('scholarship_refrends as r')
             ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
@@ -118,6 +130,10 @@ class PaymentBatchService
             ->where('r.snapshot_campus', $campus)
             ->where('r.period_year', $periodYear)
             ->where('r.period_month', $periodMonth);
+
+        if ($generationId !== null) {
+            $query->where('r.snapshot_generation_id', $generationId);
+        }
 
         // Filter A (sdd/scholarship-telmex-iu-split, design D1/D3): a pure
         // TELMEX row without a currently active temporary increase has
