@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\BulkPayAction;
 use App\Http\Controllers\Controller;
+use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Services\Scholarship\AdvancePaymentDocumentContext;
@@ -23,10 +24,14 @@ use Illuminate\Http\Request;
  * `admin/scholarship-payments` (design D6 — the near-collision between these
  * two names is intentional/accepted, mitigated by this docblock).
  *
- * index()    -> pre-payment readiness list + summary for a batch key
- *               (campus + period_year + period_month — sdd/pagos-batch-sede-totals
- *               dropped generation_id from the key; a batch's rows may span
- *               multiple generaciones at the same campus/period).
+ * index()        -> pre-payment readiness list + summary for a batch key
+ *                    (campus + period_year + period_month — sdd/pagos-batch-sede-totals
+ *                    dropped generation_id from the key; a batch's rows may span
+ *                    multiple generaciones at the same campus/period).
+ * byGeneration()  -> read-only summary (sdd/pagos-consulta-por-generacion) scoped
+ *                    to ONE generación + period instead of one campus + period;
+ *                    campus is always server-resolved from the generación, never
+ *                    client-supplied. No `rows` in the response — summary only.
  * document() -> single-becario payment document (matrícula, incidencias,
  *               retenciones, comentarios, desglose de monto).
  * process()  -> the money gate: re-derives batch membership from the key
@@ -60,6 +65,53 @@ class ScholarshipPaymentController extends Controller
                 'rows'    => $rows,
                 'summary' => $summary,
                 'batch'   => $this->batchBlock($rows),
+            ],
+        ]);
+    }
+
+    /**
+     * Read-only summary (sdd/pagos-consulta-por-generacion) scoped to ONE
+     * generación + period, instead of index()'s campus + period. Campus is
+     * ALWAYS resolved server-side from `Generation::findOrFail()->campus` —
+     * a client-sent `campus` value is structurally ignored, since it is not
+     * in the validated keys (design D3). An unknown `generation_id` is
+     * client input, so it 422s via `exists:generations,id` (design D3,
+     * matches ScholarshipRefrendController's own validated-id convention) —
+     * `findOrFail` only guards a delete race after validation passes.
+     *
+     * Response is summary-only (design D4): no `rows` key, mirroring
+     * index()'s `res`/`data` envelope. `generation` echoes the
+     * server-resolved campus so the UI can display it without re-deriving
+     * it client-side.
+     */
+    public function byGeneration(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'generation_id' => 'required|integer|exists:generations,id',
+            'period_year'   => 'required|integer|min:2020|max:2100',
+            'period_month'  => 'required|integer|min:1|max:12',
+        ]);
+
+        $generation = Generation::findOrFail($data['generation_id']);
+
+        $service = app(PaymentBatchService::class);
+        $rows    = $service->rows(
+            $generation->campus,
+            (int) $data['period_year'],
+            (int) $data['period_month'],
+            (int) $data['generation_id']
+        );
+        $summary = $service->summary($rows);
+
+        return response()->json([
+            'res'  => true,
+            'data' => [
+                'summary'    => $summary,
+                'generation' => [
+                    'id'              => $generation->id,
+                    'generation_name' => $generation->generation_name,
+                    'campus'          => $generation->campus,
+                ],
             ],
         ]);
     }

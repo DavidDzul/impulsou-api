@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
@@ -11,6 +12,7 @@ use App\Models\ScholarshipRefrendDiscount;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
+use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,6 +158,31 @@ class ScholarshipPaymentControllerTest extends TestCase
             'period_year'  => self::YEAR,
             'period_month' => self::MONTH,
         ]);
+    }
+
+    /**
+     * Real Generation row (sdd/pagos-consulta-por-generacion) — unlike
+     * self::GENERATION_ID (a plain int used only as a refrend snapshot
+     * value), byGeneration() validates `exists:generations,id`, so these
+     * tests need an actual row. Mirrors BulkTableEndpointTest's
+     * Generation::create() fixture convention.
+     */
+    private function makeGeneration(array $overrides = []): Generation
+    {
+        return Generation::create(array_merge([
+            'generation_name'   => 'Gen Test',
+            'campus'            => self::CAMPUS,
+            'generation_active' => true,
+        ], $overrides));
+    }
+
+    private function byGenerationUrl(array $overrides = []): string
+    {
+        return '/api/admin/scholarship-payments/by-generation?' . http_build_query(array_merge([
+            'generation_id' => self::GENERATION_ID,
+            'period_year'   => self::YEAR,
+            'period_month'  => self::MONTH,
+        ], $overrides));
     }
 
     private function processPayload(array $overrides = []): array
@@ -999,5 +1026,173 @@ class ScholarshipPaymentControllerTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertSame('EGRESADO', $response->json('data.rows.0.resolution_type'));
+    }
+
+    // ── byGeneration() (sdd/pagos-consulta-por-generacion) ──────────────────
+
+    /** @test */
+    public function by_generation_returns_403_without_adm_read_payments_permission(): void
+    {
+        $generation = $this->makeGeneration();
+        $noPermUser = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+
+        $response = $this->actingAs($noPermUser)->getJson(
+            $this->byGenerationUrl(['generation_id' => $generation->id])
+        );
+
+        $response->assertStatus(403);
+    }
+
+    /** @test */
+    public function by_generation_returns_200_with_only_adm_read_payments_permission(): void
+    {
+        $generation   = $this->makeGeneration();
+        $readOnlyUser = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $readOnlyUser->givePermissionTo('ADM_READ_PAYMENTS');
+
+        $response = $this->actingAs($readOnlyUser)->getJson(
+            $this->byGenerationUrl(['generation_id' => $generation->id])
+        );
+
+        $response->assertStatus(200);
+    }
+
+    /** @test */
+    public function by_generation_returns_422_when_generation_id_is_missing(): void
+    {
+        $url = '/api/admin/scholarship-payments/by-generation?' . http_build_query([
+            'period_year'  => self::YEAR,
+            'period_month' => self::MONTH,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($url);
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function by_generation_returns_422_when_generation_id_is_non_integer(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->byGenerationUrl(['generation_id' => 'abc'])
+        );
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function by_generation_returns_422_when_generation_id_does_not_match_an_existing_generation(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->byGenerationUrl(['generation_id' => 999999])
+        );
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function by_generation_returns_422_when_period_month_is_invalid(): void
+    {
+        $generation = $this->makeGeneration();
+
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->byGenerationUrl(['generation_id' => $generation->id, 'period_month' => 13])
+        );
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function by_generation_returns_422_when_period_year_is_missing(): void
+    {
+        $generation = $this->makeGeneration();
+        $url = '/api/admin/scholarship-payments/by-generation?' . http_build_query([
+            'generation_id' => $generation->id,
+            'period_month'  => self::MONTH,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($url);
+
+        $response->assertStatus(422);
+    }
+
+    /**
+     * Response shape (spec "Response is summary-only (no rows)"): equals
+     * `summary(rows(campus, year, month, generationId))` exactly, with no
+     * `rows` key, and a refrend from a DIFFERENT generación at the same
+     * campus+period must not be counted (narrowing, design D1).
+     */
+    /** @test */
+    public function by_generation_returns_summary_only_shape_equal_to_service_summary_of_rows(): void
+    {
+        $generation = $this->makeGeneration(['generation_name' => 'Gen 2026-A']);
+        $this->makeReadyRefrend(['snapshot_generation_id' => $generation->id, 'snapshot_campus' => $generation->campus]);
+        $this->makeReadyRefrend(['snapshot_generation_id' => $generation->id, 'snapshot_campus' => $generation->campus]);
+
+        // Different generación, same campus+period — must NOT be counted.
+        $otherGeneration = $this->makeGeneration(['generation_name' => 'Gen 2026-B']);
+        $this->makeReadyRefrend(['snapshot_generation_id' => $otherGeneration->id, 'snapshot_campus' => $generation->campus]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->byGenerationUrl(['generation_id' => $generation->id])
+        );
+
+        $response->assertStatus(200);
+        $data = $response->json('data');
+
+        $this->assertArrayNotHasKey('rows', $data);
+        $this->assertArrayHasKey('summary', $data);
+        $this->assertArrayHasKey('generation', $data);
+
+        $service         = app(PaymentBatchService::class);
+        $expectedRows    = $service->rows($generation->campus, self::YEAR, self::MONTH, $generation->id);
+        $expectedSummary = $service->summary($expectedRows);
+
+        $this->assertSame($expectedSummary, $data['summary']);
+        $this->assertSame(2, $data['summary']['total']);
+        $this->assertSame([
+            'id'              => $generation->id,
+            'generation_name' => 'Gen 2026-A',
+            'campus'          => $generation->campus,
+        ], $data['generation']);
+    }
+
+    /**
+     * Campus is always server-resolved (spec "Client-sent campus ignored")
+     * — a client-sent `campus` plus a valid `generation_id` whose real
+     * campus differs must use ONLY the generación's real campus.
+     */
+    /** @test */
+    public function by_generation_ignores_a_client_sent_campus_and_uses_the_generations_real_campus(): void
+    {
+        $generation = $this->makeGeneration(['campus' => 'MERIDA']);
+        $this->makeReadyRefrend(['snapshot_generation_id' => $generation->id, 'snapshot_campus' => 'MERIDA']);
+        // Row matching the client-sent (bogus) campus but not the real one.
+        $this->makeReadyRefrend(['snapshot_generation_id' => $generation->id, 'snapshot_campus' => 'TIZIMIN']);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->byGenerationUrl(['generation_id' => $generation->id]) . '&campus=TIZIMIN'
+        );
+
+        $response->assertStatus(200);
+        $this->assertSame(1, $response->json('data.summary.total'));
+        $this->assertSame('MERIDA', $response->json('data.generation.campus'));
+    }
+
+    /** @test */
+    public function by_generation_returns_zero_summary_for_an_empty_period(): void
+    {
+        $generation = $this->makeGeneration();
+
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->byGenerationUrl(['generation_id' => $generation->id])
+        );
+
+        $response->assertStatus(200);
+        $summary = $response->json('data.summary');
+        $this->assertSame(0, $summary['total']);
+        $this->assertSame(0, $summary['ready']);
+        $this->assertSame(0, $summary['blocking']);
+        $this->assertSame('0.00', $summary['total_amount']);
     }
 }
