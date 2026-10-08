@@ -211,6 +211,12 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_READ_PAYMENTS');
         Route::post('process', [ScholarshipPaymentController::class, 'process'])
             ->middleware('permission:ADM_PROCESS_PAYMENTS');
+        // by-generation (sdd/pagos-consulta-por-generacion): one segment, so
+        // it cannot collide with `{refrend}/document` (two segments) below —
+        // placed before it anyway for convention consistency with the other
+        // static routes in this group.
+        Route::get('by-generation', [ScholarshipPaymentController::class, 'byGeneration'])
+            ->middleware('permission:ADM_READ_PAYMENTS');
         Route::get('batches/{batch}/export/summary', [ScholarshipPaymentController::class, 'exportSummary'])
             ->middleware('permission:ADM_EXPORT_PAYMENTS');
         Route::get('batches/{batch}/export', [ScholarshipPaymentController::class, 'export'])
