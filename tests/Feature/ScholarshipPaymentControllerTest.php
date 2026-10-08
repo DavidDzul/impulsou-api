@@ -1146,7 +1146,7 @@ class ScholarshipPaymentControllerTest extends TestCase
 
         $service         = app(PaymentBatchService::class);
         $expectedRows    = $service->rows($generation->campus, self::YEAR, self::MONTH, $generation->id);
-        $expectedSummary = $service->summary($expectedRows);
+        $expectedSummary = $service->generationSummary($expectedRows);
 
         $this->assertSame($expectedSummary, $data['summary']);
         $this->assertSame(2, $data['summary']['total']);
@@ -1191,8 +1191,11 @@ class ScholarshipPaymentControllerTest extends TestCase
         $response->assertStatus(200);
         $summary = $response->json('data.summary');
         $this->assertSame(0, $summary['total']);
-        $this->assertSame(0, $summary['ready']);
-        $this->assertSame(0, $summary['blocking']);
+        $this->assertSame(0, $summary['paid']);
+        $this->assertSame(0, $summary['pending']);
+        $this->assertSame(0, $summary['blocked']);
+        $this->assertSame('0.00', $summary['paid_amount']);
+        $this->assertSame('0.00', $summary['pending_amount']);
         $this->assertSame('0.00', $summary['total_amount']);
     }
 }

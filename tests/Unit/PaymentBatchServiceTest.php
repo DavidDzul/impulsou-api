@@ -713,7 +713,10 @@ class PaymentBatchServiceTest extends TestCase
 
         $expectedKeys = [
             'refrend_id', 'user_id', 'snapshot_name', 'enrollment', 'bank_name',
-            'account_number', 'rfc', 'payment_batch_id', 'total_to_pay', 'is_payable',
+            'account_number', 'rfc', 'payment_batch_id',
+            // sdd/pagos-por-generacion-estado-pago, design D2:
+            'status',
+            'total_to_pay', 'is_payable',
             'blocking_reasons', 'outcome', 'outcome_reason', 'has_incident',
             'has_pending_from_previous', 'only_pending_from_previous', 'resolution_type', 'resolution_cause',
             'advance_paid', 'advance_paid_amount', 'advance_paid_origin_year', 'advance_paid_origin_month',
@@ -727,6 +730,34 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_scholarship_type', 'base_amount', 'snapshot_monto_apoyo',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
+    }
+
+    // ── sdd/pagos-por-generacion-estado-pago: rows() status pass-through ────
+    // Spec "rows() status pass-through is additive and non-influencing".
+
+    /** @test */
+    public function rows_includes_raw_status_string_without_influencing_is_payable_or_blocking_reasons(): void
+    {
+        $draft = $this->makeReadyRefrend(['snapshot_name' => 'Becario Draft']);
+        // Legacy PAID status with no batch/lock — status alone must not
+        // flip is_payable to false (ALREADY_PAID is driven by locked_at /
+        // payment_batch_id only, see PaymentReadinessEvaluator).
+        $legacyPaid = $this->makeReadyRefrend([
+            'snapshot_name' => 'Becario Legacy Paid',
+            'status'        => RefrendStatus::PAID->value,
+        ]);
+
+        $rows = collect($this->rows())->keyBy('snapshot_name');
+
+        $draftRow = $rows['Becario Draft'];
+        $this->assertSame('DRAFT', $draftRow['status']);
+        $this->assertTrue($draftRow['is_payable']);
+        $this->assertSame([], $draftRow['blocking_reasons']);
+
+        $legacyPaidRow = $rows['Becario Legacy Paid'];
+        $this->assertSame(RefrendStatus::PAID->value, $legacyPaidRow['status']);
+        $this->assertTrue($legacyPaidRow['is_payable']);
+        $this->assertSame([], $legacyPaidRow['blocking_reasons']);
     }
 
     // Boundary-lock (task 1.3): paidRows() has its own independent SELECT
@@ -1688,5 +1719,171 @@ class PaymentBatchServiceTest extends TestCase
         $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH, self::GENERATION_ID);
 
         $this->assertCount(0, $rows, 'snapshot_campus != queried campus must exclude the row even when generation_id matches (AND semantics, design D2).');
+    }
+
+    // ── generationSummary() (sdd/pagos-por-generacion-estado-pago) ──────────
+    // Spec "Response is summary-only", design D1/D4.
+
+    /** @test */
+    public function generation_summary_partitions_mixed_rows_into_paid_pending_and_blocked(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, ['snapshot_name' => 'Becario Batch Paid']);
+        // Legacy PAID status with no batch/lock still counts as Pagados
+        // (spec "Legacy PAID without a batch counts as Pagados").
+        $this->makeReadyRefrend([
+            'snapshot_name' => 'Becario Legacy Paid',
+            'status'        => RefrendStatus::PAID->value,
+        ]);
+        $this->makeReadyRefrend(['snapshot_name' => 'Becario Pending']);
+        $this->makeReadyRefrend([
+            'snapshot_name'   => 'Becario Blocked',
+            'workflow_status' => 'PENDIENTE_NOTIFICACION',
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame(4, $summary['total']);
+        $this->assertSame(2, $summary['paid']);
+        $this->assertSame(1, $summary['pending']);
+        $this->assertSame(1, $summary['blocked']);
+        $this->assertSame(
+            $summary['total'],
+            $summary['paid'] + $summary['pending'] + $summary['blocked'],
+            'Groups must be mutually exclusive and exhaustive.'
+        );
+    }
+
+    /** @test */
+    public function generation_summary_excludes_blocked_rows_from_money_totals(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => 100.00,
+            'final_amount'              => 1100.00,
+            'workflow_status'           => 'PENDIENTE_NOTIFICACION',
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame(1, $summary['blocked']);
+        $this->assertSame('0.00', $summary['beca_amount']);
+        $this->assertSame('0.00', $summary['apoyo_amount']);
+        $this->assertSame('0.00', $summary['paid_amount']);
+        $this->assertSame('0.00', $summary['pending_amount']);
+        $this->assertSame('0.00', $summary['total_amount']);
+    }
+
+    /** @test */
+    public function generation_summary_paid_amount_plus_pending_amount_equals_total_amount(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'base_amount'  => 1000.00,
+            'final_amount' => 1000.00,
+        ]);
+        $this->makeReadyRefrend([
+            'base_amount'  => 500.00,
+            'final_amount' => 500.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame('1000.00', $summary['paid_amount']);
+        $this->assertSame('500.00', $summary['pending_amount']);
+        $this->assertSame('1500.00', $summary['total_amount']);
+    }
+
+    /**
+     * Real-case fixture (hard gate): one PAID row in a batch, IU type,
+     * base_amount 2000.00 + snapshot_monto_apoyo 100.00.
+     */
+    /** @test */
+    public function generation_summary_real_case_one_paid_iu_row_computes_expected_totals(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 2000.00,
+            'snapshot_monto_apoyo'      => 100.00,
+            'final_amount'              => 2100.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame(1, $summary['total']);
+        $this->assertSame(1, $summary['paid']);
+        $this->assertSame(0, $summary['pending']);
+        $this->assertSame(0, $summary['blocked']);
+        $this->assertSame('2000.00', $summary['beca_amount']);
+        $this->assertSame('100.00', $summary['apoyo_amount']);
+        $this->assertSame('0.00', $summary['pago_iu_amount']);
+        $this->assertSame('2100.00', $summary['paid_amount']);
+        $this->assertSame('0.00', $summary['pending_amount']);
+        $this->assertSame('2100.00', $summary['total_amount']);
+        $this->assertSame('0.00', $summary['difference_amount']);
+    }
+
+    /** @test */
+    public function generation_summary_pago_iu_amount_sums_telmex_iu_rows_independently_of_beca_and_apoyo(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => 150.00,
+            'final_amount'              => 1150.00,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'base_amount'               => 800.00,
+            'snapshot_monto_apoyo'      => 200.00,
+            'final_amount'              => 800.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame('1000.00', $summary['beca_amount']);
+        $this->assertSame('150.00', $summary['apoyo_amount']);
+        $this->assertSame('800.00', $summary['pago_iu_amount']);
+    }
+
+    /** @test */
+    public function generation_summary_difference_amount_is_negative_when_discounts_dominate(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::IU->value,
+            'base_amount'               => 1000.00,
+            'snapshot_monto_apoyo'      => null,
+            'final_amount'              => 2000.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame('-1000.00', $summary['difference_amount']);
+    }
+
+    /** @test */
+    public function generation_summary_is_all_zero_for_an_empty_set(): void
+    {
+        $summary = $this->service->generationSummary([]);
+
+        $this->assertSame(0, $summary['total']);
+        $this->assertSame(0, $summary['paid']);
+        $this->assertSame(0, $summary['pending']);
+        $this->assertSame(0, $summary['blocked']);
+        $this->assertSame('0.00', $summary['beca_amount']);
+        $this->assertSame('0.00', $summary['apoyo_amount']);
+        $this->assertSame('0.00', $summary['pago_iu_amount']);
+        $this->assertSame('0.00', $summary['paid_amount']);
+        $this->assertSame('0.00', $summary['pending_amount']);
+        $this->assertSame('0.00', $summary['total_amount']);
+        $this->assertSame('0.00', $summary['difference_amount']);
     }
 }
