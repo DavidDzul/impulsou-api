@@ -728,8 +728,95 @@ class PaymentBatchServiceTest extends TestCase
             // sdd/pagos-batch-sede-totals, design D9 (Part 2 — PR3): raw
             // pass-through type-partition fields, purely informational.
             'snapshot_scholarship_type', 'base_amount', 'snapshot_monto_apoyo',
+            // sdd/lotes-pago-generacion-desglose, design Interfaces: raw
+            // pass-through breakdown fields for the Lotes de pago table.
+            // Purely informational — MUST NOT be read by
+            // PaymentReadinessEvaluator or influence is_payable/
+            // blocking_reasons, and MUST NOT appear in paidRows() (see the
+            // boundary-lock test below).
+            'snapshot_generation', 'snapshot_generation_id', 'snapshot_gross_amount',
+            'discount_percentage', 'snapshot_discount_percentage',
+            'final_amount', 'amount_pending_from_previous', 'refund_amount_from_previous',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
+    }
+
+    // ── sdd/lotes-pago-generacion-desglose: rows() breakdown pass-through ───
+    // Spec "Additive breakdown fields in rows()" — Scenario "rows() exposes
+    // the 8 breakdown fields" (values must match the refrend's frozen
+    // snapshot, is_payable/blocking_reasons untouched).
+
+    /** @test */
+    public function rows_exposes_the_eight_breakdown_fields_matching_the_frozen_snapshot(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_name'                => 'Becario IU',
+            'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+            'snapshot_generation'          => 'Generación 10',
+            'snapshot_generation_id'       => self::GENERATION_ID,
+            'snapshot_gross_amount'        => 1200.00,
+            'discount_percentage'          => 10,
+            'snapshot_discount_percentage' => 10,
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+            'refund_amount_from_previous'  => 50.00,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_name'                => 'Becario Telmex IU',
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX_IU->value,
+            'snapshot_generation'          => 'Generación 11',
+            'snapshot_generation_id'       => self::GENERATION_ID,
+            'snapshot_gross_amount'        => 1500.00,
+            'discount_percentage'          => 0,
+            'snapshot_discount_percentage' => null,
+            'final_amount'                 => 1500.00,
+            'amount_pending_from_previous' => 0,
+            'refund_amount_from_previous'  => 0,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_name'                      => 'Becario Telmex',
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'snapshot_generation'                => null,
+            'snapshot_generation_id'             => null,
+            'snapshot_gross_amount'               => null,
+            'discount_percentage'                 => 0,
+            'snapshot_discount_percentage'         => null,
+            'final_amount'                         => 500.00,
+            'amount_pending_from_previous'         => 0,
+            'refund_amount_from_previous'           => 0,
+        ]);
+
+        $rows = collect($this->rows())->keyBy('snapshot_name');
+
+        // Raw pass-through, numeric affinity under sqlite (same assertEquals
+        // convention as snapshot_temporary_increase_amount/base_amount
+        // above) — string columns (snapshot_generation) and the integer FK
+        // (snapshot_generation_id) keep assertSame.
+        $iuRow = $rows['Becario IU'];
+        $this->assertSame('Generación 10', $iuRow['snapshot_generation']);
+        $this->assertSame(self::GENERATION_ID, $iuRow['snapshot_generation_id']);
+        $this->assertEquals(1200.00, $iuRow['snapshot_gross_amount']);
+        $this->assertEquals(10.00, $iuRow['discount_percentage']);
+        $this->assertEquals(10.00, $iuRow['snapshot_discount_percentage']);
+        $this->assertEquals(1000.00, $iuRow['final_amount']);
+        $this->assertEquals(200.00, $iuRow['amount_pending_from_previous']);
+        $this->assertEquals(50.00, $iuRow['refund_amount_from_previous']);
+        $this->assertTrue($iuRow['is_payable']);
+        $this->assertSame([], $iuRow['blocking_reasons']);
+
+        $telmexIuRow = $rows['Becario Telmex IU'];
+        $this->assertSame('Generación 11', $telmexIuRow['snapshot_generation']);
+        $this->assertEquals(1500.00, $telmexIuRow['snapshot_gross_amount']);
+        $this->assertNull($telmexIuRow['snapshot_discount_percentage']);
+        $this->assertEquals(0.00, $telmexIuRow['discount_percentage']);
+
+        $telmexRow = $rows['Becario Telmex'];
+        $this->assertNull($telmexRow['snapshot_generation']);
+        $this->assertNull($telmexRow['snapshot_generation_id']);
+        $this->assertNull($telmexRow['snapshot_gross_amount']);
+        $this->assertNull($telmexRow['snapshot_discount_percentage']);
+        $this->assertEquals(500.00, $telmexRow['final_amount']);
     }
 
     // ── sdd/pagos-por-generacion-estado-pago: rows() status pass-through ────
@@ -1503,6 +1590,37 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertArrayNotHasKey('base_amount', $rows[0]);
         $this->assertArrayNotHasKey('snapshot_monto_apoyo', $rows[0]);
+    }
+
+    // Boundary-lock (mirrors paid_rows_never_exposes_base_amount_or_snapshot_monto_apoyo):
+    // sdd/lotes-pago-generacion-desglose spec "paidRows() and bank file stay
+    // unaffected" — the 8 additive breakdown fields MUST NEVER reach the
+    // export path's row shape.
+    /** @test */
+    public function paid_rows_never_exposes_the_breakdown_fields(): void
+    {
+        $batch = $this->makeBatch();
+        $this->makePaidRefrendForBatch($batch, [
+            'snapshot_generation'          => 'Generación 10',
+            'snapshot_gross_amount'        => 1200.00,
+            'discount_percentage'          => 10,
+            'snapshot_discount_percentage' => 10,
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+            'refund_amount_from_previous'  => 50.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey('snapshot_generation', $rows[0]);
+        $this->assertArrayNotHasKey('snapshot_generation_id', $rows[0]);
+        $this->assertArrayNotHasKey('snapshot_gross_amount', $rows[0]);
+        $this->assertArrayNotHasKey('discount_percentage', $rows[0]);
+        $this->assertArrayNotHasKey('snapshot_discount_percentage', $rows[0]);
+        $this->assertArrayNotHasKey('final_amount', $rows[0]);
+        $this->assertArrayNotHasKey('amount_pending_from_previous', $rows[0]);
+        $this->assertArrayNotHasKey('refund_amount_from_previous', $rows[0]);
     }
 
     /** @test */

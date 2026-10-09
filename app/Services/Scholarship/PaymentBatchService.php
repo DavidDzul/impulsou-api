@@ -67,6 +67,14 @@ class PaymentBatchService
      *     snapshot_scholarship_type: string,
      *     base_amount: string,
      *     snapshot_monto_apoyo: ?string,
+     *     snapshot_generation: ?string,
+     *     snapshot_generation_id: ?int,
+     *     snapshot_gross_amount: ?string,
+     *     discount_percentage: string,
+     *     snapshot_discount_percentage: ?string,
+     *     final_amount: string,
+     *     amount_pending_from_previous: string,
+     *     refund_amount_from_previous: string,
      * }>
      *
      * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
@@ -111,6 +119,20 @@ class PaymentBatchService
      * influence is_payable/blocking_reasons. Deliberately NOT added to
      * paidRows() — same scope boundary as resolution_type/advance_paid/
      * snapshot_temporary_increase_amount.
+     *
+     * snapshot_generation/snapshot_generation_id/snapshot_gross_amount/
+     * discount_percentage/snapshot_discount_percentage/final_amount/
+     * amount_pending_from_previous/refund_amount_from_previous
+     * (sdd/lotes-pago-generacion-desglose) are raw pass-throughs added for
+     * the administration-panel Lotes de pago breakdown columns and
+     * generación grouping. final_amount/amount_pending_from_previous/
+     * refund_amount_from_previous were already SELECTed above (consumed
+     * internally by totalToPay()/has_pending_from_previous) — only their
+     * emission on the returned row is new. Purely informational, same
+     * invariant as every other flag here: MUST NOT be read by
+     * PaymentReadinessEvaluator or influence is_payable/blocking_reasons.
+     * Deliberately NOT added to paidRows() — same scope boundary as
+     * resolution_type/advance_paid/base_amount.
      *
      * @param ?int $generationId (sdd/pagos-consulta-por-generacion, design
      *     D1/D2): optional, additive, backward-compatible filter. When
@@ -211,6 +233,24 @@ class PaymentBatchService
                 // already selected above.
                 'r.base_amount',
                 'r.snapshot_monto_apoyo',
+                // snapshot_generation/snapshot_generation_id/snapshot_gross_amount/
+                // discount_percentage/snapshot_discount_percentage
+                // (sdd/lotes-pago-generacion-desglose, design Interfaces):
+                // raw pass-throughs feeding the Lotes de pago breakdown
+                // columns and generación grouping. final_amount/
+                // amount_pending_from_previous/refund_amount_from_previous
+                // were already selected above (consumed internally by
+                // totalToPay()/has_pending_from_previous) — only their
+                // return-array emission is new here. Purely informational,
+                // same invariant as every other field above: MUST NOT be
+                // read by PaymentReadinessEvaluator or influence is_payable/
+                // blocking_reasons. Deliberately NOT added to paidRows()
+                // (same scope boundary — see the boundary-lock test).
+                'r.snapshot_generation',
+                'r.snapshot_generation_id',
+                'r.snapshot_gross_amount',
+                'r.discount_percentage',
+                'r.snapshot_discount_percentage',
             ]);
 
         // Quick-glance indicator for has_incident: the same incidents()
@@ -345,6 +385,27 @@ class PaymentBatchService
                 'snapshot_scholarship_type' => $row->snapshot_scholarship_type,
                 'base_amount'               => $row->base_amount,
                 'snapshot_monto_apoyo'      => $row->snapshot_monto_apoyo,
+                // snapshot_generation/snapshot_generation_id/snapshot_gross_amount/
+                // discount_percentage/snapshot_discount_percentage/final_amount/
+                // amount_pending_from_previous/refund_amount_from_previous
+                // (sdd/lotes-pago-generacion-desglose, design Interfaces):
+                // raw pass-throughs for the Lotes de pago breakdown columns
+                // and generación grouping — DB::table() bypasses the
+                // decimal:2/integer casts, so these arrive exactly as
+                // stored. Purely informational, like every other field
+                // above: MUST NOT be read by PaymentReadinessEvaluator or
+                // influence is_payable/blocking_reasons. Deliberately NOT
+                // added to paidRows() (same scope boundary as
+                // resolution_type/advance_paid/base_amount — see the
+                // boundary-lock test).
+                'snapshot_generation'          => $row->snapshot_generation,
+                'snapshot_generation_id'       => $row->snapshot_generation_id,
+                'snapshot_gross_amount'        => $row->snapshot_gross_amount,
+                'discount_percentage'          => $row->discount_percentage,
+                'snapshot_discount_percentage' => $row->snapshot_discount_percentage,
+                'final_amount'                 => $row->final_amount,
+                'amount_pending_from_previous' => $row->amount_pending_from_previous,
+                'refund_amount_from_previous'  => $row->refund_amount_from_previous,
             ];
         })->values()->all();
     }
