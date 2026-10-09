@@ -516,4 +516,266 @@ class ScholarshipCalculationServiceTest extends TestCase
 
         $this->assertSame(0.0, $snapshot['base_amount']);
     }
+
+    // ── sdd/telmex-cobertura-iu, design D1/D2/D3 ────────────────────────────
+
+    private function makeCoverage(int $userId, array $overrides = []): \App\Models\TelmexCoverage
+    {
+        return \App\Models\TelmexCoverage::create(array_merge([
+            'user_id'                        => $userId,
+            'scholarship_type_at_activation'  => ScholarshipType::TELMEX->value,
+            'start_period'                    => '2026-09-01',
+            'end_period'                      => null,
+            'status'                          => 'ACTIVA',
+        ], $overrides));
+    }
+
+    /** @test */
+    public function build_snapshot_resolves_no_coverage_for_iu_even_if_a_coverage_row_exists(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'   => ScholarshipType::IU->value,
+            'monthly_amount'     => 2000.00,
+            'monto_apoyo'        => 0,
+        ]);
+        $this->makeCoverage($profile->user_id);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertNull($snapshot['snapshot_telmex_coverage_id']);
+    }
+
+    /** @test */
+    public function build_snapshot_resolves_coverage_for_pure_telmex_within_the_open_window(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'   => ScholarshipType::TELMEX->value,
+            'monthly_amount'     => 1800.00,
+            'monto_apoyo'        => 150.00,
+        ]);
+        $coverage = $this->makeCoverage($profile->user_id, ['start_period' => '2026-09-01', 'end_period' => null]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame($coverage->id, $snapshot['snapshot_telmex_coverage_id']);
+    }
+
+    /** @test */
+    public function build_snapshot_resolves_coverage_for_telmex_iu_within_a_closed_window(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type'   => ScholarshipType::TELMEX_IU->value,
+            'monthly_amount'     => 1800.00,
+            'monto_apoyo'        => 150.00,
+            'iu_payment_amount'  => 300.00,
+        ]);
+        $coverage = $this->makeCoverage($profile->user_id, [
+            'scholarship_type_at_activation' => ScholarshipType::TELMEX_IU->value,
+            'start_period'                   => '2026-08-01',
+            'end_period'                     => '2026-10-31',
+        ]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertSame($coverage->id, $snapshot['snapshot_telmex_coverage_id']);
+    }
+
+    /** @test */
+    public function build_snapshot_does_not_resolve_a_coverage_before_its_start_period(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX->value,
+            'monthly_amount'   => 1800.00,
+            'monto_apoyo'      => 150.00,
+        ]);
+        $this->makeCoverage($profile->user_id, ['start_period' => '2026-10-01', 'end_period' => null]);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertNull($snapshot['snapshot_telmex_coverage_id']);
+    }
+
+    /** @test */
+    public function build_snapshot_does_not_resolve_a_coverage_after_its_end_period(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX->value,
+            'monthly_amount'   => 1800.00,
+            'monto_apoyo'      => 150.00,
+        ]);
+        $this->makeCoverage($profile->user_id, ['start_period' => '2026-06-01', 'end_period' => '2026-08-31']);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertNull($snapshot['snapshot_telmex_coverage_id']);
+    }
+
+    /** @test */
+    public function build_snapshot_does_not_resolve_a_cancelada_coverage(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX->value,
+            'monthly_amount'   => 1800.00,
+            'monto_apoyo'      => 150.00,
+        ]);
+        $this->makeCoverage($profile->user_id, ['start_period' => '2026-09-01', 'end_period' => null, 'status' => 'CANCELADA']);
+
+        $snapshot = $this->service->buildSnapshot($profile, Carbon::parse('2026-09-15'));
+
+        $this->assertNull($snapshot['snapshot_telmex_coverage_id']);
+    }
+
+    /** @test */
+    public function calculate_final_amount_covered_pure_telmex_with_full_falta_discount_keeps_the_discount_row_and_final_equals_covered(): void
+    {
+        // Worked example (spec "no discounts on the covered amount" +
+        // design D3): a 100% FALTA_INJUSTIFICADA discount is still recorded,
+        // but it only ever reduces the IU gross (0.00 for pure TELMEX) — the
+        // covered part passes through untouched.
+        $profile  = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX->value,
+            'monthly_amount'   => 1800.00,
+            'monto_apoyo'      => 150.00,
+        ]);
+        $coverage = $this->makeCoverage($profile->user_id);
+
+        $refrend = $this->makeRefrend($profile->user_id);
+        $refrend->update([
+            'snapshot_gross_amount'          => 0.0,
+            'snapshot_telmex_covered_amount' => 1950.0,
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+        ]);
+
+        $this->service->applyRetention($refrend->fresh(), 'Falta injustificada.');
+
+        $result = $this->service->calculateFinalAmount($refrend->fresh());
+
+        $this->assertSame(100.0, $result['discount_percentage']);
+        $this->assertSame(0.0, $result['discount_amount']);
+        $this->assertSame(1950.0, $result['final_amount']);
+    }
+
+    /**
+     * Hard-gate worked example (mandatory per apply brief): shared profile
+     * numbers monthly=3000, apoyo=500, with a 25% penalty active throughout
+     * — asserted across all 4 type/coverage combinations in one place so the
+     * relationship between them (discount hits ONLY the IU gross; the
+     * covered part is immune) is explicit.
+     *
+     * @test
+     */
+    public function calculate_final_amount_worked_example_matrix_monthly_3000_apoyo_500_twenty_five_percent_penalty(): void
+    {
+        // 1. Plain IU, no coverage: full monthly+apoyo is the discount base.
+        //    gross = 3500, 25% penalty -> final = 2625.
+        $iuProfile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::IU->value,
+            'monthly_amount'   => 3000.00,
+            'monto_apoyo'      => 500.00,
+        ]);
+        $iuRefrend = $this->makeRefrend($iuProfile->user_id);
+        $iuRefrend->update(['snapshot_gross_amount' => 3500.0]);
+        \App\Models\ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $iuRefrend->id,
+            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
+            'discount_percentage'    => 25.0,
+            'description'            => 'Falta injustificada.',
+        ]);
+        $iuResult = $this->service->calculateFinalAmount($iuRefrend->fresh());
+        $this->assertSame(2625.0, $iuResult['final_amount']);
+
+        // 2. Uncovered TELMEX, no increase: gross = 0 regardless of penalty.
+        $uncoveredProfile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX->value,
+            'monthly_amount'   => 3000.00,
+            'monto_apoyo'      => 500.00,
+        ]);
+        $uncoveredRefrend = $this->makeRefrend($uncoveredProfile->user_id);
+        $uncoveredRefrend->update([
+            'snapshot_gross_amount'          => 0.0,
+            'snapshot_telmex_covered_amount' => 3500.0,
+            'snapshot_telmex_coverage_id'    => null,
+        ]);
+        \App\Models\ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $uncoveredRefrend->id,
+            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
+            'discount_percentage'    => 25.0,
+            'description'            => 'Falta injustificada.',
+        ]);
+        $uncoveredResult = $this->service->calculateFinalAmount($uncoveredRefrend->fresh());
+        $this->assertSame(0, $uncoveredResult['final_amount']);
+
+        // 3. Covered pure TELMEX: gross = 0, covered = 3500 — 25% penalty
+        //    only ever touches gross (0), so final = covered unchanged.
+        $coveredProfile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX->value,
+            'monthly_amount'   => 3000.00,
+            'monto_apoyo'      => 500.00,
+        ]);
+        $coverage       = $this->makeCoverage($coveredProfile->user_id);
+        $coveredRefrend = $this->makeRefrend($coveredProfile->user_id);
+        $coveredRefrend->update([
+            'snapshot_gross_amount'          => 0.0,
+            'snapshot_telmex_covered_amount' => 3500.0,
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+        ]);
+        \App\Models\ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $coveredRefrend->id,
+            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
+            'discount_percentage'    => 25.0,
+            'description'            => 'Falta injustificada.',
+        ]);
+        $coveredResult = $this->service->calculateFinalAmount($coveredRefrend->fresh());
+        $this->assertSame(3500.0, $coveredResult['final_amount']);
+
+        // 4. Covered TELMEX_IU, iu_payment = 1000: gross = 1000, covered =
+        //    3500 — 25% penalty reduces ONLY the iu-sourced gross:
+        //    0.75 * 1000 + 3500 = 4250.
+        $telmexIuProfile = $this->makeProfile([
+            'scholarship_type'  => ScholarshipType::TELMEX_IU->value,
+            'monthly_amount'    => 3000.00,
+            'monto_apoyo'       => 500.00,
+            'iu_payment_amount' => 1000.00,
+        ]);
+        $telmexIuCoverage = $this->makeCoverage($telmexIuProfile->user_id, [
+            'scholarship_type_at_activation' => ScholarshipType::TELMEX_IU->value,
+        ]);
+        $telmexIuRefrend = $this->makeRefrend($telmexIuProfile->user_id);
+        $telmexIuRefrend->update([
+            'snapshot_gross_amount'          => 1000.0,
+            'snapshot_telmex_covered_amount' => 3500.0,
+            'snapshot_telmex_coverage_id'    => $telmexIuCoverage->id,
+        ]);
+        \App\Models\ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $telmexIuRefrend->id,
+            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
+            'discount_percentage'    => 25.0,
+            'description'            => 'Falta injustificada.',
+        ]);
+        $telmexIuResult = $this->service->calculateFinalAmount($telmexIuRefrend->fresh());
+        $this->assertSame(4250.0, $telmexIuResult['final_amount']);
+    }
+
+    /** @test */
+    public function calculate_final_amount_uncovered_telmex_iu_is_byte_identical_to_the_pre_change_formula(): void
+    {
+        // No coverage FK set — must behave exactly as before this feature.
+        $profile = $this->makeProfile([
+            'scholarship_type'  => ScholarshipType::TELMEX_IU->value,
+            'monthly_amount'    => 1800.00,
+            'monto_apoyo'       => 150.00,
+            'iu_payment_amount' => 300.00,
+        ]);
+
+        $refrend = $this->makeRefrend($profile->user_id);
+        $refrend->update([
+            'snapshot_gross_amount'          => 300.0,
+            'snapshot_telmex_covered_amount' => 1950.0,
+            'snapshot_telmex_coverage_id'    => null,
+        ]);
+
+        $result = $this->service->calculateFinalAmount($refrend->fresh());
+
+        $this->assertSame(300.0, $result['final_amount']);
+    }
 }
