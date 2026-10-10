@@ -8,11 +8,14 @@ use App\Services\Scholarship\TelmexCoverageLedger;
 use Illuminate\Support\Facades\DB;
 
 /**
- * sdd/telmex-cobertura-iu, design D8 + tasks 3a.8. Records a becario's
- * repayment (an external deposit once Telmex pays the accumulated months,
- * client-answers ca2/ca3 — never a deduction from future payments).
- * Allowed on ACTIVA/EN_COBRO only; amount must be positive and must never
- * exceed the current balance (no over-repayment).
+ * sdd/telmex-cobertura-iu, design D8 + tasks 3a.8 (status guard narrowed by
+ * decisions-3 #1926 in PR3b). Records a becario's repayment (an external
+ * deposit once Telmex pays the accumulated months, client-answers ca2/ca3
+ * — never a deduction from future payments). Allowed ONLY on EN_COBRO —
+ * the becario repays IU when Telmex deposits the accumulated months, which
+ * by definition cannot have happened yet while still ACTIVA (Telmex hasn't
+ * even started paying). Amount must be positive and must never exceed the
+ * current balance (no over-repayment).
  */
 class RegisterTelmexCoveragePaymentAction
 {
@@ -28,8 +31,10 @@ class RegisterTelmexCoveragePaymentAction
         return DB::transaction(function () use ($coverage, $data, $amount, $userId) {
             $coverage = TelmexCoverage::lockForUpdate()->findOrFail($coverage->id);
 
-            if (in_array($coverage->status, ['CANCELADA', 'LIQUIDADA'], true)) {
-                throw new \DomainException('No se pueden registrar abonos en una cobertura cancelada o liquidada.');
+            if ($coverage->status !== 'EN_COBRO') {
+                throw new \DomainException(
+                    'Solo se pueden registrar abonos cuando la cobertura está en cobro (Telmex ya empezó a pagar).'
+                );
             }
 
             $balance = $this->ledger->balance($coverage);
