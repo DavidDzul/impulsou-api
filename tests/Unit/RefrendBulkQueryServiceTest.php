@@ -599,4 +599,49 @@ class RefrendBulkQueryServiceTest extends TestCase
             $result['rows'][0]['refrend']['snapshot_temporary_increase_reason']
         );
     }
+
+    // ── Telmex coverage fields (sdd/telmex-cobertura-iu, design — psicol source) ──
+    //
+    // Same raw pass-through convention as snapshot_temporary_increase_* above
+    // (genuinely-nullable business data, no COALESCE). The covered amount is
+    // already embedded in final_amount (PR1 design D3) — these two fields
+    // exist only so AprobacionRefrendTable (PR6) can render the chip/column.
+
+    /** @test */
+    public function telmex_coverage_fields_are_null_when_no_coverage_exists(): void
+    {
+        $this->makeRefrend();
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertNull($result['rows'][0]['refrend']['snapshot_telmex_coverage_id']);
+        $this->assertNull($result['rows'][0]['refrend']['snapshot_telmex_covered_amount']);
+    }
+
+    /** @test */
+    public function telmex_coverage_fields_reflect_stored_values_when_covered(): void
+    {
+        $refrend = $this->makeRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'final_amount'              => 3500.00,
+        ]);
+        $coverage = \App\Models\TelmexCoverage::create([
+            'user_id'                        => $refrend->user_id,
+            'scholarship_type_at_activation' => ScholarshipType::TELMEX->value,
+            'start_period'                    => '2026-01-01',
+            'end_period'                      => null,
+            'status'                          => 'ACTIVA',
+        ]);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 3500.00,
+        ]);
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame($coverage->id, $result['rows'][0]['refrend']['snapshot_telmex_coverage_id']);
+        $this->assertEquals(3500.00, (float) $result['rows'][0]['refrend']['snapshot_telmex_covered_amount']);
+    }
 }

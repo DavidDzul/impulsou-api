@@ -65,6 +65,13 @@ class RefrendBulkQueryService
                 'r.snapshot_discount_reason',
                 'r.discount_percentage',
                 'r.discount_amount',
+                // snapshot_telmex_coverage_id/snapshot_telmex_covered_amount
+                // (sdd/telmex-cobertura-iu, design — psicol source): raw
+                // pass-throughs, same nullable-business-data convention as
+                // snapshot_temporary_increase_* below (no COALESCE). Feed
+                // AprobacionRefrendTable's coverage chip/column (PR6).
+                'r.snapshot_telmex_coverage_id',
+                'r.snapshot_telmex_covered_amount',
                 'r.final_amount',
                 'r.amount_pending_from_previous',
                 'r.refund_amount_from_previous',
@@ -264,6 +271,8 @@ class RefrendBulkQueryService
                 'snapshot_discount_reason'     => $r->snapshot_discount_reason ?? null,
                 'discount_percentage'          => $r->discount_percentage,
                 'discount_amount'          => $r->discount_amount,
+                'snapshot_telmex_coverage_id'      => $r->snapshot_telmex_coverage_id,
+                'snapshot_telmex_covered_amount'   => $r->snapshot_telmex_covered_amount,
                 'final_amount'             => $r->final_amount,
                 'amount_pending_from_previous' => $r->amount_pending_from_previous,
                 'refund_amount_from_previous'   => $r->refund_amount_from_previous ?? '0.00',
