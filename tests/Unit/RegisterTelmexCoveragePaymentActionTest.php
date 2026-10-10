@@ -114,4 +114,25 @@ class RegisterTelmexCoveragePaymentActionTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->action->execute($coverage, ['amount' => 100], 7);
     }
+
+    /**
+     * sdd/telmex-cobertura-iu, decisions-3 #1926: repayments are only
+     * allowed once Telmex itself started paying (EN_COBRO) — a becario
+     * repays IU when Telmex deposits the accumulated months, which by
+     * definition cannot have happened yet while still ACTIVA. Uses
+     * makeCoverageWithAdvance (status overridden to ACTIVA) so there IS
+     * enough balance to cover the amount — this isolates the assertion to
+     * the status guard, not the over-balance guard covered by the test
+     * above.
+     *
+     * @test
+     */
+    public function rejects_a_payment_on_an_activa_coverage(): void
+    {
+        $coverage = $this->makeCoverageWithAdvance(1000.0, ['status' => 'ACTIVA', 'end_period' => null]);
+        $staff    = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+
+        $this->expectException(\DomainException::class);
+        $this->action->execute($coverage, ['amount' => 100], $staff->id);
+    }
 }
