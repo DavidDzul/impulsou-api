@@ -471,6 +471,23 @@ class TelmexCoverageControllerTest extends TestCase
     }
 
     /** @test */
+    public function void_payment_rejects_a_reason_shorter_than_ten_characters(): void
+    {
+        $coverage = $this->makeCoverage(['end_period' => '2026-01-01', 'status' => 'EN_COBRO']);
+        $this->makePaidCoveredRefrend($coverage, 2026, 1, 1000.0);
+        $payment = $coverage->payments()->create(['amount' => 400, 'paid_at' => '2026-02-01']);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->patchJson("/api/admin/telmex-coverages/{$coverage->id}/payments/{$payment->id}/void", [
+                'void_reason' => 'error',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['void_reason']);
+        $this->assertFalse((bool) $payment->fresh()->is_voided);
+    }
+
+    /** @test */
     public function void_payment_returns_404_when_payment_does_not_belong_to_the_url_coverage(): void
     {
         $coverageA = $this->makeCoverage(['end_period' => '2026-01-01', 'status' => 'EN_COBRO']);

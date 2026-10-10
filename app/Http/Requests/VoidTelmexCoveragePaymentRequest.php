@@ -19,7 +19,7 @@ class VoidTelmexCoveragePaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'void_reason' => 'required|string|max:500',
+            'void_reason' => 'required|string|min:10|max:500',
         ];
     }
 }
