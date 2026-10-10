@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ActivateTelmexCoverageAction;
+use App\Actions\Scholarship\BulkEndTelmexCoveragesAction;
 use App\Actions\Scholarship\CancelTelmexCoverageAction;
 use App\Actions\Scholarship\EndTelmexCoverageAction;
 use App\Actions\Scholarship\ReactivateTelmexCoverageAction;
@@ -13,6 +14,7 @@ use App\Enums\ScholarshipType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CancelTelmexCoverageRequest;
 use App\Http\Requests\EndTelmexCoverageRequest;
+use App\Http\Requests\EndTelmexCoveragesBulkRequest;
 use App\Http\Requests\StoreTelmexCoveragePaymentRequest;
 use App\Http\Requests\StoreTelmexCoverageRequest;
 use App\Http\Requests\VoidTelmexCoveragePaymentRequest;
@@ -172,6 +174,24 @@ class TelmexCoverageController extends Controller
         return response()->json(['res' => true, 'data' => $this->presentCoverage($coverage)]);
     }
 
+    /**
+     * sdd/telmex-cobertura-lote, PR1 design D5. Always 200 — per-coverage
+     * success/failure lives in the response body, never a request-level
+     * error (request-shape errors are already rejected by the FormRequest).
+     */
+    public function endBulk(EndTelmexCoveragesBulkRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        $result = app(BulkEndTelmexCoveragesAction::class)->execute(
+            $validated['coverage_ids'],
+            ['telmex_start_period' => $validated['telmex_start_period']],
+            (int) auth()->id()
+        );
+
+        return response()->json(['res' => true, 'data' => $this->withNames($result)]);
+    }
+
     public function cancel(CancelTelmexCoverageRequest $request, TelmexCoverage $coverage): JsonResponse
     {
         try {
@@ -238,6 +258,37 @@ class TelmexCoverageController extends Controller
         }
 
         return response()->json(['res' => true, 'data' => $this->serializePayment($voided)]);
+    }
+
+    /**
+     * sdd/telmex-cobertura-lote, PR1 design D3. Batch-resolves becario_name
+     * for both `ended` and `failed` entries via the existing
+     * loadUsersAndGenerations (no N+1). Entries with `user_id` null (unknown
+     * coverage ids) get `becario_name` null.
+     *
+     * @param  array{ended: array<int, array{coverage_id: int, user_id: int}>, failed: array<int, array{coverage_id: int, user_id: int|null, reason: string}>}  $result
+     * @return array<string, mixed>
+     */
+    private function withNames(array $result): array
+    {
+        $userIds = collect([...$result['ended'], ...$result['failed']])
+            ->pluck('user_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        [$users] = $this->loadUsersAndGenerations($userIds);
+
+        $withName = function (array $item) use ($users): array {
+            $item['becario_name'] = $this->fullName($users->get($item['user_id']));
+
+            return $item;
+        };
+
+        return [
+            'ended'  => array_map($withName, $result['ended']),
+            'failed' => array_map($withName, $result['failed']),
+        ];
     }
 
     // ── Presentation helpers ─────────────────────────────────────────────
