@@ -75,6 +75,9 @@ class PaymentBatchService
      *     final_amount: string,
      *     amount_pending_from_previous: string,
      *     refund_amount_from_previous: string,
+     *     snapshot_telmex_coverage_id: ?int,
+     *     snapshot_telmex_covered_amount: ?string,
+     *     telmex_covered: bool,
      * }>
      *
      * resolution_type/resolution_cause (sdd/resolution-status-visibility) are
@@ -251,6 +254,15 @@ class PaymentBatchService
                 'r.snapshot_gross_amount',
                 'r.discount_percentage',
                 'r.snapshot_discount_percentage',
+                // snapshot_telmex_coverage_id/snapshot_telmex_covered_amount
+                // (sdd/telmex-cobertura-iu, design): the FK is already
+                // consumed by Filter A (TelmexPaymentPolicy::applyBatchCandidacy,
+                // applied to the query above) and by the evaluator
+                // (PaymentReadinessEvaluator reads it off this same row
+                // object) — their emission on the returned array below is
+                // new, purely informational like every other chip field.
+                'r.snapshot_telmex_coverage_id',
+                'r.snapshot_telmex_covered_amount',
             ]);
 
         // Quick-glance indicator for has_incident: the same incidents()
@@ -406,6 +418,21 @@ class PaymentBatchService
                 'final_amount'                 => $row->final_amount,
                 'amount_pending_from_previous' => $row->amount_pending_from_previous,
                 'refund_amount_from_previous'  => $row->refund_amount_from_previous,
+                // snapshot_telmex_coverage_id/snapshot_telmex_covered_amount/
+                // telmex_covered (sdd/telmex-cobertura-iu, design): raw
+                // pass-throughs + a derived boolean chip, same convention as
+                // every other informational field above. The covered amount
+                // is already embedded in final_amount (PR1's calculateFinalAmount,
+                // design D3) — these fields exist ONLY for the UI chip/
+                // breakdown column, never to recompute money here. MUST NOT
+                // be read by PaymentReadinessEvaluator's return value or
+                // influence is_payable/blocking_reasons (the evaluator reads
+                // the raw DB row directly, not this returned array).
+                // Deliberately NOT added to paidRows() — same scope boundary
+                // as resolution_type/advance_paid/base_amount.
+                'snapshot_telmex_coverage_id'      => $row->snapshot_telmex_coverage_id,
+                'snapshot_telmex_covered_amount'   => $row->snapshot_telmex_covered_amount,
+                'telmex_covered'                   => $row->snapshot_telmex_coverage_id !== null,
             ];
         })->values()->all();
     }
@@ -504,6 +531,8 @@ class PaymentBatchService
      *     snapshot_scholarship_type: string,
      *     base_amount: string,
      *     snapshot_monto_apoyo: ?string,
+     *     snapshot_telmex_coverage_id: ?int,
+     *     snapshot_telmex_covered_amount: ?string,
      * }> $rows
      * @return array{
      *     total: int,
@@ -512,6 +541,7 @@ class PaymentBatchService
      *     beca_amount: string,
      *     apoyo_amount: string,
      *     pago_iu_amount: string,
+     *     telmex_coverage_amount: string,
      *     total_amount: string,
      *     difference_amount: string,
      * }
@@ -523,15 +553,22 @@ class PaymentBatchService
         $totals = $this->moneyTotals($readyRows);
 
         return [
-            'total'             => count($rows),
-            'ready'             => count($readyRows),
-            'blocking'          => count($rows) - count($readyRows),
-            'beca_amount'       => number_format($totals['beca'], 2, '.', ''),
-            'apoyo_amount'      => number_format($totals['apoyo'], 2, '.', ''),
-            'pago_iu_amount'    => number_format($totals['pago_iu'], 2, '.', ''),
-            'total_amount'      => number_format($totals['total'], 2, '.', ''),
-            'difference_amount' => number_format(
-                $totals['beca'] + $totals['apoyo'] + $totals['pago_iu'] - $totals['total'],
+            'total'                   => count($rows),
+            'ready'                   => count($readyRows),
+            'blocking'                => count($rows) - count($readyRows),
+            'beca_amount'             => number_format($totals['beca'], 2, '.', ''),
+            'apoyo_amount'            => number_format($totals['apoyo'], 2, '.', ''),
+            'pago_iu_amount'          => number_format($totals['pago_iu'], 2, '.', ''),
+            // telmex_coverage_amount (sdd/telmex-cobertura-iu, design): the
+            // 6th money bucket — sum of snapshot_telmex_covered_amount for
+            // rows with an active coverage FK. Added to difference_amount's
+            // formula below so card 5 keeps netting to zero for a batch with
+            // ONLY covered/uncovered rows (the covered amount is already
+            // inside total_to_pay via final_amount, PR1 design D3).
+            'telmex_coverage_amount'  => number_format($totals['telmex_coverage'], 2, '.', ''),
+            'total_amount'            => number_format($totals['total'], 2, '.', ''),
+            'difference_amount'       => number_format(
+                $totals['beca'] + $totals['apoyo'] + $totals['pago_iu'] + $totals['telmex_coverage'] - $totals['total'],
                 2,
                 '.',
                 ''
@@ -567,6 +604,8 @@ class PaymentBatchService
      *     snapshot_scholarship_type: string,
      *     base_amount: string,
      *     snapshot_monto_apoyo: ?string,
+     *     snapshot_telmex_coverage_id: ?int,
+     *     snapshot_telmex_covered_amount: ?string,
      * }> $rows
      * @return array{
      *     total: int,
@@ -576,6 +615,7 @@ class PaymentBatchService
      *     beca_amount: string,
      *     apoyo_amount: string,
      *     pago_iu_amount: string,
+     *     telmex_coverage_amount: string,
      *     paid_amount: string,
      *     pending_amount: string,
      *     total_amount: string,
@@ -610,18 +650,22 @@ class PaymentBatchService
         $totalAmount   = $nominal['total'];
 
         return [
-            'total'             => count($rows),
-            'paid'              => count($paid),
-            'pending'           => count($pending),
-            'blocked'           => count($blocked),
-            'beca_amount'       => number_format($nominal['beca'], 2, '.', ''),
-            'apoyo_amount'      => number_format($nominal['apoyo'], 2, '.', ''),
-            'pago_iu_amount'    => number_format($nominal['pago_iu'], 2, '.', ''),
-            'paid_amount'       => number_format($paidAmount, 2, '.', ''),
-            'pending_amount'    => number_format($pendingAmount, 2, '.', ''),
-            'total_amount'      => number_format($totalAmount, 2, '.', ''),
-            'difference_amount' => number_format(
-                $nominal['beca'] + $nominal['apoyo'] + $nominal['pago_iu'] - $totalAmount,
+            'total'                  => count($rows),
+            'paid'                   => count($paid),
+            'pending'                => count($pending),
+            'blocked'                => count($blocked),
+            'beca_amount'            => number_format($nominal['beca'], 2, '.', ''),
+            'apoyo_amount'           => number_format($nominal['apoyo'], 2, '.', ''),
+            'pago_iu_amount'         => number_format($nominal['pago_iu'], 2, '.', ''),
+            // telmex_coverage_amount (sdd/telmex-cobertura-iu, design): same
+            // 6th bucket as summary(), computed over paid+pending rows only
+            // (same scope as beca/apoyo/pago_iu above).
+            'telmex_coverage_amount' => number_format($nominal['telmex_coverage'], 2, '.', ''),
+            'paid_amount'            => number_format($paidAmount, 2, '.', ''),
+            'pending_amount'         => number_format($pendingAmount, 2, '.', ''),
+            'total_amount'           => number_format($totalAmount, 2, '.', ''),
+            'difference_amount'      => number_format(
+                $nominal['beca'] + $nominal['apoyo'] + $nominal['pago_iu'] + $nominal['telmex_coverage'] - $totalAmount,
                 2,
                 '.',
                 ''
@@ -660,8 +704,10 @@ class PaymentBatchService
      *     snapshot_scholarship_type: string,
      *     base_amount: string,
      *     snapshot_monto_apoyo: ?string,
+     *     snapshot_telmex_coverage_id: ?int,
+     *     snapshot_telmex_covered_amount: ?string,
      * }> $rows
-     * @return array{beca: float, apoyo: float, pago_iu: float, total: float}
+     * @return array{beca: float, apoyo: float, pago_iu: float, telmex_coverage: float, total: float}
      */
     private function moneyTotals(array $rows): array
     {
@@ -684,11 +730,27 @@ class PaymentBatchService
             0.0
         );
 
+        // telmex_coverage (sdd/telmex-cobertura-iu, design): sum of
+        // snapshot_telmex_covered_amount for rows whose coverage FK is set —
+        // independent of snapshot_scholarship_type (both pure TELMEX and
+        // TELMEX_IU can be covered), unlike the type-partitioned buckets
+        // above. A row with no coverage (FK null) contributes 0, so an
+        // uncovered batch's bucket is always '0.00' and difference_amount
+        // stays byte-identical to pre-change behavior.
+        $telmexCoverage = array_reduce(
+            $rows,
+            fn (float $carry, array $row) => ($row['snapshot_telmex_coverage_id'] ?? null) !== null
+                ? $carry + (float) ($row['snapshot_telmex_covered_amount'] ?? 0)
+                : $carry,
+            0.0
+        );
+
         return [
-            'beca'    => $sumByType('base_amount', ScholarshipType::IU->value),
-            'apoyo'   => $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value),
-            'pago_iu' => $sumByType('base_amount', ScholarshipType::TELMEX_IU->value),
-            'total'   => $total,
+            'beca'            => $sumByType('base_amount', ScholarshipType::IU->value),
+            'apoyo'           => $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value),
+            'pago_iu'         => $sumByType('base_amount', ScholarshipType::TELMEX_IU->value),
+            'telmex_coverage' => $telmexCoverage,
+            'total'           => $total,
         ];
     }
 

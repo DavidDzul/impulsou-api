@@ -139,4 +139,55 @@ class TelmexPaymentPolicyTest extends TestCase
     {
         $this->assertFalse(TelmexPaymentPolicy::isExcludedFromBankFile(null, '0.00'));
     }
+
+    // ── sdd/telmex-cobertura-iu, design Filter A SQL/per-object extension ──
+    //
+    // A pure TELMEX row with an active coverage FK is a batch candidate even
+    // with zero/no temporary increase — the covered Telmex part (frozen on
+    // the snapshot by buildSnapshot, PR1) is real money owed by IU. Filter B
+    // (isExcludedFromBankFile) is deliberately UNTOUCHED by this change: it
+    // keys off total_to_pay, which already reflects the covered amount once
+    // calculateFinalAmount (PR1, design D3) has added it to final_amount.
+
+    /** @test */
+    public function pure_telmex_with_a_coverage_id_and_zero_increase_is_a_candidate(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, 5));
+    }
+
+    /** @test */
+    public function pure_telmex_with_a_coverage_id_and_null_increase_is_a_candidate(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, null, 5));
+    }
+
+    /** @test */
+    public function pure_telmex_without_coverage_or_increase_is_still_not_a_candidate(): void
+    {
+        // Non-regression: omitting the new 3rd arg (default null) must keep
+        // every existing caller's behavior byte-identical.
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0));
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, null, null));
+    }
+
+    /** @test */
+    public function coverage_id_as_int_and_as_numeric_string_are_treated_identically(): void
+    {
+        // D5-style normalizer reuse: PaymentBatchService::rows() reads this
+        // column via DB::table() (raw string on some drivers), while
+        // PaymentReadinessEvaluator may see it already cast to int by
+        // Eloquent — both shapes must flip candidacy the same way.
+        $intResult    = TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, 5);
+        $stringResult = TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, '5');
+
+        $this->assertSame($intResult, $stringResult);
+        $this->assertTrue($stringResult);
+    }
+
+    /** @test */
+    public function iu_and_telmex_iu_candidacy_are_unaffected_by_a_null_coverage_id(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::IU->value, null, null));
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX_IU->value, null, null));
+    }
 }
