@@ -235,6 +235,13 @@ class GenerateMonthlyRefrendsService
                 'resolution_type'              => null,
                 'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
                 'snapshot_monto_apoyo'         => $snapshot['snapshot_monto_apoyo'],
+                // sdd/telmex-cobertura-iu, design D2/PR1 bugfix: both fields
+                // were computed by buildSnapshot() since the TELMEX_IU split
+                // landed but never persisted here (pre-existing gap) — a
+                // generated TELMEX/TELMEX_IU refrend's covered bookkeeping
+                // and coverage FK were silently lost.
+                'snapshot_telmex_covered_amount' => $snapshot['snapshot_telmex_covered_amount'],
+                'snapshot_telmex_coverage_id'    => $snapshot['snapshot_telmex_coverage_id'],
                 'snapshot_temporary_increase_amount' => $snapshot['snapshot_temporary_increase_amount'],
                 'snapshot_temporary_increase_reason' => $snapshot['snapshot_temporary_increase_reason'],
                 'base_amount'                  => $snapshot['base_amount'],

@@ -8,13 +8,26 @@ use App\Models\ScholarshipRefrendDiscount;
 use App\Enums\DiscountType;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Services\Scholarship\TelmexCoverageResolver;
 use Carbon\Carbon;
 
 class ScholarshipCalculationService
 {
+    public function __construct(
+        private TelmexCoverageResolver $coverageResolver
+    ) {}
+
     /**
      * Calcula el monto final del refrendo considerando todos sus descuentos.
      * El monto base siempre viene del snapshot congelado.
+     *
+     * sdd/telmex-cobertura-iu, design D3: the covered Telmex part
+     * ($refrend->coveredPayableAmount()) is added AFTER discounts/penalties
+     * are applied to the IU gross — it is never part of the discount base,
+     * per the "Telmex money is never discounted" rule (amendment #3).
+     * Uncovered rows (coveredPayableAmount() === 0.0) are byte-identical to
+     * the pre-change formula: the `> 0` branch is skipped entirely and
+     * max(0, $finalAmount) is returned exactly as before.
      */
     public function calculateFinalAmount(ScholarshipRefrend $refrend): array
     {
@@ -36,10 +49,14 @@ class ScholarshipCalculationService
         $discountAmount = round($base * ($totalDiscountPercentage / 100), 2);
         $finalAmount    = round($base - $discountAmount, 2);
 
+        $iuFinal = max(0, $finalAmount);
+        $covered = $refrend->coveredPayableAmount();
+        $final   = $covered > 0 ? round($iuFinal + $covered, 2) : $iuFinal;
+
         return [
             'discount_percentage' => $totalDiscountPercentage,
             'discount_amount'     => $discountAmount,
-            'final_amount'        => max(0, $finalAmount),
+            'final_amount'        => $final,
         ];
     }
 
@@ -154,6 +171,11 @@ class ScholarshipCalculationService
             ScholarshipType::TELMEX    => [$increaseAmount, $monthlyAmount + $montoApoyo, 0.0],
         };
 
+        // sdd/telmex-cobertura-iu, design D1: resolved by PERIOD ($on's
+        // month), not "status at generation" — deterministic across
+        // regeneration of the same period.
+        $coverage = $this->coverageResolver->resolve($profile, $on);
+
         $discountPct    = $profile->active_discount_percentage !== null
             ? (float) $profile->active_discount_percentage
             : 0.0;
@@ -168,6 +190,7 @@ class ScholarshipCalculationService
             'snapshot_gross_amount'               => $totalMonthly,
             'snapshot_monto_apoyo'                => $montoApoyo,
             'snapshot_telmex_covered_amount'      => $telmexCovered,
+            'snapshot_telmex_coverage_id'          => $coverage?->id,
             'base_amount'                         => $baseAmount,
             'snapshot_discount_percentage'        => $discountActive ? $discountPct : null,
             'snapshot_discount_reason'             => $discountActive ? $profile->discount_reason : null,

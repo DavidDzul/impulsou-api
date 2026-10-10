@@ -47,6 +47,18 @@ class RecordAdvancePaymentAction
             );
         }
 
+        // sdd/telmex-cobertura-iu, design D6 / decisions-2 dec1: CERT/advance
+        // payments are BLOCKED during coverage — arrival reconciliation
+        // requires a $0 outcome (AdvancePaymentReconciler), which contradicts
+        // "the covered part is never zeroed". Accepted consequence: a
+        // TELMEX_IU becario in coverage also gets no advance of its IU part
+        // during those months.
+        if ($originRefrend->coveredPayableAmount() > 0) {
+            throw new \DomainException(
+                'No se puede registrar un pago adelantado: el refrendo de origen está cubierto por Telmex.'
+            );
+        }
+
         $months = $data['months'] ?? [];
 
         if (count($months) < 1 || count($months) > self::MAX_ADVANCED_MONTHS) {
@@ -145,6 +157,17 @@ class RecordAdvancePaymentAction
                 }
 
                 $refrend = $this->generator->generateFutureForAdvance($profile, $year, $mon);
+
+                // D6 (continued): a future month generated inside this same
+                // batch can itself resolve to an active coverage even when
+                // the origin didn't — reject and let the transaction roll
+                // back every refrend created so far in this request.
+                if ($refrend->coveredPayableAmount() > 0) {
+                    throw new \DomainException(
+                        "El periodo {$mon}/{$year} está cubierto por Telmex; no se puede adelantar."
+                    );
+                }
+
                 $amount  = (float) $refrend->final_amount;
                 $totalAmount += $amount;
 

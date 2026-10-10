@@ -78,6 +78,11 @@ class RecalculateRefrendService
                 'snapshot_scholarship_type'   => $snapshot['snapshot_scholarship_type'],
                 'snapshot_gross_amount'        => $snapshot['snapshot_gross_amount'],
                 'snapshot_monto_apoyo'         => $snapshot['snapshot_monto_apoyo'],
+                // sdd/telmex-cobertura-iu, design D2/PR1 bugfix: pre-existing
+                // gap — buildSnapshot() always computed these, Recalculate
+                // never persisted them (verified 2026-10-09).
+                'snapshot_telmex_covered_amount' => $snapshot['snapshot_telmex_covered_amount'],
+                'snapshot_telmex_coverage_id'    => $snapshot['snapshot_telmex_coverage_id'],
                 'snapshot_temporary_increase_amount' => $snapshot['snapshot_temporary_increase_amount'],
                 'snapshot_temporary_increase_reason' => $snapshot['snapshot_temporary_increase_reason'],
                 'base_amount'                  => $snapshot['base_amount'],

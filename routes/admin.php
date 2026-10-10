@@ -28,6 +28,7 @@ use App\Http\Controllers\Admin\ScholarshipRefrendController;
 use App\Http\Controllers\Admin\ScholarshipSemesterGradeController;
 use App\Http\Controllers\Admin\ScholarshipSettingController;
 use App\Http\Controllers\Admin\ScholarshipWithholdingController;
+use App\Http\Controllers\Admin\TelmexCoverageController;
 
 Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
@@ -172,6 +173,30 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::get('users/{userId}/scholarship-withholdings', [ScholarshipWithholdingController::class, 'index']);
     Route::prefix('scholarship-withholdings')->group(function () {
         Route::patch('{withholding}/payments/{payment}/void', [ScholarshipWithholdingController::class, 'voidPayment']);
+    });
+
+    // ── Becas Telmex (sdd/telmex-cobertura-iu, design API table) ────────────
+    // Static `eligible` MUST come before `{coverage}` to prevent route
+    // shadowing, same convention as `scholarship-refrends/bulk-table` above.
+    Route::prefix('telmex-coverages')->group(function () {
+        Route::get('/', [TelmexCoverageController::class, 'index'])
+            ->middleware('permission:ADM_READ_TELMEX_COVERAGE');
+        Route::get('eligible', [TelmexCoverageController::class, 'eligible'])
+            ->middleware('permission:ADM_READ_TELMEX_COVERAGE');
+        Route::get('{coverage}', [TelmexCoverageController::class, 'show'])
+            ->middleware('permission:ADM_READ_TELMEX_COVERAGE');
+        Route::post('/', [TelmexCoverageController::class, 'store'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_COVERAGE');
+        Route::post('{coverage}/end', [TelmexCoverageController::class, 'end'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_COVERAGE');
+        Route::post('{coverage}/cancel', [TelmexCoverageController::class, 'cancel'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_COVERAGE');
+        Route::post('{coverage}/reactivate', [TelmexCoverageController::class, 'reactivate'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_COVERAGE');
+        Route::post('{coverage}/payments', [TelmexCoverageController::class, 'storePayment'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_REPAYMENTS');
+        Route::patch('{coverage}/payments/{payment}/void', [TelmexCoverageController::class, 'voidPayment'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_REPAYMENTS');
     });
 
     // ── Student Documents ─────────────────────────────────────────────────────

@@ -75,16 +75,18 @@ class PaymentReadinessEvaluator
             $reasons[] = ['code' => 'NOTHING_TO_PAY', 'message' => 'Monto retenido sin saldo por pagar'];
         }
 
-        // Filter A guard (sdd/scholarship-telmex-iu-split, design D1/D3):
-        // mirrors PaymentBatchService::rows()'s SQL-level exclusion for the
+        // Filter A guard (sdd/scholarship-telmex-iu-split, design D1/D3;
+        // extended by sdd/telmex-cobertura-iu with the coverage arg): mirrors
+        // PaymentBatchService::rows()'s SQL-level exclusion for the
         // BulkPayAction re-check under the row lock. `??` null-coalescing
         // keeps this evaluator safe for any caller/fixture that omits these
-        // two columns (e.g. existing tests built before this change).
+        // three columns (e.g. existing tests built before this change).
         if (!TelmexPaymentPolicy::isBatchCandidate(
             $refrendRow->snapshot_scholarship_type ?? null,
-            $refrendRow->snapshot_temporary_increase_amount ?? null
+            $refrendRow->snapshot_temporary_increase_amount ?? null,
+            $refrendRow->snapshot_telmex_coverage_id ?? null
         )) {
-            $reasons[] = ['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal vigente'];
+            $reasons[] = ['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal ni cobertura IU vigente'];
         }
 
         // Bank-data structural checks (account number, RFC) are delegated to

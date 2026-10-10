@@ -143,5 +143,16 @@ class RoleSeeder extends Seeder
         // yearly reference value with a different blast radius. Granted only
         // to ROOT_ADMINISTRATION, same updateOrCreate rationale as above.
         Permission::updateOrCreate(['name' => 'ADM_MANAGE_SCHOLARSHIP_SETTINGS'], ['type' => 'ADMINISTRATION', 'module' => 'Configuración de becas', 'description' => 'Editar el monto de referencia global de Telmex'])->syncRoles([$rootAdministrationRole]);
+        // Becas Telmex (sdd/telmex-cobertura-iu, design API table + tasks
+        // 3b.4): read/manage split mirrors ADM_READ_PAYMENTS/ADM_PROCESS_PAYMENTS
+        // above, plus a third, separately-grantable capability for
+        // repayments (register/void abonos) per spec's independent
+        // permission requirement. Granted only to ROOT_ADMINISTRATION, same
+        // updateOrCreate rationale as every other ADM_* entry above (safe to
+        // re-apply in isolation via tinker on a non-fresh DB, retags a
+        // pre-existing row).
+        Permission::updateOrCreate(['name' => 'ADM_READ_TELMEX_COVERAGE'], ['type' => 'ADMINISTRATION', 'module' => 'Becas Telmex', 'description' => 'Ver el listado y detalle de coberturas Telmex'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_MANAGE_TELMEX_COVERAGE'], ['type' => 'ADMINISTRATION', 'module' => 'Becas Telmex', 'description' => 'Activar, finalizar, cancelar y reactivar una cobertura Telmex'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_MANAGE_TELMEX_REPAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Becas Telmex', 'description' => 'Registrar y revertir abonos de una cobertura Telmex'])->syncRoles([$rootAdministrationRole]);
     }
 }

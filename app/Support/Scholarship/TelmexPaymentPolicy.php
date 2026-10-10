@@ -34,13 +34,23 @@ final class TelmexPaymentPolicy
     /**
      * Filter A, per-object shape — consumed by
      * `PaymentReadinessEvaluator::evaluate()`'s `TELMEX_NOT_PAYABLE` guard.
-     * A pure TELMEX row without a currently active temporary increase is
-     * never a payment-batch candidate (it has nothing payable). Every other
-     * type/increase combination is a candidate.
+     * A pure TELMEX row without a currently active temporary increase AND
+     * without an active Telmex coverage (sdd/telmex-cobertura-iu, design D1)
+     * is never a payment-batch candidate (it has nothing payable). Every
+     * other type/increase/coverage combination is a candidate.
+     *
+     * $coverageId mirrors `ScholarshipRefrend::snapshot_telmex_coverage_id`:
+     * any non-null value (int or numeric string — both shapes occur across
+     * call sites, same D5 asymmetry as `$type`) means the refrend's period
+     * fell inside an active coverage window at generation time, so the
+     * covered amount already embedded in `final_amount` (PR1, design D3) is
+     * real money IU owes — candidacy must follow.
      */
-    public static function isBatchCandidate(mixed $type, mixed $increase): bool
+    public static function isBatchCandidate(mixed $type, mixed $increase, mixed $coverageId = null): bool
     {
-        return self::type($type) !== ScholarshipType::TELMEX->value || (float) ($increase ?? 0) > 0;
+        return self::type($type) !== ScholarshipType::TELMEX->value
+            || (float) ($increase ?? 0) > 0
+            || $coverageId !== null;
     }
 
     /**
@@ -49,12 +59,15 @@ final class TelmexPaymentPolicy
      * the Eloquent one). Grouped OR so it combines correctly with the
      * surrounding AND chain of batch-key `where()`s. `NULL > 0` evaluates
      * falsy in SQL, so no `COALESCE` is needed for the increase column.
+     * `orWhereNotNull` (sdd/telmex-cobertura-iu, design) mirrors the
+     * per-object `$coverageId !== null` check above.
      */
     public static function applyBatchCandidacy(Builder $query, string $alias): void
     {
         $query->where(function (Builder $where) use ($alias) {
             $where->where("{$alias}.snapshot_scholarship_type", '!=', ScholarshipType::TELMEX->value)
-                ->orWhere("{$alias}.snapshot_temporary_increase_amount", '>', 0);
+                ->orWhere("{$alias}.snapshot_temporary_increase_amount", '>', 0)
+                ->orWhereNotNull("{$alias}.snapshot_telmex_coverage_id");
         });
     }
 

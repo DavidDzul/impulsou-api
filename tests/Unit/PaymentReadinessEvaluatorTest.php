@@ -364,6 +364,10 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
+        $this->assertSame(
+            'Beca Telmex sin aumento temporal ni cobertura IU vigente',
+            $result['blocking_reasons'][array_search('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'), true)]['message']
+        );
     }
 
     /** @test */
@@ -418,5 +422,39 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertTrue($result['is_payable']);
         $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    // ── Filter A coverage guard (sdd/telmex-cobertura-iu, design) ──────────
+
+    /** @test */
+    public function pure_telmex_with_an_active_coverage_is_not_blocked_by_telmex_not_payable(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'TELMEX',
+            'snapshot_temporary_increase_amount' => null,
+            'snapshot_telmex_coverage_id'        => 5,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    /** @test */
+    public function evaluator_is_safe_when_snapshot_telmex_coverage_id_column_is_absent(): void
+    {
+        // Same `??` null-coalescing safety net as snapshot_scholarship_type —
+        // an older fixture/caller that omits this column must never crash
+        // and must never accidentally grant candidacy.
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'TELMEX',
+            'snapshot_temporary_increase_amount' => null,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertFalse($result['is_payable']);
+        $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
     }
 }

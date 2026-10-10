@@ -91,6 +91,22 @@ class PaymentBatchServiceTest extends TestCase
         return $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
     }
 
+    /**
+     * Mirrors ScholarshipCalculationServiceTest::makeCoverage (PR1) — an
+     * ACTIVA coverage row, just enough to get a real FK id for
+     * snapshot_telmex_coverage_id (restrict FK, so a real row is required).
+     */
+    private function makeCoverage(int $userId, array $overrides = []): \App\Models\TelmexCoverage
+    {
+        return \App\Models\TelmexCoverage::create(array_merge([
+            'user_id'                         => $userId,
+            'scholarship_type_at_activation'  => ScholarshipType::TELMEX->value,
+            'start_period'                    => '2026-01-01',
+            'end_period'                      => null,
+            'status'                          => 'ACTIVA',
+        ], $overrides));
+    }
+
     // ── Row shape ────────────────────────────────────────────────────────────
 
     /** @test */
@@ -660,14 +676,18 @@ class PaymentBatchServiceTest extends TestCase
         // holds; these 4 new keys are included only so the assertion stays
         // an exact, non-partial match.
         $this->assertSame([
-            'total'             => 4,
-            'ready'             => 4,
-            'blocking'          => 0,
-            'beca_amount'       => '4000.00',
-            'apoyo_amount'      => '0.00',
-            'pago_iu_amount'    => '0.00',
-            'total_amount'      => '2300.01',
-            'difference_amount' => '1699.99',
+            'total'                  => 4,
+            'ready'                  => 4,
+            'blocking'               => 0,
+            'beca_amount'            => '4000.00',
+            'apoyo_amount'           => '0.00',
+            'pago_iu_amount'         => '0.00',
+            // telmex_coverage_amount (sdd/telmex-cobertura-iu, design): a 5th
+            // new key, same non-evidentiary role as the other 4 noted above —
+            // these fixtures have no coverage, so it stays '0.00'.
+            'telmex_coverage_amount' => '0.00',
+            'total_amount'           => '2300.01',
+            'difference_amount'      => '1699.99',
         ], $summary);
     }
 
@@ -737,6 +757,10 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_generation', 'snapshot_generation_id', 'snapshot_gross_amount',
             'discount_percentage', 'snapshot_discount_percentage',
             'final_amount', 'amount_pending_from_previous', 'refund_amount_from_previous',
+            // sdd/telmex-cobertura-iu, design: raw pass-throughs + derived
+            // boolean chip, purely informational — same invariant and same
+            // paidRows() scope boundary as every other field in this list.
+            'snapshot_telmex_coverage_id', 'snapshot_telmex_covered_amount', 'telmex_covered',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
@@ -2003,5 +2027,209 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame('0.00', $summary['pending_amount']);
         $this->assertSame('0.00', $summary['total_amount']);
         $this->assertSame('0.00', $summary['difference_amount']);
+    }
+
+    // ── sdd/telmex-cobertura-iu PR2: Filter A coverage candidacy ───────────
+    //
+    // The covered Telmex part is already embedded in final_amount (PR1,
+    // design D3's calculateFinalAmount formula), so no new money math is
+    // needed here — only candidacy (Filter A) and the informational chip/
+    // bucket fields below.
+
+    /** @test */
+    public function covered_pure_telmex_without_increase_is_present_in_rows(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => null,
+            'final_amount'                       => 3500.00,
+        ]);
+        $coverage = $this->makeCoverage($refrend->user_id);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 3500.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows, 'A covered pure TELMEX row has real money owed by IU and must be a batch candidate even without an active increase.');
+        $this->assertSame('3500.00', $rows[0]['total_to_pay']);
+        $this->assertTrue($rows[0]['is_payable']);
+    }
+
+    /** @test */
+    public function uncovered_pure_telmex_with_explicit_null_coverage_stays_absent(): void
+    {
+        // Non-regression lock: an explicit NULL coverage FK (the common
+        // case for every becario without an active coverage) must still
+        // exclude a pure TELMEX row with no increase.
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => null,
+            'snapshot_telmex_coverage_id'        => null,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(0, $rows);
+    }
+
+    // ── rows() telmex coverage fields (snapshot_telmex_coverage_id, snapshot_telmex_covered_amount, telmex_covered) ──
+
+    /** @test */
+    public function rows_emits_telmex_coverage_fields_for_a_covered_row(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'final_amount'              => 3500.00,
+        ]);
+        $coverage = $this->makeCoverage($refrend->user_id);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 3500.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertSame($coverage->id, $rows[0]['snapshot_telmex_coverage_id']);
+        $this->assertEquals(3500.00, (float) $rows[0]['snapshot_telmex_covered_amount']);
+        $this->assertTrue($rows[0]['telmex_covered']);
+    }
+
+    /** @test */
+    public function rows_emits_telmex_coverage_fields_as_null_false_for_an_uncovered_row(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => 500.00,
+            'final_amount'                       => 500.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertNull($rows[0]['snapshot_telmex_coverage_id']);
+        $this->assertFalse($rows[0]['telmex_covered']);
+    }
+
+    // ── Filter B unchanged for a covered row (paidRows(), design D4 untouched) ──
+
+    /** @test */
+    public function paid_rows_does_not_exclude_a_covered_telmex_row_with_a_positive_total(): void
+    {
+        $batch   = $this->makeBatch();
+        $refrend = $this->makePaidRefrendForBatch($batch, [
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'final_amount'              => 3500.00,
+        ]);
+        $coverage = $this->makeCoverage($refrend->user_id);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 3500.00,
+        ]);
+
+        $rows = $this->service->paidRows($batch);
+
+        $this->assertCount(1, $rows, 'Filter B keys off total_to_pay only — coverage never changes it.');
+        $this->assertSame('3500.00', $rows[0]['total_to_pay']);
+    }
+
+    // ── moneyTotals telmex_coverage bucket (summary()/generationSummary()) ──
+
+    /** @test */
+    public function summary_adds_covered_telmex_amount_to_the_coverage_bucket(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'base_amount'               => 0.00,
+            'snapshot_monto_apoyo'      => null,
+            'final_amount'              => 3500.00,
+        ]);
+        $coverage = $this->makeCoverage($refrend->user_id);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 3500.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('3500.00', $summary['telmex_coverage_amount']);
+        $this->assertSame('0.00', $summary['beca_amount'], 'Covered TELMEX is never IU — card 1 stays unaffected.');
+        $this->assertSame('0.00', $summary['apoyo_amount']);
+        $this->assertSame('0.00', $summary['pago_iu_amount']);
+        $this->assertSame('3500.00', $summary['total_amount']);
+        $this->assertSame('0.00', $summary['difference_amount'], 'telmex_coverage_amount offsets the covered row\'s own total_to_pay, netting to zero.');
+    }
+
+    /** @test */
+    public function summary_telmex_coverage_amount_is_zero_when_no_row_is_covered(): void
+    {
+        $this->makeReadyRefrend();
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('0.00', $summary['telmex_coverage_amount']);
+        $this->assertSame('0.00', $summary['difference_amount'], 'Uncovered batches stay byte-identical.');
+    }
+
+    /** @test */
+    public function summary_telmex_coverage_amount_sums_only_the_covered_part_for_telmex_iu_rows(): void
+    {
+        // TELMEX_IU: base_amount is the IU part (pago_iu_amount, card 3);
+        // the covered part lives ONLY in snapshot_telmex_covered_amount and
+        // must land in its own bucket, never double-counted into card 3.
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'base_amount'               => 800.00,
+            'snapshot_monto_apoyo'      => null,
+            'final_amount'              => 1250.00,
+        ]);
+        $coverage = $this->makeCoverage($refrend->user_id, [
+            'scholarship_type_at_activation' => ScholarshipType::TELMEX_IU->value,
+        ]);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 450.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->summary($rows);
+
+        $this->assertSame('450.00', $summary['telmex_coverage_amount']);
+        $this->assertSame('800.00', $summary['pago_iu_amount'], 'Card 3 stays the IU part only.');
+    }
+
+    /** @test */
+    public function generation_summary_adds_covered_telmex_amount_to_the_coverage_bucket(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'base_amount'               => 0.00,
+            'snapshot_monto_apoyo'      => null,
+            'final_amount'              => 3500.00,
+        ]);
+        $coverage = $this->makeCoverage($refrend->user_id);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 3500.00,
+        ]);
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame('3500.00', $summary['telmex_coverage_amount']);
+        $this->assertSame('0.00', $summary['difference_amount']);
+    }
+
+    /** @test */
+    public function generation_summary_telmex_coverage_amount_is_zero_when_no_row_is_covered(): void
+    {
+        $this->makeReadyRefrend();
+
+        $rows    = $this->rows();
+        $summary = $this->service->generationSummary($rows);
+
+        $this->assertSame('0.00', $summary['telmex_coverage_amount']);
     }
 }
