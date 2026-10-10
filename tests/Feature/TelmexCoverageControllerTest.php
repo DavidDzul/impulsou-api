@@ -201,6 +201,43 @@ class TelmexCoverageControllerTest extends TestCase
     }
 
     /** @test */
+    public function show_flags_covered_months_that_also_had_a_temporary_increase(): void
+    {
+        $coverage = $this->makeCoverage(['end_period' => '2026-02-01', 'status' => 'EN_COBRO']);
+        $this->makePaidCoveredRefrend($coverage, 2026, 1, 1950.0);
+        $this->makePaidCoveredRefrend($coverage, 2026, 2, 1950.0)
+            ->update(['snapshot_temporary_increase_amount' => 300]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/telmex-coverages/{$coverage->id}");
+
+        $response->assertStatus(200);
+        $this->assertFalse($response->json('data.months.0.has_temporary_increase'));
+        $this->assertTrue($response->json('data.months.1.has_temporary_increase'));
+    }
+
+    /** @test */
+    public function show_returns_months_in_the_shape_the_panel_renders(): void
+    {
+        $coverage = $this->makeCoverage(['end_period' => '2026-02-01', 'status' => 'EN_COBRO']);
+        $this->makePaidCoveredRefrend($coverage, 2026, 1, 1950.0)->update(['payment_batch_id' => null]);
+        $this->makePaidCoveredRefrend($coverage, 2026, 2, 1950.0)
+            ->update(['status' => RefrendStatus::DRAFT->value, 'workflow_status' => 'LISTO_PARA_PAGO']);
+
+        $months = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/telmex-coverages/{$coverage->id}")
+            ->assertStatus(200)
+            ->json('data.months');
+
+        $this->assertSame('2026-01-01', $months[0]['period']);
+        $this->assertEquals(1950.0, $months[0]['covered_amount']);
+        $this->assertTrue($months[0]['is_paid']);
+        $this->assertNull($months[0]['payment_batch_id']);
+        $this->assertSame('2026-02-01', $months[1]['period']);
+        $this->assertFalse($months[1]['is_paid']);
+    }
+
+    /** @test */
     public function show_without_permission_returns_403(): void
     {
         $coverage = $this->makeCoverage();

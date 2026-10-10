@@ -8,6 +8,7 @@ use App\Actions\Scholarship\EndTelmexCoverageAction;
 use App\Actions\Scholarship\ReactivateTelmexCoverageAction;
 use App\Actions\Scholarship\RegisterTelmexCoveragePaymentAction;
 use App\Actions\Scholarship\VoidTelmexCoveragePaymentAction;
+use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CancelTelmexCoverageRequest;
@@ -111,7 +112,28 @@ class TelmexCoverageController extends Controller
             ->get([
                 'id', 'period_year', 'period_month', 'status',
                 'payment_batch_id', 'snapshot_telmex_covered_amount', 'resolution_type',
-            ]);
+                'snapshot_temporary_increase_amount',
+            ])
+            // has_temporary_increase: a covered month can also pay a
+            // temporary increase. That increase is IU's own money and is NOT
+            // part of the debt (the ledger only sums the covered Telmex part),
+            // so the statement flags those months to explain why the deposit
+            // was larger than what the becario must repay.
+            // Shape consumed by administration-panel's CoverageStatement
+            // (TelmexCoverageMonth). is_paid uses the same predicate as
+            // TelmexCoverageLedger (batch OR status PAID), so a month marked
+            // paid here is exactly a month counted in `advanced`.
+            ->map(fn (ScholarshipRefrend $refrend) => [
+                'id'                     => $refrend->id,
+                'period'                 => sprintf('%04d-%02d-01', $refrend->period_year, $refrend->period_month),
+                'covered_amount'         => (float) $refrend->snapshot_telmex_covered_amount,
+                'is_paid'                => $refrend->payment_batch_id !== null
+                    || $refrend->getRawOriginal('status') === RefrendStatus::PAID->value,
+                'payment_batch_id'       => $refrend->payment_batch_id,
+                'resolution_type'        => $refrend->resolution_type,
+                'has_temporary_increase' => (float) ($refrend->snapshot_temporary_increase_amount ?? 0) > 0,
+            ])
+            ->values();
 
         $payments = $coverage->payments()
             ->orderByDesc('paid_at')
