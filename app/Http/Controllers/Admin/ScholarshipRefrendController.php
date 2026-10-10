@@ -191,6 +191,18 @@ class ScholarshipRefrendController extends Controller
             $updates['notified_at'] = $data['notified_at'];
         }
         if (array_key_exists('final_amount_override', $data) && $data['final_amount_override'] !== null) {
+            // sdd/telmex-cobertura-iu, design D5: an override below the
+            // covered Telmex part would silently erase money IU already owes
+            // for that month — invariant final_amount >= covered must hold
+            // for every covered row, overridden or not.
+            $covered = $refrend->coveredPayableAmount();
+            if ((float) $data['final_amount_override'] < $covered) {
+                return response()->json([
+                    'res' => false,
+                    'msg' => 'El monto final no puede ser menor al monto cubierto por Telmex.',
+                ], 422);
+            }
+
             $updates['final_amount']        = $data['final_amount_override'];
             $updates['discount_percentage'] = 0;
             $updates['discount_amount']     = 0;

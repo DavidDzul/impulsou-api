@@ -152,6 +152,25 @@ class RecordPaymentSituationAction
                 break;
         }
 
+        // sdd/telmex-cobertura-iu, design D4 / decisions-2 dec2: the covered
+        // Telmex part is added OUTSIDE the IU-only $dueAmount computed above
+        // — every branch's final_amount stays IU-only, then the covered part
+        // is added here unconditionally EXCEPT for BAJA_DEFINITIVA (the
+        // refrend is CANCELLED, never paid). SIN_PAGO/RETENIDA/SUSPENDIDA/
+        // DESCUENTO_DEFINITIVO/BECA_MES/EGRESADO/REEMBOLSO_PARCIAL all still
+        // pay the covered part — client rule: "Telmex money is never
+        // discounted/withheld". The withholding ledger amount above is
+        // computed from $dueAmount and therefore stays IU-only, untouched.
+        $covered = $refrend->coveredPayableAmount();
+        if ($covered > 0 && $type !== 'BAJA_DEFINITIVA') {
+            $updates['final_amount'] = number_format(
+                round((float) $updates['final_amount'] + $covered, 2),
+                2,
+                '.',
+                ''
+            );
+        }
+
         // Liquidation of pending retained months: selects individual ledger rows
         // (scholarship_withholdings) of THIS becario and inserts one child
         // payment row per element — replaces the old scalar-stacking mechanism.

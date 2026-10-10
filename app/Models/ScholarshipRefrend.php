@@ -44,6 +44,7 @@ class ScholarshipRefrend extends Model
         'snapshot_gross_amount',
         'snapshot_monto_apoyo',
         'snapshot_telmex_covered_amount',
+        'snapshot_telmex_coverage_id',
         'snapshot_temporary_increase_amount',
         'snapshot_temporary_increase_reason',
         'base_amount',
@@ -91,6 +92,7 @@ class ScholarshipRefrend extends Model
         'snapshot_gross_amount'            => 'decimal:2',
         'snapshot_monto_apoyo'             => 'decimal:2',
         'snapshot_telmex_covered_amount'   => 'decimal:2',
+        'snapshot_telmex_coverage_id'      => 'integer',
         'snapshot_temporary_increase_amount' => 'decimal:2',
         'snapshot_discount_percentage'     => 'decimal:2',
         'discount_percentage'              => 'decimal:2',
@@ -189,6 +191,16 @@ class ScholarshipRefrend extends Model
         return $this->hasOne(ScholarshipWithholding::class, 'origin_refrend_id');
     }
 
+    /**
+     * The Telmex coverage this refrend's period was frozen against at
+     * generation/recalculation time (sdd/telmex-cobertura-iu, design D1/D2).
+     * NULL when the period/profile was not covered.
+     */
+    public function coverage(): BelongsTo
+    {
+        return $this->belongsTo(TelmexCoverage::class, 'snapshot_telmex_coverage_id');
+    }
+
     /** Ledger payments applied ON this refrend (BECA_MES liquidating retained months). */
     public function withholdingPayments(): HasMany
     {
@@ -241,6 +253,21 @@ class ScholarshipRefrend extends Model
     }
 
     // Helpers
+
+    /**
+     * The Telmex-covered amount that is actually payable for this refrend
+     * (sdd/telmex-cobertura-iu, design D2): the FK is the switch — the
+     * bookkeeping value snapshot_telmex_covered_amount (always computed by
+     * buildSnapshot for TELMEX/TELMEX_IU) only becomes real money owed by
+     * IU when snapshot_telmex_coverage_id is set, i.e. the refrend's period
+     * actually fell inside an active coverage window at generation time.
+     */
+    public function coveredPayableAmount(): float
+    {
+        return $this->snapshot_telmex_coverage_id !== null
+            ? (float) $this->snapshot_telmex_covered_amount
+            : 0.0;
+    }
 
     /**
      * A refrend is locked when:
