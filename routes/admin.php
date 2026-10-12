@@ -183,6 +183,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_READ_TELMEX_COVERAGE');
         Route::get('eligible', [TelmexCoverageController::class, 'eligible'])
             ->middleware('permission:ADM_READ_TELMEX_COVERAGE');
+        Route::post('end-bulk', [TelmexCoverageController::class, 'endBulk'])
+            ->middleware('permission:ADM_MANAGE_TELMEX_COVERAGE');
         Route::get('{coverage}', [TelmexCoverageController::class, 'show'])
             ->middleware('permission:ADM_READ_TELMEX_COVERAGE');
         Route::post('/', [TelmexCoverageController::class, 'store'])
