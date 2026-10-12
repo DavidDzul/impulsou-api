@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\PaymentBatchType;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
@@ -108,12 +109,18 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         ], $refrendOverrides));
     }
 
+    /**
+     * `batch_type` default NORMAL (sdd/pagos-lote-pago-adelantado, PR2 —
+     * now REQUIRED end to end), mirrors
+     * ScholarshipPaymentControllerTest::processPayload().
+     */
     private function processPayload(array $overrides = []): array
     {
         return array_merge([
             'campus'       => self::CAMPUS,
             'period_year'  => self::YEAR,
             'period_month' => self::MONTH,
+            'batch_type'   => PaymentBatchType::NORMAL->value,
         ], $overrides);
     }
 
@@ -283,6 +290,9 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
 
         $this->assertSame(number_format($sumFromFile, 2, '.', ''), $summaryResponse->json('data.total_amount'));
         $this->assertSame(BankPaymentFileName::forBatch($batch->fresh()), $summaryResponse->json('data.filename'));
+        // batch_type (sdd/pagos-lote-pago-adelantado, PR2): echoed in the
+        // export pre-flight for display next to the export card.
+        $this->assertSame(PaymentBatchType::NORMAL->value, $summaryResponse->json('data.batch_type'));
     }
 
     // ── All-or-nothing 422 on malformed row (both endpoints, same code path) ──

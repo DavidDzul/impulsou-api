@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Services\Scholarship;
 
+use App\Enums\PaymentBatchType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Services\Scholarship\BankPaymentFileName;
 use Tests\TestCase;
@@ -138,6 +139,74 @@ class BankPaymentFileNameTest extends TestCase
         $this->assertNotSame(
             BankPaymentFileName::forBatch($batchA),
             BankPaymentFileName::forBatch($batchB)
+        );
+    }
+
+    // ── batch_type segment (sdd/pagos-lote-pago-adelantado, amendment #2) ──
+    //
+    // NORMAL must stay BYTE-IDENTICAL to the current filename (no segment at
+    // all) — every test above already locks that implicitly (none of them
+    // set batch_type, so it is null). These tests lock it EXPLICITLY for a
+    // batch that does carry an explicit NORMAL batch_type, and add the new
+    // CERT_UNID behavior.
+
+    /** @test */
+    public function an_explicit_normal_batch_type_produces_the_same_filename_as_no_batch_type_at_all(): void
+    {
+        $batch = $this->makeBatch([
+            'id'            => 42,
+            'generation_id' => 5,
+            'campus'        => 'MERIDA',
+            'period_year'   => 2026,
+            'period_month'  => 9,
+            'batch_type'    => PaymentBatchType::NORMAL->value,
+        ]);
+
+        $filename = BankPaymentFileName::forBatch($batch);
+
+        $this->assertSame('PAGO_MERIDA_202609_42.TXT', $filename, 'NORMAL must never add a type segment — byte-identical to the pre-change filename.');
+    }
+
+    /** @test */
+    public function a_cert_unid_batch_type_adds_the_certunid_segment(): void
+    {
+        $batch = $this->makeBatch([
+            'id'            => 42,
+            'generation_id' => 5,
+            'campus'        => 'MERIDA',
+            'period_year'   => 2026,
+            'period_month'  => 9,
+            'batch_type'    => PaymentBatchType::CERT_UNID->value,
+        ]);
+
+        $filename = BankPaymentFileName::forBatch($batch);
+
+        $this->assertSame('PAGO_MERIDA_CERTUNID_202609_42.TXT', $filename);
+    }
+
+    /** @test */
+    public function two_batches_sharing_every_other_field_never_collide_when_only_batch_type_differs(): void
+    {
+        $normal = $this->makeBatch([
+            'id'            => 7,
+            'generation_id' => 5,
+            'campus'        => 'MERIDA',
+            'period_year'   => 2026,
+            'period_month'  => 9,
+            'batch_type'    => PaymentBatchType::NORMAL->value,
+        ]);
+        $certUnid = $this->makeBatch([
+            'id'            => 7,
+            'generation_id' => 5,
+            'campus'        => 'MERIDA',
+            'period_year'   => 2026,
+            'period_month'  => 9,
+            'batch_type'    => PaymentBatchType::CERT_UNID->value,
+        ]);
+
+        $this->assertNotSame(
+            BankPaymentFileName::forBatch($normal),
+            BankPaymentFileName::forBatch($certUnid)
         );
     }
 }
