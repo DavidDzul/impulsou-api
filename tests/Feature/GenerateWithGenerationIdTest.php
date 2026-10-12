@@ -76,13 +76,14 @@ class GenerateWithGenerationIdTest extends TestCase
 
     // ── TASK-11-3 Tests ───────────────────────────────────────────────────────
 
+    // generation_id has been required since 2026-06-01 (refrendos are always
+    // generated per generation), so generating without it is rejected.
+
     /** @test */
-    public function it_generates_for_all_active_users_when_no_generation_id_given(): void
+    public function it_returns_422_and_creates_nothing_when_generation_id_is_missing(): void
     {
         $gen = $this->makeGeneration('Gen A');
-
-        $user1 = $this->makeBecario(['generation_id' => $gen->id]);
-        $user2 = $this->makeBecario(['generation_id' => $gen->id]);
+        $this->makeBecario(['generation_id' => $gen->id]);
 
         $response = $this->postGenerate([
             'year'   => 2026,
@@ -90,14 +91,9 @@ class GenerateWithGenerationIdTest extends TestCase
             'campus' => 'MERIDA',
         ]);
 
-        $response->assertStatus(200);
-        $response->assertJson(['res' => true]);
-
-        $created = ScholarshipRefrend::where('period_year', 2026)
-            ->where('period_month', 5)
-            ->count();
-
-        $this->assertSame(2, $created, 'Should generate refrendos for all 2 active becarios.');
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['generation_id']);
+        $this->assertSame(0, ScholarshipRefrend::where('period_year', 2026)->where('period_month', 5)->count());
     }
 
     /** @test */

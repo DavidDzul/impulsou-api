@@ -61,9 +61,12 @@ class BulkTableEndpointTest extends TestCase
 
     private function url(array $params = []): string
     {
+        // campus is required by the endpoint (ScholarshipRefrendController
+        // bulkTable validation); fixtures default to MERIDA.
         $query = http_build_query(array_merge([
-            'year'  => 2026,
-            'month' => 5,
+            'year'   => 2026,
+            'month'  => 5,
+            'campus' => 'MERIDA',
         ], $params));
 
         return '/api/admin/scholarship-refrends/bulk-table?' . $query;
@@ -130,43 +133,55 @@ class BulkTableEndpointTest extends TestCase
 
         $row = $rows[0];
 
-        // Assert all expected keys are present
-        $expectedKeys = [
+        // Each row nests the refrend's own columns under `refrend` and keeps
+        // the derived per-row data (attendance, academics, incidents) at the
+        // top level — the shape psicol-panel's BulkRefrendRow consumes.
+        $expectedRowKeys = [
+            'refrend',
+            'attendance_present',
+            'attendance_late',
+            'attendance_absent',
+            'attendance_total',
+            'last_grade',
+            'academic_status',
+            'projected_amount',
+            'incidents_count',
+            'pending_withholding_count',
+            'advance_paid',
+        ];
+
+        foreach ($expectedRowKeys as $key) {
+            $this->assertArrayHasKey($key, $row, "Expected key '{$key}' missing from row.");
+        }
+
+        $expectedRefrendKeys = [
             'id',
             'user_id',
-            'full_name',
-            'campus',
-            'snapshot_generation',
-            'snapshot_generation_id',
             'period_year',
             'period_month',
-            'status',
             'refrend_type',
+            'status',
+            'workflow_status',
             'base_amount',
             'discount_percentage',
             'discount_amount',
             'final_amount',
             'total_to_pay',
+            'snapshot_name',
+            'snapshot_generation',
+            'snapshot_generation_id',
+            'snapshot_campus',
             'atencion_labels',
             'atencion_observations',
             'atencion_reviewed_at',
             'pedagogia_observations',
             'pedagogia_reviewed_at',
             'locked_at',
-            'attendance',
-            'average_grade',
-            'academic_status',
-            'incidents_count',
         ];
 
-        foreach ($expectedKeys as $key) {
-            $this->assertArrayHasKey($key, $row, "Expected key '{$key}' missing from row.");
+        foreach ($expectedRefrendKeys as $key) {
+            $this->assertArrayHasKey($key, $row['refrend'], "Expected key 'refrend.{$key}' missing from row.");
         }
-
-        // Assert the attendance sub-keys
-        $this->assertArrayHasKey('present', $row['attendance']);
-        $this->assertArrayHasKey('late', $row['attendance']);
-        $this->assertArrayHasKey('absent_unjustified', $row['attendance']);
     }
 
     /** @test */
@@ -222,7 +237,7 @@ class BulkTableEndpointTest extends TestCase
 
         $rows = $response->json('data');
         $this->assertCount(1, $rows);
-        $this->assertSame($gen1->id, $rows[0]['snapshot_generation_id']);
+        $this->assertSame($gen1->id, $rows[0]['refrend']['snapshot_generation_id']);
     }
 
     /** @test */
@@ -240,7 +255,7 @@ class BulkTableEndpointTest extends TestCase
 
         $rows = $response->json('data');
         $this->assertCount(1, $rows);
-        $this->assertSame('MERIDA', $rows[0]['campus']);
+        $this->assertSame('MERIDA', $rows[0]['refrend']['snapshot_campus']);
     }
 
     /** @test */

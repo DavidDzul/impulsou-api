@@ -9,6 +9,7 @@ use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendIncident;
 use App\Models\ScholarshipSemesterGrade;
 use App\Models\ScholarshipWithholding;
 use App\Models\User;
@@ -197,17 +198,37 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertSame(0, $result['meta']['total']);
     }
 
+    // incidents_count counts the incidents REGISTERED on the refrend
+    // (scholarship_refrend_incidents), not issues derived on the fly from
+    // grades — that has been the implemented rule since the bulk table
+    // shipped. A low grade becomes an incident only when one is recorded.
+
     /** @test */
-    public function incidents_count_increments_for_academic_issues(): void
+    public function incidents_count_counts_registered_incidents(): void
     {
         $refrend = $this->makeRefrend();
-        // Grade below 8.0 → academic issue → +1 incident
+        ScholarshipRefrendIncident::create([
+            'scholarship_refrend_id' => $refrend->id,
+            'incident_category'      => 'ACADEMICO',
+            'incident_type'          => 'PROMEDIO_BAJO',
+            'description'            => 'Promedio semestral bajo.',
+            'priority'               => 'MEDIUM',
+        ]);
+
+        $result = $this->buildTable();
+
+        $this->assertSame(1, $result['rows'][0]['incidents_count']);
+    }
+
+    /** @test */
+    public function incidents_count_ignores_a_low_grade_without_a_registered_incident(): void
+    {
+        $refrend = $this->makeRefrend();
         $this->seedGrade($refrend->user_id, 6.0);
 
         $result = $this->buildTable();
 
-        $this->assertSame(1, $result['rows'][0]['incidents_count'],
-            'A low grade should add 1 to incidents_count.');
+        $this->assertSame(0, $result['rows'][0]['incidents_count']);
     }
 
     // ── S-BULK-01: total_to_pay includes carryover ────────────────────────────

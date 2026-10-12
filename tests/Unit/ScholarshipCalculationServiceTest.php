@@ -89,7 +89,8 @@ class ScholarshipCalculationServiceTest extends TestCase
         $this->assertNotNull($discount);
         $this->assertStringContainsString('Promedio semestral bajo', $discount->description);
         $this->assertStringContainsString('Descuento por promedio académico vigente.', $discount->description);
-        $this->assertSame(DiscountType::PROMEDIO_BAJO->value, $discount->discount_type);
+        // discount_type is enum-cast on the model, so compare the enum case.
+        $this->assertSame(DiscountType::PROMEDIO_BAJO, $discount->discount_type);
     }
 
     // ── S-DESC-02: discount_reason null ──────────────────────────────────────
