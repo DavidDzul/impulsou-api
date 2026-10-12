@@ -35,6 +35,24 @@ class ScholarshipPaymentBatchKeyUniqueSwapMigrationTest extends TestCase
         return new \SwapScholarshipPaymentBatchesKeyUnique();
     }
 
+    /**
+     * sdd/pagos-lote-pago-adelantado, Phase 1 (PR1) stacks a NEWER migration
+     * (2026_10_12_100000) on top of this one, which also touches the
+     * `sc_payment_batches_key_unique` index name — RefreshDatabase's own
+     * `artisan migrate` now runs BOTH before every test in this class, so
+     * the schema starts two migrations ahead of what this file's own
+     * `migration()->down()` alone can undo. Mirrors a real
+     * `migrate:rollback` (newest migration first): undo the newer one here
+     * before calling this file's own down(), restoring the exact
+     * "post-2026_10_05-up()-only" state these tests were written against.
+     */
+    private function undoNewerBatchTypeMigration(): void
+    {
+        require_once __DIR__ . '/../../database/migrations/2026_10_12_100000_add_batch_type_to_scholarship_payment_batches.php';
+
+        (new \AddBatchTypeToScholarshipPaymentBatches())->down();
+    }
+
     private function insertBatch(array $overrides, int $adminId): void
     {
         DB::table('scholarship_payment_batches')->insert(array_merge([
@@ -71,6 +89,7 @@ class ScholarshipPaymentBatchKeyUniqueSwapMigrationTest extends TestCase
     public function up_throws_on_a_pre_existing_campus_period_duplicate_with_the_old_index_still_intact(): void
     {
         $admin = User::factory()->create();
+        $this->undoNewerBatchTypeMigration();
         $this->migration()->down();
 
         $this->insertBatch(['generation_id' => 1], $admin->id);
@@ -92,6 +111,7 @@ class ScholarshipPaymentBatchKeyUniqueSwapMigrationTest extends TestCase
     public function up_leaves_the_old_index_intact_after_aborting_on_a_duplicate(): void
     {
         $admin = User::factory()->create();
+        $this->undoNewerBatchTypeMigration();
         $this->migration()->down();
 
         $this->insertBatch(['generation_id' => 1], $admin->id);
@@ -119,6 +139,7 @@ class ScholarshipPaymentBatchKeyUniqueSwapMigrationTest extends TestCase
     public function up_migrates_cleanly_and_the_new_three_column_unique_index_rejects_a_differing_generation_duplicate(): void
     {
         $admin = User::factory()->create();
+        $this->undoNewerBatchTypeMigration();
         $this->migration()->down();
 
         $this->insertBatch(['generation_id' => 1], $admin->id);
@@ -167,6 +188,7 @@ class ScholarshipPaymentBatchKeyUniqueSwapMigrationTest extends TestCase
 
         $this->insertBatch(['generation_id' => 1], $admin->id);
 
+        $this->undoNewerBatchTypeMigration();
         $this->migration()->down();
 
         // Legal again under the restored 4-column unique index.
