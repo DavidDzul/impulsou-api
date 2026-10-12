@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\PaymentBatchType;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendDiscount;
 use App\Models\ScholarshipWithholding;
@@ -151,12 +153,40 @@ class ScholarshipPaymentControllerTest extends TestCase
         ], $overrides));
     }
 
-    private function indexUrl(): string
+    /**
+     * `batch_type` default NORMAL (sdd/pagos-lote-pago-adelantado, amendment
+     * #1): REQUIRED end-to-end since PR2 — every pre-existing caller of this
+     * helper must keep sending a valid value, same convention as
+     * processPayload() below. Pass `batch_type => null` via $overrides to
+     * omit it entirely (for the missing-batch_type 422 tests).
+     */
+    private function indexUrl(array $overrides = []): string
     {
-        return '/api/admin/scholarship-payments?' . http_build_query([
+        $params = array_merge([
             'campus'       => self::CAMPUS,
             'period_year'  => self::YEAR,
             'period_month' => self::MONTH,
+            'batch_type'   => PaymentBatchType::NORMAL->value,
+        ], $overrides);
+
+        if (array_key_exists('batch_type', $overrides) && $overrides['batch_type'] === null) {
+            unset($params['batch_type']);
+        }
+
+        return '/api/admin/scholarship-payments?' . http_build_query($params);
+    }
+
+    /**
+     * Marks a becario CERT-UNID eligible (or explicitly not) via their
+     * `scholarship_profiles` row — mirrors
+     * PaymentBatchServiceTest::makeProfile exactly (Filter D's COALESCE
+     * reads this same column).
+     */
+    private function makeProfile(int $userId, bool $eligible): ScholarshipProfile
+    {
+        return ScholarshipProfile::create([
+            'user_id'                  => $userId,
+            'advance_payment_eligible' => $eligible,
         ]);
     }
 
@@ -187,11 +217,18 @@ class ScholarshipPaymentControllerTest extends TestCase
 
     private function processPayload(array $overrides = []): array
     {
-        return array_merge([
+        $payload = array_merge([
             'campus'       => self::CAMPUS,
             'period_year'  => self::YEAR,
             'period_month' => self::MONTH,
+            'batch_type'   => PaymentBatchType::NORMAL->value,
         ], $overrides);
+
+        if (array_key_exists('batch_type', $overrides) && $overrides['batch_type'] === null) {
+            unset($payload['batch_type']);
+        }
+
+        return $payload;
     }
 
     // ── Permission gate (403) ──────────────────────────────────────────────
@@ -1197,5 +1234,229 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertSame('0.00', $summary['paid_amount']);
         $this->assertSame('0.00', $summary['pending_amount']);
         $this->assertSame('0.00', $summary['total_amount']);
+    }
+
+    // ── batch_type segmentation (sdd/pagos-lote-pago-adelantado, PR2) ───────
+    //
+    // Amendment override (#1942, binding): batch_type is REQUIRED end to end
+    // — missing/invalid value is a 422, there is no NORMAL default at this
+    // layer (that REPLACES the original design's `sometimes`/default-NORMAL
+    // sketch).
+
+    /** @test */
+    public function index_returns_422_when_batch_type_is_missing(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->indexUrl(['batch_type' => null])
+        );
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function index_returns_422_when_batch_type_is_invalid(): void
+    {
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->indexUrl(['batch_type' => 'BOGUS'])
+        );
+
+        $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function process_returns_422_when_batch_type_is_missing(): void
+    {
+        $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00', 'batch_type' => null])
+        );
+
+        $response->assertStatus(422);
+        $this->assertSame(0, ScholarshipPaymentBatch::count(), 'Nothing should be written when batch_type is missing.');
+    }
+
+    /** @test */
+    public function process_returns_422_when_batch_type_is_invalid(): void
+    {
+        $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00', 'batch_type' => 'BOGUS'])
+        );
+
+        $response->assertStatus(422);
+        $this->assertSame(0, ScholarshipPaymentBatch::count());
+    }
+
+    /** @test */
+    public function index_echoes_the_resolved_batch_type_in_the_response(): void
+    {
+        $this->makeReadyRefrend();
+
+        $response = $this->actingAs($this->rootAdmin)->getJson(
+            $this->indexUrl(['batch_type' => PaymentBatchType::CERT_UNID->value])
+        );
+
+        $response->assertStatus(200);
+        $this->assertSame('CERT_UNID', $response->json('data.batch_type'));
+    }
+
+    /** @test */
+    public function process_echoes_the_resolved_batch_type_in_the_response(): void
+    {
+        $refrend = $this->makeReadyRefrend();
+        $this->makeProfile($refrend->user_id, true);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload([
+                'expected_count' => 1,
+                'expected_total' => '1000.00',
+                'batch_type'     => PaymentBatchType::CERT_UNID->value,
+            ])
+        );
+
+        $response->assertStatus(200);
+        $this->assertSame('CERT_UNID', $response->json('data.batch_type'));
+    }
+
+    /**
+     * A CERT-UNID-eligible becario who is NOT payable (missing enrollment)
+     * must not block the NORMAL batch for the same campus/period — Filter D
+     * (PaymentBatchService::rows()) partitions candidacy BEFORE the
+     * all-or-nothing gate runs, so the blocked CERT-UNID row never even
+     * enters the NORMAL batch's rows().
+     */
+    /** @test */
+    public function a_blocked_cert_unid_becario_does_not_block_the_normal_batch(): void
+    {
+        $normal = $this->makeReadyRefrend();
+        $this->makeProfile($normal->user_id, false);
+
+        $blockedCertUnid = $this->makeReadyRefrend([], ['enrollment' => null]);
+        $this->makeProfile($blockedCertUnid->user_id, true);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        );
+
+        $response->assertStatus(200);
+        $normal->refresh();
+        $this->assertSame('PAID', $normal->status->value);
+    }
+
+    /**
+     * Both types can be processed independently for the SAME campus/period
+     * — the unique key widened to (campus, period_year, period_month,
+     * batch_type), so a NORMAL batch and a CERT_UNID batch coexist with no
+     * double payment of either becario.
+     */
+    /** @test */
+    public function both_batch_types_can_be_processed_for_the_same_month_without_double_payment(): void
+    {
+        $normal = $this->makeReadyRefrend();
+        $this->makeProfile($normal->user_id, false);
+
+        $certUnid = $this->makeReadyRefrend();
+        $this->makeProfile($certUnid->user_id, true);
+
+        $normalResponse = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload(['expected_count' => 1, 'expected_total' => '1000.00'])
+        );
+        $normalResponse->assertStatus(200);
+
+        $certUnidResponse = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload([
+                'expected_count' => 1,
+                'expected_total' => '1000.00',
+                'batch_type'     => PaymentBatchType::CERT_UNID->value,
+            ])
+        );
+        $certUnidResponse->assertStatus(200);
+
+        $this->assertNotSame($normalResponse->json('data.batch_id'), $certUnidResponse->json('data.batch_id'));
+        $this->assertSame(2, ScholarshipPaymentBatch::count());
+
+        $normal->refresh();
+        $certUnid->refresh();
+        $this->assertSame('PAID', $normal->status->value);
+        $this->assertSame('PAID', $certUnid->status->value);
+        $this->assertSame($normalResponse->json('data.batch_id'), $normal->payment_batch_id);
+        $this->assertSame($certUnidResponse->json('data.batch_id'), $certUnid->payment_batch_id);
+    }
+
+    /**
+     * The duplicate-process guard (409) is scoped by (campus, year, month,
+     * batch_type) — a NORMAL batch already existing for this key must NOT
+     * block a CERT_UNID process() call for the same key.
+     */
+    /** @test */
+    public function process_duplicate_guard_is_scoped_by_batch_type_so_the_other_type_still_succeeds(): void
+    {
+        ScholarshipPaymentBatch::create([
+            'campus'          => self::CAMPUS,
+            'period_year'     => self::YEAR,
+            'period_month'    => self::MONTH,
+            'batch_type'      => PaymentBatchType::NORMAL->value,
+            'refrend_count'   => 0,
+            'total_amount'    => '0.00',
+            'processed_by_id' => $this->rootAdmin->id,
+            'processed_at'    => now(),
+        ]);
+
+        $certUnid = $this->makeReadyRefrend();
+        $this->makeProfile($certUnid->user_id, true);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload([
+                'expected_count' => 1,
+                'expected_total' => '1000.00',
+                'batch_type'     => PaymentBatchType::CERT_UNID->value,
+            ])
+        );
+
+        $response->assertStatus(200);
+        $this->assertSame(2, ScholarshipPaymentBatch::count());
+    }
+
+    /**
+     * `is_paid`/`batch_id` (batchBlock()) must be derived per-type — paying
+     * the CERT_UNID batch for this key must NOT mark the NORMAL batch block
+     * as paid, and vice versa, since rows() (and therefore batchBlock()'s
+     * input) is now scoped to one type at a time.
+     */
+    /** @test */
+    public function index_batch_block_is_paid_is_scoped_per_batch_type(): void
+    {
+        $certUnid = $this->makeReadyRefrend();
+        $this->makeProfile($certUnid->user_id, true);
+
+        $this->actingAs($this->rootAdmin)->postJson(
+            '/api/admin/scholarship-payments/process',
+            $this->processPayload([
+                'expected_count' => 1,
+                'expected_total' => '1000.00',
+                'batch_type'     => PaymentBatchType::CERT_UNID->value,
+            ])
+        )->assertStatus(200);
+
+        $normalIndex = $this->actingAs($this->rootAdmin)->getJson(
+            $this->indexUrl(['batch_type' => PaymentBatchType::NORMAL->value])
+        );
+        $normalIndex->assertStatus(200);
+        $this->assertFalse($normalIndex->json('data.batch.is_paid'), 'NORMAL must not show as paid just because CERT_UNID was paid.');
+
+        $certUnidIndex = $this->actingAs($this->rootAdmin)->getJson(
+            $this->indexUrl(['batch_type' => PaymentBatchType::CERT_UNID->value])
+        );
+        $certUnidIndex->assertStatus(200);
+        $this->assertTrue($certUnidIndex->json('data.batch.is_paid'));
     }
 }

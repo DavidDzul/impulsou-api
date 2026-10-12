@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\BulkPayAction;
+use App\Enums\PaymentBatchType;
 use App\Http\Controllers\Controller;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
@@ -15,6 +16,7 @@ use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * NOT to be confused with ScholarshipPaymentDataController (bank-account /
@@ -49,22 +51,33 @@ class ScholarshipPaymentController extends Controller
             'campus'        => 'required|string|max:50',
             'period_year'   => 'required|integer|min:2020|max:2100',
             'period_month'  => 'required|integer|min:1|max:12',
+            // batch_type (sdd/pagos-lote-pago-adelantado, amendment #1942,
+            // binding — REPLACES design's `sometimes`/default-NORMAL sketch):
+            // REQUIRED end to end, no default. Missing/invalid value is a
+            // 422 — the panel's "Tipo de lote" select has no default either,
+            // so nothing loads until staff explicitly chooses a type.
+            'batch_type'    => ['required', Rule::in(PaymentBatchType::values())],
         ]);
+
+        $batchType = PaymentBatchType::from($data['batch_type']);
 
         $service = app(PaymentBatchService::class);
         $rows    = $service->rows(
             $data['campus'],
             (int) $data['period_year'],
-            (int) $data['period_month']
+            (int) $data['period_month'],
+            null,
+            $batchType
         );
         $summary = $service->summary($rows);
 
         return response()->json([
             'res'  => true,
             'data' => [
-                'rows'    => $rows,
-                'summary' => $summary,
-                'batch'   => $this->batchBlock($rows),
+                'rows'       => $rows,
+                'summary'    => $summary,
+                'batch'      => $this->batchBlock($rows),
+                'batch_type' => $batchType->value,
             ],
         ]);
     }
@@ -220,13 +233,19 @@ class ScholarshipPaymentController extends Controller
             'period_month'   => 'required|integer|min:1|max:12',
             'expected_count' => 'required|integer|min:0',
             'expected_total' => 'required|numeric',
+            // batch_type: same REQUIRED rule as index() (amendment #1942).
+            'batch_type'     => ['required', Rule::in(PaymentBatchType::values())],
         ]);
+
+        $batchType = PaymentBatchType::from($data['batch_type']);
 
         $service = app(PaymentBatchService::class);
         $rows    = $service->rows(
             $data['campus'],
             (int) $data['period_year'],
-            (int) $data['period_month']
+            (int) $data['period_month'],
+            null,
+            $batchType
         );
         $summary = $service->summary($rows);
 
@@ -253,15 +272,19 @@ class ScholarshipPaymentController extends Controller
             ], 409);
         }
 
-        // Guard against the unique key (campus, period_year, period_month)
-        // — without this, a batch row already existing for this exact key
-        // (a genuine re-submit, or an orphaned row left over from an
-        // earlier attempt) surfaces as an unhandled 500 with the raw SQL
+        // Guard against the unique key (campus, period_year, period_month,
+        // batch_type) — without this, a batch row already existing for this
+        // exact key (a genuine re-submit, or an orphaned row left over from
+        // an earlier attempt) surfaces as an unhandled 500 with the raw SQL
         // "Duplicate entry" exception exposed to the client (live bug
         // report 2026-09-27), instead of a clean, actionable response.
+        // Scoped by batch_type (sdd/pagos-lote-pago-adelantado, design) —
+        // a NORMAL batch already existing for this campus/period must NOT
+        // block a CERT_UNID process() call for the same campus/period.
         $existingBatch = ScholarshipPaymentBatch::where('campus', $data['campus'])
             ->where('period_year', $data['period_year'])
             ->where('period_month', $data['period_month'])
+            ->where('batch_type', $batchType->value)
             ->first();
 
         if ($existingBatch) {
@@ -276,6 +299,7 @@ class ScholarshipPaymentController extends Controller
             'campus'          => $data['campus'],
             'period_year'     => $data['period_year'],
             'period_month'    => $data['period_month'],
+            'batch_type'      => $batchType->value,
             'refrend_count'   => count($rows),
             'total_amount'    => $summary['total_amount'],
             'processed_by_id' => auth()->id(),
@@ -298,8 +322,9 @@ class ScholarshipPaymentController extends Controller
         return response()->json([
             'res'  => true,
             'data' => [
-                'batch_id' => $batch->id,
-                'rows'     => $outcomeRows,
+                'batch_id'   => $batch->id,
+                'rows'       => $outcomeRows,
+                'batch_type' => $batchType->value,
             ],
         ]);
     }
@@ -331,6 +356,12 @@ class ScholarshipPaymentController extends Controller
                 'count'        => count($rows),
                 'total_amount' => number_format($totalAmount, 2, '.', ''),
                 'filename'     => BankPaymentFileName::forBatch($batch),
+                // batch_type (sdd/pagos-lote-pago-adelantado): echoed for
+                // display next to the export card. The column defaults to
+                // NORMAL at the DB level (migration 2026_10_12_100000) and
+                // this $batch is always route-bound (hydrated from the DB),
+                // so this is never null in practice.
+                'batch_type'   => $batch->batch_type?->value,
             ],
         ]);
     }
