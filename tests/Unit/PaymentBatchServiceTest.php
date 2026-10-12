@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Enums\PaymentBatchType;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
@@ -9,6 +10,7 @@ use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
 use App\Services\Scholarship\PaymentBatchService;
@@ -2231,5 +2233,128 @@ class PaymentBatchServiceTest extends TestCase
         $summary = $this->service->generationSummary($rows);
 
         $this->assertSame('0.00', $summary['telmex_coverage_amount']);
+    }
+
+    // ── Filter D: batch_type segmentation (sdd/pagos-lote-pago-adelantado) ──
+    //
+    // Amendment override (sdd/pagos-lote-pago-adelantado/amendments #1) only
+    // changes the CONTROLLER's validation (PR2) — at this service layer, a
+    // null $batchType still means "no partition at all" (byGeneration()'s
+    // contract, unaffected by this PR).
+
+    private function rowsFor(?PaymentBatchType $type): array
+    {
+        return $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH, null, $type);
+    }
+
+    private function makeProfile(int $userId, bool $eligible): ScholarshipProfile
+    {
+        return ScholarshipProfile::create([
+            'user_id'                  => $userId,
+            'advance_payment_eligible' => $eligible,
+        ]);
+    }
+
+    /** @test */
+    public function rows_with_null_batch_type_ignores_segmentation_and_returns_every_candidate(): void
+    {
+        $eligible = $this->makeReadyRefrend(['snapshot_name' => 'Becario Elegible']);
+        $this->makeProfile($eligible->user_id, true);
+        $notEligible = $this->makeReadyRefrend(['snapshot_name' => 'Becario No Elegible']);
+        $this->makeProfile($notEligible->user_id, false);
+
+        $rows = $this->rowsFor(null);
+
+        $this->assertCount(2, $rows, "A null \$batchType (byGeneration()'s caller) must stay unpartitioned.");
+    }
+
+    /** @test */
+    public function rows_with_normal_type_excludes_an_unpaid_cert_unid_eligible_refrend(): void
+    {
+        $normal = $this->makeReadyRefrend(['snapshot_name' => 'Becario Normal']);
+        $this->makeProfile($normal->user_id, false);
+        $certUnid = $this->makeReadyRefrend(['snapshot_name' => 'Becario Cert Unid']);
+        $this->makeProfile($certUnid->user_id, true);
+
+        $rows = $this->rowsFor(PaymentBatchType::NORMAL);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario Normal', $rows[0]['snapshot_name']);
+    }
+
+    /** @test */
+    public function rows_with_cert_unid_type_returns_only_the_eligible_unpaid_refrend(): void
+    {
+        $normal = $this->makeReadyRefrend(['snapshot_name' => 'Becario Normal']);
+        $this->makeProfile($normal->user_id, false);
+        $certUnid = $this->makeReadyRefrend(['snapshot_name' => 'Becario Cert Unid']);
+        $this->makeProfile($certUnid->user_id, true);
+
+        $rows = $this->rowsFor(PaymentBatchType::CERT_UNID);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario Cert Unid', $rows[0]['snapshot_name']);
+    }
+
+    /** @test */
+    public function rows_with_normal_type_includes_a_refrend_with_no_profile_row_at_all(): void
+    {
+        // No ScholarshipProfile row created for this becario at all — the
+        // LEFT JOIN produces NULL, COALESCE(...,0) must read as "not
+        // eligible", same convention as RefrendBulkQueryService.
+        $this->makeReadyRefrend();
+
+        $rows = $this->rowsFor(PaymentBatchType::NORMAL);
+
+        $this->assertCount(1, $rows, 'A becario with no scholarship_profiles row must default to NORMAL candidacy.');
+    }
+
+    /** @test */
+    public function rows_with_cert_unid_type_excludes_a_refrend_with_no_profile_row_at_all(): void
+    {
+        $this->makeReadyRefrend();
+
+        $rows = $this->rowsFor(PaymentBatchType::CERT_UNID);
+
+        $this->assertCount(0, $rows);
+    }
+
+    /** @test */
+    public function a_paid_row_stays_associated_with_its_batchs_type_after_the_eligibility_flag_later_flips(): void
+    {
+        $normalBatch = $this->makeBatch(['batch_type' => PaymentBatchType::NORMAL->value]);
+        $refrend     = $this->makePaidRefrendForBatch($normalBatch);
+        $this->makeProfile($refrend->user_id, false);
+
+        // Flip eligibility to true AFTER payment.
+        ScholarshipProfile::where('user_id', $refrend->user_id)->update(['advance_payment_eligible' => true]);
+
+        $normalRows   = $this->rowsFor(PaymentBatchType::NORMAL);
+        $certUnidRows = $this->rowsFor(PaymentBatchType::CERT_UNID);
+
+        $this->assertCount(1, $normalRows, 'The paid row must still report under NORMAL — the batch that actually paid it.');
+        $this->assertSame($normalBatch->id, $normalRows[0]['payment_batch_id']);
+        $this->assertCount(0, $certUnidRows, 'The paid row must NOT appear as ALREADY_PAID in CERT_UNID after the flag flip.');
+    }
+
+    /** @test */
+    public function both_types_can_be_processed_independently_for_the_same_campus_and_period(): void
+    {
+        $normalBatch   = $this->makeBatch(['batch_type' => PaymentBatchType::NORMAL->value]);
+        $certUnidBatch = $this->makeBatch(['batch_type' => PaymentBatchType::CERT_UNID->value, 'period_year' => self::YEAR, 'period_month' => self::MONTH]);
+
+        $normalPaid = $this->makePaidRefrendForBatch($normalBatch, ['snapshot_name' => 'Becario Normal Pagado']);
+        $this->makeProfile($normalPaid->user_id, false);
+
+        $certUnidPaid = $this->makePaidRefrendForBatch($certUnidBatch, ['snapshot_name' => 'Becario Cert Unid Pagado']);
+        $this->makeProfile($certUnidPaid->user_id, true);
+
+        $normalRows   = $this->rowsFor(PaymentBatchType::NORMAL);
+        $certUnidRows = $this->rowsFor(PaymentBatchType::CERT_UNID);
+
+        $this->assertCount(1, $normalRows);
+        $this->assertSame('Becario Normal Pagado', $normalRows[0]['snapshot_name']);
+        $this->assertCount(1, $certUnidRows);
+        $this->assertSame('Becario Cert Unid Pagado', $certUnidRows[0]['snapshot_name']);
     }
 }

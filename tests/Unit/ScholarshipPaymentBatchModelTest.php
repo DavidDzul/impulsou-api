@@ -50,6 +50,9 @@ class ScholarshipPaymentBatchModelTest extends TestCase
                 'campus',
                 'period_year',
                 'period_month',
+                // batch_type (sdd/pagos-lote-pago-adelantado): part of the
+                // batch identity alongside campus/period_year/period_month.
+                'batch_type',
                 'refrend_count',
                 'total_amount',
                 'processed_by_id',

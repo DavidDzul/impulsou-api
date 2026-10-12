@@ -2,11 +2,13 @@
 
 namespace App\Services\Scholarship;
 
+use App\Enums\PaymentBatchType;
 use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Support\Scholarship\PaymentAmountFloor;
+use App\Support\Scholarship\PaymentBatchSegmentPolicy;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use Illuminate\Support\Facades\DB;
 
@@ -148,8 +150,14 @@ class PaymentBatchService
      *     excluded despite a matching generation_id — inherited from
      *     buildTable(), not a defect. When null (both existing 3-arg
      *     callers), output is byte-identical to pre-change behavior.
+     * @param ?PaymentBatchType $batchType (sdd/pagos-lote-pago-adelantado,
+     *     design "rows() signature"): optional, additive filter — appended
+     *     LAST so every existing caller (including the $generationId ones)
+     *     stays byte-identical. Null means NO partition at all (byGeneration()'s
+     *     contract: a batch spans both types there). Non-null applies Filter D
+     *     (PaymentBatchSegmentPolicy) on top of Filters A/C.
      */
-    public function rows(string $campus, int $periodYear, int $periodMonth, ?int $generationId = null): array
+    public function rows(string $campus, int $periodYear, int $periodMonth, ?int $generationId = null, ?PaymentBatchType $batchType = null): array
     {
         $query = DB::table('scholarship_refrends as r')
             ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
@@ -166,6 +174,14 @@ class PaymentBatchService
         // TELMEX row without a currently active temporary increase has
         // nothing payable and is not a batch candidate at all.
         TelmexPaymentPolicy::applyBatchCandidacy($query, 'r');
+
+        // Filter D (sdd/pagos-lote-pago-adelantado, design "Filter location"):
+        // partitions candidacy between NORMAL and CERT_UNID batches. Only
+        // applied when a type is explicitly requested — byGeneration() never
+        // passes one, so it stays cross-batch/unpartitioned.
+        if ($batchType !== null) {
+            PaymentBatchSegmentPolicy::applyBatchCandidacy($query, 'r', $batchType);
+        }
 
         // Filter C (sdd/egresado-status-timing, design D5): the
         // auto-generated retícula month+2 egreso row is not a batch
