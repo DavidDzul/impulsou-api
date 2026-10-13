@@ -482,7 +482,6 @@ class ScholarshipPaymentControllerTest extends TestCase
             'incident_type'     => 'INASISTENCIA',
             'incident_date'     => '2026-05-10',
             'description'       => 'Faltó a clase sin justificación.',
-            'is_resolved'       => false,
         ]);
 
         $withPending = $this->makeReadyRefrend([
@@ -521,7 +520,6 @@ class ScholarshipPaymentControllerTest extends TestCase
             'incident_type'     => 'INASISTENCIA',
             'incident_date'     => '2026-05-10',
             'description'       => 'Faltó a clase sin justificación.',
-            'is_resolved'       => false,
         ]);
 
         $response = $this->actingAs($this->rootAdmin)
@@ -536,7 +534,7 @@ class ScholarshipPaymentControllerTest extends TestCase
 
         $this->assertCount(1, $data['incidents']);
         $this->assertSame('Faltó a clase sin justificación.', $data['incidents'][0]['description']);
-        $this->assertFalse($data['incidents'][0]['is_resolved']);
+        $this->assertArrayNotHasKey('is_resolved', $data['incidents'][0]);
 
         $this->assertSame(2, $data['carryover_months_count']);
         $this->assertSame('04/2026: 300.00; 03/2026: 150.00', $data['carryover_months_detail']);
