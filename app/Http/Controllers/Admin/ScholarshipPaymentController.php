@@ -190,7 +190,6 @@ class ScholarshipPaymentController extends Controller
                     'incident_category'  => $incident->incident_category,
                     'incident_type'      => $incident->incident_type,
                     'description'        => $incident->description,
-                    'is_resolved'        => $incident->is_resolved,
                 ])->values()->all(),
                 'carryover_months_count'  => $refrend->carryover_months_count,
                 'carryover_months_detail' => $refrend->carryover_months_detail,

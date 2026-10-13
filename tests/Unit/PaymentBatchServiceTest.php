@@ -232,7 +232,6 @@ class PaymentBatchServiceTest extends TestCase
             'incident_type'     => 'INASISTENCIA',
             'incident_date'     => '2026-05-10',
             'description'       => 'Faltó a clase sin justificación.',
-            'is_resolved'       => false,
         ]);
 
         $rows = $this->rows();

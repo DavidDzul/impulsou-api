@@ -162,10 +162,9 @@ class RefrendBulkQueryService
             ->get()
             ->keyBy('scholarship_refrend_id');
 
-        // First unresolved incident per refrend (for the tooltip)
+        // First incident per refrend (for the tooltip)
         $firstIncidents = DB::table('scholarship_refrend_incidents')
             ->whereIn('scholarship_refrend_id', $refrendIds)
-            ->where('is_resolved', false)
             ->orderBy('created_at')
             ->select('scholarship_refrend_id', 'incident_category', 'incident_type', 'description')
             ->get()

@@ -21,7 +21,7 @@ class FlagRefrendIncidentAction
         }
 
         $old           = $this->logging->snapshotRefrend($refrend);
-        $existingIncident = $refrend->incidents()->where('is_resolved', false)->first();
+        $existingIncident = $refrend->incidents()->first();
 
         return DB::transaction(function () use ($refrend, $incidentData, $comment, $userId, $old, $existingIncident) {
             if ($existingIncident) {

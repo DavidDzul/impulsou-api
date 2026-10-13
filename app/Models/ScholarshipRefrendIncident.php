@@ -17,16 +17,10 @@ class ScholarshipRefrendIncident extends Model
         'description',
         'priority',
         'created_by_id',
-        'is_resolved',
-        'resolved_at',
-        'resolved_by_id',
-        'resolution_notes',
     ];
 
     protected $casts = [
         'incident_date' => 'date',
-        'is_resolved'   => 'boolean',
-        'resolved_at'   => 'datetime',
     ];
 
     public function refrend(): BelongsTo
@@ -37,10 +31,5 @@ class ScholarshipRefrendIncident extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_id');
-    }
-
-    public function resolvedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'resolved_by_id');
     }
 }
