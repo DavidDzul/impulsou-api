@@ -165,7 +165,6 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::put('{refrend}/discharge', [ScholarshipRefrendController::class, 'discharge']);
         Route::post('{refrend}/incidents', [ScholarshipRefrendController::class, 'createIncident']);
         Route::delete('{refrend}/incidents/{incident}', [ScholarshipRefrendController::class, 'deleteIncident']);
-        Route::patch('{refrend}/incidents/{incident}/resolve', [ScholarshipRefrendController::class, 'resolveIncident']);
     });
 
     Route::get('users/{userId}/scholarship-refrends', [ScholarshipRefrendController::class, 'forUser']);

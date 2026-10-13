@@ -19,7 +19,7 @@ class ClearRefrendIncidentAction
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $userId, $old) {
-            $refrend->incidents()->where('is_resolved', false)->delete();
+            $refrend->incidents()->delete();
 
             $refrend->update([
                 'workflow_status'         => 'DRAFT',

@@ -432,7 +432,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             1,
             ScholarshipRefrendIncident::where('scholarship_refrend_id', $result->id)
                 ->where('incident_type', 'DESCUENTO_PERFIL')
-                ->where('is_resolved', false)
                 ->count()
         );
     }
@@ -487,7 +486,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             1,
             ScholarshipRefrendIncident::where('scholarship_refrend_id', $afterSecondUndo->id)
                 ->where('incident_type', 'DESCUENTO_PERFIL')
-                ->where('is_resolved', false)
                 ->count(),
             'A second apply→undo cycle must not accumulate a duplicate DESCUENTO_PERFIL incident.'
         );
@@ -507,7 +505,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             'description'            => 'Incidencia registrada manualmente.',
             'priority'               => 'LOW',
             'created_by_id'          => $this->admin->id,
-            'is_resolved'            => false,
         ]);
 
         $this->action->execute($refrend, $this->admin->id);

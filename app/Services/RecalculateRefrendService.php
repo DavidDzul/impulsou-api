@@ -105,7 +105,6 @@ class RecalculateRefrendService
             // and never a human-filed incident that happens to share the type.
             $refrend->incidents()
                 ->where('incident_type', 'DESCUENTO_PERFIL')
-                ->where('is_resolved', false)
                 ->whereNull('created_by_id')
                 ->delete();
 

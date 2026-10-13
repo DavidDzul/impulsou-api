@@ -100,7 +100,6 @@ class ScholarshipRefrendController extends Controller
             'atencionReviewedBy',
             'pedagogiaReviewedBy',
             'incidents.createdBy',
-            'incidents.resolvedBy',
         ]);
 
         return response()->json(['res' => true, 'data' => $refrend]);
@@ -714,32 +713,6 @@ class ScholarshipRefrendController extends Controller
         $incident->delete();
 
         return response()->json(null, 204);
-    }
-
-    /**
-     * Marks an incident as resolved.
-     */
-    public function resolveIncident(Request $request, ScholarshipRefrend $refrend, ScholarshipRefrendIncident $incident): JsonResponse
-    {
-        $data = $request->validate([
-            'resolution_notes' => 'required|string|min:10|max:500',
-        ]);
-
-        $incident->update([
-            'is_resolved'      => true,
-            'resolved_at'      => now(),
-            'resolved_by_id'   => auth()->id(),
-            'resolution_notes' => $data['resolution_notes'],
-        ]);
-
-        $this->loggingService->log(
-            $refrend,
-            'INCIDENT_RESOLVED',
-            ['is_resolved' => false],
-            ['is_resolved' => true, 'resolution_notes' => $data['resolution_notes']]
-        );
-
-        return response()->json(['res' => true, 'data' => $incident->fresh()]);
     }
 
     // ── Recalculate ───────────────────────────────────────────────────────────
