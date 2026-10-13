@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Scholarship\GraduateBecarioAction;
+use App\Exceptions\ReticulaPeriodOutOfRangeException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
@@ -33,7 +34,15 @@ class GenerateMonthlyRefrendsService
      * Genera refrendos DRAFT para todos los becarios activos con perfil de beca
      * para el periodo indicado. Idempotente: si ya existe, lo omite.
      *
-     * @return array{created: int, skipped: int, errors: int}
+     * sdd/verificacion-incidencias-ux, PR1: `skipped` keeps its original
+     * meaning ("already existed"); a becario whose period falls outside
+     * their retícula window is now counted separately under
+     * `skipped_out_of_reticula` (reporting-only, not a real error) instead
+     * of being lumped into `errors`. `failures[]` adds one entry per
+     * becario NOT created (both kinds), for UI-level detail. `errors` keeps
+     * counting every other \Throwable exactly as before.
+     *
+     * @return array{created: int, skipped: int, skipped_out_of_reticula: int, errors: int, failures: array<int, array{user_id: int, name: string, reason: string, kind: string}>}
      */
     public function generateForPeriod(
         int $year,
@@ -41,7 +50,13 @@ class GenerateMonthlyRefrendsService
         ?string $campus = null,
         ?int $generationId = null
     ): array {
-        $stats = ['created' => 0, 'skipped' => 0, 'errors' => 0];
+        $stats = [
+            'created'                  => 0,
+            'skipped'                  => 0,
+            'skipped_out_of_reticula'  => 0,
+            'errors'                   => 0,
+            'failures'                 => [],
+        ];
 
         /** @var \Illuminate\Support\Collection<int, ScholarshipProfile> $profiles */
         // Deliberately does NOT filter by user_type — a becario whose
@@ -67,15 +82,38 @@ class GenerateMonthlyRefrendsService
             try {
                 $result = $this->generateForUser($profile, $year, $month);
                 $result ? $stats['created']++ : $stats['skipped']++;
+            } catch (ReticulaPeriodOutOfRangeException $e) {
+                $stats['skipped_out_of_reticula']++;
+                $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'skipped_out_of_reticula');
             } catch (\Throwable $e) {
                 Log::error("Error generando refrendo para user_id={$profile->user_id}", [
                     'error' => $e->getMessage(),
                 ]);
                 $stats['errors']++;
+                $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'error');
             }
         }
 
         return $stats;
+    }
+
+    /**
+     * Builds one failures[] entry for a becario not created during
+     * generateForPeriod()'s bulk loop. `name` mirrors buildSnapshot()'s own
+     * `snapshot_name` construction (trim(first_name . ' ' . last_name)) so
+     * the reported name matches what would have been frozen on the refrend.
+     */
+    private function buildFailureEntry(ScholarshipProfile $profile, \Throwable $e, string $kind): array
+    {
+        $user = $profile->user;
+        $name = $user ? trim("{$user->first_name} {$user->last_name}") : '';
+
+        return [
+            'user_id' => $profile->user_id,
+            'name'    => $name,
+            'reason'  => $e->getMessage(),
+            'kind'    => $kind,
+        ];
     }
 
     /**
@@ -354,14 +392,19 @@ class GenerateMonthlyRefrendsService
 
     /**
      * Valida que el periodo (año/mes) esté dentro del rango de la retícula del perfil.
-     * Lanza DomainException si está fuera del rango.
+     * Lanza ReticulaPeriodOutOfRangeException (extends \DomainException) si está
+     * fuera del rango — sdd/verificacion-incidencias-ux, PR1: same messages as
+     * before, only the exception class changed, so every existing
+     * `catch (\DomainException)` call site still matches. This is the ONLY
+     * throw site generateForPeriod()'s loop classifies as
+     * `skipped_out_of_reticula` instead of `errors`.
      */
     private function assertPeriodWithinReticula(ScholarshipProfile $profile, int $year, int $month): void
     {
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
 
         if ($profile->reticula_start_date && $periodStart->lt($profile->reticula_start_date)) {
-            throw new \DomainException(
+            throw new ReticulaPeriodOutOfRangeException(
                 "El periodo {$month}/{$year} es anterior al inicio de la retícula ({$profile->reticula_start_date->toDateString()})."
             );
         }
@@ -371,7 +414,7 @@ class GenerateMonthlyRefrendsService
         $egresoAdministrativo = $profile->egresoAdministrativoDate();
 
         if ($egresoAdministrativo && $periodStart->gt($egresoAdministrativo)) {
-            throw new \DomainException(
+            throw new ReticulaPeriodOutOfRangeException(
                 "El periodo {$month}/{$year} está fuera del periodo académico. El egreso administrativo (fin de retícula + 2 meses) venció el {$egresoAdministrativo->toDateString()}."
             );
         }
