@@ -14,6 +14,7 @@ use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\NotifyStudentAction;
 use App\Actions\Scholarship\ResolveAprobacionAction;
+use App\Exceptions\Contracts\CarriesErrorPayload;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
 use App\Models\Attendance;
@@ -388,7 +389,13 @@ class ScholarshipRefrendController extends Controller
                     }
                 },
             ],
-            'withholding_payments'                  => 'nullable|array|min:1|max:' . PayableWithholdingWindow::MAX_PAYABLE,
+            // sdd/egresado-baja-definitiva, design D9 (PR2b): a terminal
+            // cycle cut cannot simultaneously liquidate another retention
+            // through this same refrend — CloseScholarshipCycleAction's own
+            // guard additionally catches the case where this refrend already
+            // did so under an EARLIER resolution, which this request-shape
+            // rule cannot see.
+            'withholding_payments'                  => 'prohibited_if:resolution_type,BAJA_DEFINITIVA,EGRESADO|nullable|array|min:1|max:' . PayableWithholdingWindow::MAX_PAYABLE,
             'withholding_payments.*.withholding_id'  => [
                 'required',
                 'integer',
@@ -441,6 +448,15 @@ class ScholarshipRefrendController extends Controller
             $payload = ['res' => false, 'msg' => $e->getMessage()];
             if (defined(get_class($e) . '::CODE')) {
                 $payload['code'] = $e::CODE;
+            }
+            // sdd/egresado-baja-definitiva, PR2b: the four cycle-cut guard
+            // exceptions (CYCLE_ALREADY_CLOSED, CYCLE_CUT_BLOCKED,
+            // CYCLE_CUT_ACTIVE_TELMEX_COVERAGE, CYCLE_CUT_PENDING_WITHHOLDINGS)
+            // additionally carry a machine-readable `data` payload (blocking
+            // months / withholdings / coverage info) so the panel can render
+            // the specific list without string-parsing `msg`.
+            if ($e instanceof CarriesErrorPayload) {
+                $payload['data'] = $e->payload();
             }
 
             return response()->json($payload, 422);
