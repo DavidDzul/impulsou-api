@@ -78,6 +78,13 @@ class TelmexCoverageController extends Controller
      * row, including CANCELADA — one coverage per becario (UNIQUE user_id);
      * a cancelled coverage without paid months is reactivated via
      * ReactivateTelmexCoverageAction, never re-created through this list.
+     *
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c): also excludes a
+     * becario whose cycle is already closed (EGRESADO/BAJA_DEFINITIVA cut,
+     * `cycle_closed_period` NOT NULL) or whose user is inactive
+     * (`active=false`, the BAJA_DEFINITIVA user-level effect) — a cut
+     * becario never accrues future months, so a brand-new coverage offered
+     * for them could never be repaid.
      */
     public function eligible(): JsonResponse
     {
@@ -86,6 +93,8 @@ class TelmexCoverageController extends Controller
         $profiles = ScholarshipProfile::query()
             ->whereIn('scholarship_type', [ScholarshipType::TELMEX->value, ScholarshipType::TELMEX_IU->value])
             ->whereNotIn('user_id', $existingUserIds)
+            ->whereNull('cycle_closed_period')
+            ->whereHas('user', fn ($query) => $query->where('active', true))
             ->get(['user_id', 'scholarship_type']);
 
         [$users, $generations] = $this->loadUsersAndGenerations($profiles->pluck('user_id'));

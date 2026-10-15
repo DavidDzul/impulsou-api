@@ -5,6 +5,7 @@ namespace App\Actions\Scholarship;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipProfile;
 use App\Models\TelmexCoverage;
+use App\Models\User;
 use App\Services\Scholarship\TelmexCoverageRefrendSync;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,19 @@ class ActivateTelmexCoverageAction
 
         if (!in_array($profile->scholarship_type, [ScholarshipType::TELMEX, ScholarshipType::TELMEX_IU], true)) {
             throw new \DomainException('Solo becarios TELMEX o TELMEX_IU pueden tener cobertura.');
+        }
+
+        // sdd/egresado-baja-definitiva, amendment-5 (PR2c): a becario whose
+        // cycle is already closed (EGRESADO/BAJA_DEFINITIVA cut) never
+        // accrues future months, so a brand-new coverage would never be
+        // repaid. Checked via BOTH the profile marker and the user's
+        // `active` flag — BAJA_DEFINITIVA sets both, but this guard does not
+        // assume that invariant holds for every call site.
+        $user = User::find($profile->user_id);
+        if ($profile->cycle_closed_period !== null || ($user !== null && !$user->active)) {
+            throw new \DomainException(
+                'El becario tiene el ciclo cerrado (Egresado/Baja); no se puede activar una cobertura.'
+            );
         }
 
         $monthlyAmount = (float) $profile->monthly_amount;
