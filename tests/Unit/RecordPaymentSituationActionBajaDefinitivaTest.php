@@ -72,7 +72,29 @@ class RecordPaymentSituationActionBajaDefinitivaTest extends TestCase
         $this->assertSame('100.00', $result->discount_percentage);
         $this->assertSame('1000.00', $result->discount_amount);
         $this->assertSame(RefrendStatus::CANCELLED, $result->status);
-        $this->assertSame('LISTO_PARA_PAGO', $result->workflow_status);
+        // sdd/egresado-baja-definitiva, design D5 (PR2a task 2a.5): BAJA_DEFINITIVA
+        // is now a terminal cycle cut — workflow_status=CLOSED and locked,
+        // not the generic LISTO_PARA_PAGO every other resolution type gets.
+        $this->assertSame('CLOSED', $result->workflow_status);
+        $this->assertNotNull($result->locked_at);
+        $this->assertSame($this->admin->id, $result->locked_by_id);
+    }
+
+    /** @test */
+    public function is_locked_and_rejected_by_reclassification_and_undo_after_the_cut(): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+
+        $result = $this->action->execute($refrend, [
+            'resolution_type'  => 'BAJA_DEFINITIVA',
+            'resolution_cause' => 'BAJO_PROMEDIO',
+        ], $this->admin->id);
+
+        $this->assertTrue($result->isLocked());
+
+        // Reclassification: ALLOWED_WORKFLOW_STATUSES no longer includes CLOSED.
+        $this->expectException(\DomainException::class);
+        $this->action->execute($result, ['resolution_type' => 'BECA_MES'], $this->admin->id);
     }
 
     // ── User deactivation (new behavior, user-requested 2026-09-20) ─────────

@@ -127,6 +127,21 @@ class RecordPaymentSituationActionTelmexCoverageTest extends TestCase
         $this->assertSame('0.00', $result->final_amount);
     }
 
+    /**
+     * sdd/egresado-baja-definitiva, design D5 (PR2a task 2a.7): EGRESADO is
+     * now a terminal cycle cut, same shape as BAJA_DEFINITIVA — the Telmex
+     * covered top-up is skipped for both, not added outside $dueAmount.
+     */
+    /** @test */
+    public function egresado_zeroes_the_covered_part(): void
+    {
+        $refrend = $this->makeCoveredRefrend(1000.0, 1950.0);
+
+        $result = $this->action->execute($refrend, ['resolution_type' => 'EGRESADO'], $refrend->user_id);
+
+        $this->assertSame('0.00', $result->final_amount);
+    }
+
     /** @test */
     public function beca_mes_keeps_the_covered_part(): void
     {
