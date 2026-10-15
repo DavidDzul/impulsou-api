@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\Scholarship\GraduateBecarioAction;
 use App\Exceptions\ReticulaPeriodOutOfRangeException;
+use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
@@ -66,6 +67,10 @@ class GenerateMonthlyRefrendsService
         // flipped away from BEC_ACTIVE. Only active=false ("permanently
         // withdrawn", set by RecordPaymentSituationAction's BAJA_DEFINITIVA)
         // stops generation — mirrors generateForUser()'s own guard.
+        // sdd/egresado-baja-definitiva, design D3: openForPeriod() excludes a
+        // becario whose cycle_closed_period stop marker is strictly before
+        // this period, the same way the active=true filter above already
+        // excludes a permanently-withdrawn becario.
         $profiles = ScholarshipProfile::with('user')
             ->whereHas('user', function ($q) use ($campus, $generationId) {
                 $q->where('active', true);
@@ -76,6 +81,7 @@ class GenerateMonthlyRefrendsService
                     $q->where('generation_id', $generationId);
                 }
             })
+            ->openForPeriod($year, $month)
             ->get();
 
         foreach ($profiles as $profile) {
@@ -85,6 +91,13 @@ class GenerateMonthlyRefrendsService
             } catch (ReticulaPeriodOutOfRangeException $e) {
                 $stats['skipped_out_of_reticula']++;
                 $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'skipped_out_of_reticula');
+            } catch (ScholarshipCycleClosedException $e) {
+                // sdd/egresado-baja-definitiva, design D3: defense-in-depth —
+                // openForPeriod() above already excludes these rows from the
+                // query, so this is not expected to trigger in practice. A
+                // cut becario is an expected skip, not an error: no failure
+                // entry, no Log::error.
+                $stats['skipped']++;
             } catch (\Throwable $e) {
                 Log::error("Error generando refrendo para user_id={$profile->user_id}", [
                     'error' => $e->getMessage(),
@@ -138,6 +151,7 @@ class GenerateMonthlyRefrendsService
         }
 
         $this->assertUserIsActive($profile);
+        $this->assertCycleOpen($profile, $year, $month);
 
         // Validar que el periodo no sea futuro y esté dentro del rango de la
         // retícula. generateForUser() keeps ZERO new parameters and cannot be
@@ -175,6 +189,7 @@ class GenerateMonthlyRefrendsService
         string $createdVia = 'ADVANCE_PAYMENT'
     ): ScholarshipRefrend {
         $this->assertUserIsActive($profile);
+        $this->assertCycleOpen($profile, $year, $month);
         $this->assertPeriodIsFuture($year, $month);
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
@@ -202,6 +217,28 @@ class GenerateMonthlyRefrendsService
                 'No se puede generar el refrendo: el becario no está activo.'
             );
         }
+    }
+
+    /**
+     * sdd/egresado-baja-definitiva, design D3: guards generateForUser() and
+     * generateFutureForAdvance() against a period strictly after the
+     * profile's cycle_closed_period stop marker (design D1/D2). The exact
+     * cut period itself (period == closed) is allowed — isCycleClosedFor()
+     * already encodes that boundary. Shared by both single-user entry
+     * points; generateForPeriod()'s bulk query filters the same condition
+     * at the query level via ->openForPeriod() instead of hitting this.
+     */
+    private function assertCycleOpen(ScholarshipProfile $profile, int $year, int $month): void
+    {
+        if (!$profile->isCycleClosedFor($year, $month)) {
+            return;
+        }
+
+        $closed = Carbon::parse($profile->cycle_closed_period)->toDateString();
+
+        throw new ScholarshipCycleClosedException(
+            "No se puede generar el refrendo de {$month}/{$year}: el ciclo del becario está cerrado desde {$closed}."
+        );
     }
 
     /**
