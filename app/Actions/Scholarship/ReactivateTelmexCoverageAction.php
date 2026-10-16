@@ -2,7 +2,9 @@
 
 namespace App\Actions\Scholarship;
 
+use App\Models\ScholarshipProfile;
 use App\Models\TelmexCoverage;
+use App\Models\User;
 use App\Services\Scholarship\TelmexCoverageLedger;
 use App\Services\Scholarship\TelmexCoverageRefrendSync;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +16,11 @@ use Illuminate\Support\Facades\DB;
  * then cancelled, cancellation is final. Reuses the SAME row (UNIQUE
  * user_id prevents a second insert) and restores its original
  * start_period/end_period window via TelmexCoverageRefrendSync.
+ *
+ * sdd/egresado-baja-definitiva, amendment-5 (PR2c): reactivation is also an
+ * "activation path" (status goes back to ACTIVA), so it is guarded the same
+ * way as ActivateTelmexCoverageAction against a becario whose cycle is
+ * already closed.
  */
 class ReactivateTelmexCoverageAction
 {
@@ -38,6 +45,16 @@ class ReactivateTelmexCoverageAction
             if ($this->ledger->hasPaidCoveredMonth($coverage)) {
                 throw new \DomainException(
                     'No se puede reactivar: ya se pagó al menos un mes cubierto bajo esta cobertura.'
+                );
+            }
+
+            $profile = ScholarshipProfile::where('user_id', $coverage->user_id)->first();
+            $user    = User::find($coverage->user_id);
+            $cycleClosed = ($profile !== null && $profile->cycle_closed_period !== null)
+                || ($user !== null && !$user->active);
+            if ($cycleClosed) {
+                throw new \DomainException(
+                    'El becario tiene el ciclo cerrado (Egresado/Baja); no se puede activar una cobertura.'
                 );
             }
 

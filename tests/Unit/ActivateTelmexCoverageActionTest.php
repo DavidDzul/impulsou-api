@@ -74,6 +74,46 @@ class ActivateTelmexCoverageActionTest extends TestCase
         $this->action->execute(['user_id' => $profile->user_id, 'start_period' => '2026-02-01'], 1);
     }
 
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c). A becario whose
+     * cycle is already closed (EGRESADO/BAJA_DEFINITIVA cut) never accrues
+     * future months — activating a brand-new coverage for them would create
+     * one that can never be repaid.
+     *
+     * @test
+     */
+    public function rejects_activation_when_the_becarios_cycle_is_closed(): void
+    {
+        $profile = $this->makeProfile('TELMEX', ['cycle_closed_period' => '2026-01-01']);
+
+        try {
+            $this->action->execute(['user_id' => $profile->user_id, 'start_period' => '2026-02-01'], 1);
+            $this->fail('Expected DomainException.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('ciclo cerrado', $e->getMessage());
+        }
+    }
+
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c). BAJA_DEFINITIVA sets
+     * users.active=false alongside the stop marker — guarded independently
+     * from the profile marker in case only one signal is present.
+     *
+     * @test
+     */
+    public function rejects_activation_when_the_becarios_user_is_inactive(): void
+    {
+        $profile = $this->makeProfile('TELMEX');
+        User::where('id', $profile->user_id)->update(['active' => false]);
+
+        try {
+            $this->action->execute(['user_id' => $profile->user_id, 'start_period' => '2026-02-01'], 1);
+            $this->fail('Expected DomainException.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('ciclo cerrado', $e->getMessage());
+        }
+    }
+
     /** @test */
     public function rejects_a_second_coverage_while_one_is_active(): void
     {
