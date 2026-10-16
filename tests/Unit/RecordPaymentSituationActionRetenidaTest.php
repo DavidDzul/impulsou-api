@@ -240,6 +240,18 @@ class RecordPaymentSituationActionRetenidaTest extends TestCase
         return [['SIN_PAGO'], ['BECA_MES']];
     }
 
+    /** @test */
+    public function re_recording_a_retenida_over_a_retenida_keeps_it_withheld(): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+        $this->retenida($refrend, 100);
+
+        $result = $this->retenida($refrend->fresh(), 40);
+
+        $this->assertSame(RefrendStatus::WITHHELD, $result->status);
+        $this->assertSame('PENDING', ScholarshipWithholding::where('origin_refrend_id', $refrend->id)->value('status'));
+    }
+
     /**
      * @test
      * @dataProvider cycleCuts
