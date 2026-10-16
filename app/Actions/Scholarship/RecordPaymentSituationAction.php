@@ -195,6 +195,12 @@ class RecordPaymentSituationAction
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $type, $paymentInputs, $neutralizePenalties) {
+            // An advance-paid month is $0 (or, on appeal, paid in full): a retention
+            // ledger here could be paid out a second time via "Pago meses retenidos".
+            if ($type === 'RETENIDA' && $refrend->hasLinkedAdvanceMonth()) {
+                throw new \DomainException('Este mes ya se pagó por adelantado; use Sin pago (0%).');
+            }
+
             // Re-classification guard: a retention that already has payments applied
             // against it (paid_amount > 0) cannot be silently overwritten or
             // cancelled by re-registering the situation — the amounts already
