@@ -233,10 +233,10 @@ class CloseScholarshipCycleAction
             'remaining_amount' => $w->remaining_amount,
             // Amendment 6: the cut month's own retention is NOT excluded; it
             // is flagged so staff are told to undo that month's resolution.
-            'is_current_refrend' => $w->origin_refrend_id === $refrend->id,
+            'is_current_refrend' => (int) $w->origin_refrend_id === (int) $refrend->id,
         ])->values()->all();
 
-        $hasOwnRetention = $pending->contains(fn (ScholarshipWithholding $w) => $w->origin_refrend_id === $refrend->id);
+        $hasOwnRetention = $pending->contains(fn (ScholarshipWithholding $w) => (int) $w->origin_refrend_id === (int) $refrend->id);
 
         throw new CycleCutPendingWithholdingsException(
             $hasOwnRetention
