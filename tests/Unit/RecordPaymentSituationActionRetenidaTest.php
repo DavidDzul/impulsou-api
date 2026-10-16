@@ -7,6 +7,8 @@ use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipWithholding;
+use App\Services\Scholarship\PaymentReadinessEvaluator;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -196,5 +198,106 @@ class RecordPaymentSituationActionRetenidaTest extends TestCase
         $this->assertSame('1000.00', $result->discount_amount);
         $this->assertSame('0.00', $result->final_amount);
         $this->assertSame('percentage', $result->withholding_mode);
+    }
+
+    // -- pagos-adelantados-doble-pago F3 / F7 ---------------------------------
+
+    private function retenida(ScholarshipRefrend $refrend, int $percentage = 100): ScholarshipRefrend
+    {
+        return $this->action->execute($refrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => $percentage,
+        ], $refrend->user_id);
+    }
+
+    private function hasNothingToPay(ScholarshipRefrend $refrend): bool
+    {
+        $result = $this->app->make(PaymentReadinessEvaluator::class)->evaluate($refrend->fresh(), true, true, null, null);
+
+        return in_array('NOTHING_TO_PAY', array_column($result['blocking_reasons'], 'code'), true);
+    }
+
+    /**
+     * @test
+     * @dataProvider typesThatLeaveWithheld
+     */
+    public function re_recording_over_a_retenida_resets_the_status_and_cancels_the_ledger(string $type): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+        $this->retenida($refrend);
+        $this->assertSame(RefrendStatus::WITHHELD, $refrend->fresh()->status);
+
+        $result = $this->action->execute($refrend->fresh(), ['resolution_type' => $type], $refrend->user_id);
+
+        $this->assertSame(RefrendStatus::DRAFT, $result->status);
+        $this->assertSame('CANCELLED', ScholarshipWithholding::where('origin_refrend_id', $refrend->id)->value('status'));
+        $this->assertFalse($this->hasNothingToPay($refrend));
+    }
+
+    public function typesThatLeaveWithheld(): array
+    {
+        return [['SIN_PAGO'], ['BECA_MES']];
+    }
+
+    /**
+     * @test
+     * @dataProvider cycleCuts
+     */
+    public function cycle_cuts_still_end_cancelled_not_draft(string $type): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+
+        $result = $this->action->execute($refrend, ['resolution_type' => $type], $refrend->user_id);
+
+        $this->assertSame(RefrendStatus::CANCELLED, $result->status);
+    }
+
+    public function cycleCuts(): array
+    {
+        return [['EGRESADO'], ['BAJA_DEFINITIVA']];
+    }
+
+    /** @test */
+    public function retenida_readiness_is_unchanged_partial_payable_and_full_blocked(): void
+    {
+        $partial = $this->makeRefrend(1000.00);
+        $this->retenida($partial, 30);
+        $this->assertSame(RefrendStatus::WITHHELD, $partial->fresh()->status);
+        $this->assertFalse($this->hasNothingToPay($partial));
+
+        $full = $this->makeRefrend(1000.00);
+        $this->retenida($full, 100);
+        $this->assertTrue($this->hasNothingToPay($full));
+    }
+
+    /**
+     * @test
+     * @dataProvider typesThatResetRefund
+     */
+    public function refund_from_previous_is_zeroed_when_leaving_reembolso_parcial(string $type): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+        $this->action->execute($refrend, ['resolution_type' => 'REEMBOLSO_PARCIAL', 'refund_amount' => 500], $refrend->user_id);
+        $this->assertSame('500.00', $refrend->fresh()->refund_amount_from_previous);
+
+        $result = $this->action->execute($refrend->fresh(), ['resolution_type' => $type], $refrend->user_id);
+
+        $this->assertSame('0.00', $result->refund_amount_from_previous);
+    }
+
+    public function typesThatResetRefund(): array
+    {
+        return [['BECA_MES'], ['SIN_PAGO']];
+    }
+
+    /** @test */
+    public function reembolso_parcial_still_stores_the_provided_refund_amount(): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+
+        $result = $this->action->execute($refrend, ['resolution_type' => 'REEMBOLSO_PARCIAL', 'refund_amount' => 300], $refrend->user_id);
+
+        $this->assertSame('300.00', $result->refund_amount_from_previous);
     }
 }

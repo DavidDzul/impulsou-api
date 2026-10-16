@@ -80,6 +80,9 @@ class RecordPaymentSituationAction
             'resolution_type'         => $type,
             'resolution_cause'        => $data['resolution_cause'] ?? null,
             'resolution_notes'        => $data['resolution_notes'] ?? null,
+            // Reset here; only REEMBOLSO_PARCIAL overwrites it below, so a stale
+            // refund never survives re-resolving to another type.
+            'refund_amount_from_previous' => '0.00',
             'atencion_reviewed_by_id' => $userId,
             'atencion_reviewed_at'    => now(),
         ];
@@ -150,6 +153,18 @@ class RecordPaymentSituationAction
                 $updates['refund_amount_from_previous'] = number_format((float) ($data['refund_amount'] ?? 0), 2, '.', '');
                 $neutralizePenalties                    = true;
                 break;
+        }
+
+        // Re-recording over a RETENIDA leaves status WITHHELD, which blocks later
+        // payments (PaymentReadinessEvaluator NOTHING_TO_PAY). Reset it unless the
+        // new type is RETENIDA itself or a cycle cut (CANCELLED). Narrow on purpose:
+        // other statuses are left alone.
+        if (
+            $refrend->status === RefrendStatus::WITHHELD
+            && $type !== 'RETENIDA'
+            && !in_array($type, ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true)
+        ) {
+            $updates['status'] = RefrendStatus::DRAFT->value;
         }
 
         // sdd/telmex-cobertura-iu, design D4 / decisions-2 dec2: the covered
