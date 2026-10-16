@@ -143,6 +143,27 @@ class GenerateMonthlyRefrendsServiceCycleClosedTest extends TestCase
         $this->assertSame([], $stats['failures']);
     }
 
+    /**
+     * The bulk query itself must exclude a cut becario (openForPeriod scope),
+     * like an inactive one: never loaded, so not even counted as skipped.
+     * Without the scope, generateForUser()'s own guard would still catch it
+     * and count it as skipped — this test pins the SQL-level exclusion.
+     *
+     * @test
+     */
+    public function bulk_generation_excludes_a_cut_becario_from_the_query_itself(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 12, 15));
+        $this->makeProfile([
+            'cycle_closed_period'  => '2026-10-01',
+            'cycle_closure_reason' => CycleClosureReason::EGRESADO->value,
+        ]);
+
+        $stats = $this->service->generateForPeriod(2026, 11, 'MERIDA', null);
+
+        $this->assertSame(0, $stats['skipped']);
+    }
+
     /** @test */
     public function bulk_generation_still_creates_the_exact_cut_period_for_a_cut_becario(): void
     {
