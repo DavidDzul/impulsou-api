@@ -19,6 +19,11 @@ class ApproveRefrendAction
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $userId, $old) {
+            // The month was already paid in advance; approving it here would pay it twice.
+            if ($refrend->hasLinkedAdvanceMonth()) {
+                throw new \DomainException('Mes pagado por adelantado; regístrelo individualmente.');
+            }
+
             $refrend->update([
                 'workflow_status'         => 'LISTO_PARA_PAGO',
                 'atencion_reviewed_by_id' => $userId,
