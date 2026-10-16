@@ -371,6 +371,63 @@ class CloseScholarshipCycleActionTest extends TestCase
         $this->assertNull(ScholarshipProfile::where('user_id', $user->id)->first());
     }
 
+    private function makePendingLedger(User $user, ScholarshipRefrend $origin): ScholarshipWithholding
+    {
+        return ScholarshipWithholding::create([
+            'user_id'           => $user->id,
+            'origin_refrend_id' => $origin->id,
+            'period_year'       => $origin->period_year,
+            'period_month'      => $origin->period_month,
+            'withheld_amount'   => '300.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+    }
+
+    /** @test */
+    public function flags_the_cut_months_own_retention_and_points_staff_to_undo_it(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user, ['period_month' => 6]);
+        $own     = $this->makePendingLedger($user, $refrend);
+
+        try {
+            $this->action->execute($refrend, 'EGRESADO', $user->id);
+            $this->fail('Expected CycleCutPendingWithholdingsException.');
+        } catch (CycleCutPendingWithholdingsException $e) {
+            $rows = $e->payload()['withholdings'];
+            $this->assertCount(1, $rows);
+            $this->assertSame($own->id, $rows[0]['id']);
+            $this->assertTrue($rows[0]['is_current_refrend']);
+            $this->assertSame(
+                'Este mes tiene una retención registrada; deshaga la resolución de este mes antes de marcar egreso o baja definitiva.',
+                $e->getMessage()
+            );
+        }
+
+        $this->assertSame('PENDING', $own->fresh()->status);
+    }
+
+    /** @test */
+    public function does_not_flag_pending_withholdings_from_another_month_and_keeps_the_original_message(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user, ['period_month' => 6]);
+        $other   = $this->makeRefrend($user, ['period_month' => 2]);
+        $this->makePendingLedger($user, $other);
+
+        try {
+            $this->action->execute($refrend, 'EGRESADO', $user->id);
+            $this->fail('Expected CycleCutPendingWithholdingsException.');
+        } catch (CycleCutPendingWithholdingsException $e) {
+            $this->assertFalse($e->payload()['withholdings'][0]['is_current_refrend']);
+            $this->assertSame(
+                'Tiene retenciones pendientes de pago; resuélvalas en Pago de meses retenidos antes de cerrar el ciclo.',
+                $e->getMessage()
+            );
+        }
+    }
+
     /** @test */
     public function cascade_closes_later_open_refrends_at_zero_and_locked(): void
     {

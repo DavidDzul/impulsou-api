@@ -173,6 +173,30 @@ class CycleCutGuardsFeatureTest extends TestCase
         ]);
         $this->assertSame($withholding->id, $response->json('data.withholdings.0.id'));
         $this->assertSame('200.00', $response->json('data.withholdings.0.remaining_amount'));
+        $this->assertFalse($response->json('data.withholdings.0.is_current_refrend'));
+    }
+
+    /** @test */
+    public function it_flags_the_cut_months_own_retention_in_the_422_rows(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user->id, ['period_month' => 6]);
+        ScholarshipWithholding::create([
+            'user_id'           => $user->id,
+            'origin_refrend_id' => $refrend->id,
+            'period_year'       => 2026,
+            'period_month'      => 6,
+            'withheld_amount'   => '200.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->situationUrl($refrend->id), ['resolution_type' => 'BAJA_DEFINITIVA']);
+
+        $response->assertStatus(422);
+        $response->assertJson(['code' => 'CYCLE_CUT_PENDING_WITHHOLDINGS']);
+        $this->assertTrue($response->json('data.withholdings.0.is_current_refrend'));
     }
 
     /** @test */

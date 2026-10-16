@@ -18,7 +18,7 @@ class CycleCutPendingWithholdingsException extends \DomainException implements C
 {
     public const CODE = 'CYCLE_CUT_PENDING_WITHHOLDINGS';
 
-    /** @param array<int, array{id:int,period_year:int,period_month:int,withheld_amount:string,paid_amount:string,remaining_amount:string}> $withholdings */
+    /** @param array<int, array{id:int,period_year:int,period_month:int,withheld_amount:string,paid_amount:string,remaining_amount:string,is_current_refrend:bool}> $withholdings */
     public function __construct(string $message, private array $withholdings)
     {
         parent::__construct($message);

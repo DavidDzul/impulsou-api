@@ -231,10 +231,17 @@ class CloseScholarshipCycleAction
             'withheld_amount'  => $w->withheld_amount,
             'paid_amount'      => $w->paid_amount,
             'remaining_amount' => $w->remaining_amount,
+            // Amendment 6: the cut month's own retention is NOT excluded; it
+            // is flagged so staff are told to undo that month's resolution.
+            'is_current_refrend' => $w->origin_refrend_id === $refrend->id,
         ])->values()->all();
 
+        $hasOwnRetention = $pending->contains(fn (ScholarshipWithholding $w) => $w->origin_refrend_id === $refrend->id);
+
         throw new CycleCutPendingWithholdingsException(
-            'Tiene retenciones pendientes de pago; resuélvalas en Pago de meses retenidos antes de cerrar el ciclo.',
+            $hasOwnRetention
+                ? 'Este mes tiene una retención registrada; deshaga la resolución de este mes antes de marcar egreso o baja definitiva.'
+                : 'Tiene retenciones pendientes de pago; resuélvalas en Pago de meses retenidos antes de cerrar el ciclo.',
             $rows
         );
     }

@@ -6,7 +6,11 @@ use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Actions\Scholarship\ClearRefrendResolutionAction;
+use App\Exceptions\CycleCutPendingWithholdingsException;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipWithholding;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -129,5 +133,81 @@ class RecordPaymentSituationActionBajaDefinitivaTest extends TestCase
         ], $this->admin->id);
 
         $this->assertTrue((bool) $user->fresh()->active);
+    }
+
+    // ── Amendment 6: the cut month's own retention keeps blocking ───────────
+
+    private function makeRetenidaWithPendingLedger(): array
+    {
+        $refrend = $this->makeRefrend(1000.00, [
+            'status'            => RefrendStatus::WITHHELD->value,
+            'workflow_status'   => 'LISTO_PARA_PAGO',
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 30.00,
+            'final_amount'      => 700.00,
+            'discount_percentage' => 30,
+            'discount_amount'   => 300.00,
+        ]);
+        ScholarshipProfile::factory()->create(['user_id' => $refrend->user_id]);
+        $ledger = ScholarshipWithholding::create([
+            'user_id'           => $refrend->user_id,
+            'origin_refrend_id' => $refrend->id,
+            'period_year'       => 2026,
+            'period_month'      => 1,
+            'withheld_amount'   => '300.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+
+        return [$refrend, $ledger];
+    }
+
+    /** @test */
+    public function reclassifying_a_retenida_month_to_a_cut_type_is_rejected_flagged_and_mutates_nothing(): void
+    {
+        foreach (['EGRESADO', 'BAJA_DEFINITIVA'] as $type) {
+            [$refrend, $ledger] = $this->makeRetenidaWithPendingLedger();
+            $before = $refrend->fresh()->getAttributes();
+
+            try {
+                $this->action->execute($refrend, [
+                    'resolution_type'  => $type,
+                    'resolution_cause' => 'BAJO_PROMEDIO',
+                ], $this->admin->id);
+                $this->fail("Expected the {$type} cut to be rejected.");
+            } catch (CycleCutPendingWithholdingsException $e) {
+                $this->assertSame('CYCLE_CUT_PENDING_WITHHOLDINGS', $e->code());
+                $this->assertTrue($e->payload()['withholdings'][0]['is_current_refrend']);
+                $this->assertSame(
+                    'Este mes tiene una retención registrada; deshaga la resolución de este mes antes de marcar egreso o baja definitiva.',
+                    $e->getMessage()
+                );
+            }
+
+            $this->assertSame($before, $refrend->fresh()->getAttributes());
+            $this->assertSame('PENDING', $ledger->fresh()->status);
+            $this->assertNull(ScholarshipProfile::where('user_id', $refrend->user_id)->first()->cycle_closed_period);
+            $user = $refrend->user->fresh();
+            $this->assertTrue((bool) $user->active);
+            $this->assertSame('BEC_ACTIVE', $user->user_type);
+        }
+    }
+
+    /** @test */
+    public function after_undoing_the_retenida_month_the_cut_succeeds(): void
+    {
+        [$refrend, $ledger] = $this->makeRetenidaWithPendingLedger();
+
+        $cleared = $this->app->make(ClearRefrendResolutionAction::class)->execute($refrend, $this->admin->id);
+        $this->assertSame('CANCELLED', $ledger->fresh()->status);
+
+        $this->action->execute($cleared, [
+            'resolution_type'  => 'EGRESADO',
+        ], $this->admin->id);
+
+        $profile = ScholarshipProfile::where('user_id', $refrend->user_id)->first();
+        $this->assertNotNull($profile->cycle_closed_period);
+        $this->assertSame('EGRESADO', $profile->cycle_closure_reason->value);
     }
 }
