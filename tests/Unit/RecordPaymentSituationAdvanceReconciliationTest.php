@@ -207,26 +207,27 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
 
     // ── Zero restriction: spot-check other resolution types ─────────────────
 
+    /**
+     * sdd/egresado-baja-definitiva, design D5 (PR2a task 2a.8): EGRESADO is
+     * no longer financially identical to BECA_MES — it is now a terminal
+     * cycle cut (final_amount=0, same shape as BAJA_DEFINITIVA). A $0
+     * outcome is the safe, expected one and never diverges / never requires
+     * a reason — same rule BAJA_DEFINITIVA already gets.
+     */
     /** @test */
-    public function an_egresado_resolution_diverges_and_requires_a_reason(): void
+    public function an_egresado_resolution_reaches_with_no_divergence_required(): void
     {
-        // EGRESADO is financially identical to BECA_MES (full dueAmount) —
-        // same divergence rule applies.
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
         $this->action->execute($refrend, [
-            'resolution_type'           => 'EGRESADO',
-            'advance_divergence_reason' => 'Egresó el mismo mes del adelanto, se paga de todas formas.',
+            'resolution_type' => 'EGRESADO',
         ], $this->admin->id);
 
         $advanceMonth->refresh();
-        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
+        $this->assertSame('REACHED', $advanceMonth->status);
         $this->assertSame('EGRESADO', $advanceMonth->settled_resolution_type);
-        $this->assertSame(
-            'Egresó el mismo mes del adelanto, se paga de todas formas.',
-            $advanceMonth->divergence_reason
-        );
+        $this->assertNull($advanceMonth->divergence_reason);
     }
 
     /** @test */
@@ -283,6 +284,10 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
         $this->assertSame('100.00', $result->discount_percentage);
         $this->assertSame('1000.00', $result->discount_amount);
         $this->assertSame(RefrendStatus::CANCELLED, $result->status);
-        $this->assertSame('LISTO_PARA_PAGO', $result->workflow_status);
+        // sdd/egresado-baja-definitiva, design D5 (PR2a): kept in lockstep
+        // with RecordPaymentSituationActionBajaDefinitivaTest's own update —
+        // BAJA_DEFINITIVA is now a terminal cycle cut (CLOSED + locked), not
+        // the generic LISTO_PARA_PAGO.
+        $this->assertSame('CLOSED', $result->workflow_status);
     }
 }

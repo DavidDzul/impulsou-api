@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CycleClosureReason;
 use App\Enums\ScholarshipType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -27,6 +28,9 @@ class ScholarshipProfile extends Model
         'temporary_increase_reason',
         'temporary_increase_granted_by_id',
         'advance_payment_eligible',
+        'cycle_closed_period',
+        'cycle_closure_reason',
+        'cycle_closed_refrend_id',
         'active_discount_percentage',
         'discount_reason',
         'discount_valid_from',
@@ -49,6 +53,8 @@ class ScholarshipProfile extends Model
         'temporary_increase_valid_from'   => 'date',
         'temporary_increase_valid_until'  => 'date',
         'advance_payment_eligible'        => 'boolean',
+        'cycle_closed_period'             => 'date',
+        'cycle_closure_reason'            => CycleClosureReason::class,
         'active_discount_percentage'      => 'decimal:2',
         'discount_valid_from'             => 'date',
         'discount_valid_until'            => 'date',
@@ -207,6 +213,45 @@ class ScholarshipProfile extends Model
 
         return $on->gte($from->copy()->startOfDay())
             && $on->lte($until->copy()->startOfDay());
+    }
+
+    // Cycle closure (sdd/egresado-baja-definitiva, design D1/D2)
+
+    /**
+     * Whether (year, month) falls STRICTLY AFTER the stop marker
+     * cycle_closed_period. The cut period itself (period == closed) is
+     * deliberately NOT closed — the cut's own refrend is generated/updated
+     * by the normal flow before the marker stops anything further.
+     * Mirrors scopeOpenForPeriod()'s boundary; the two are tested together.
+     */
+    public function isCycleClosedFor(int $year, int $month): bool
+    {
+        if ($this->cycle_closed_period === null) {
+            return false;
+        }
+
+        $periodStart = Carbon::create($year, $month, 1)->startOfDay();
+        $closed      = Carbon::parse($this->cycle_closed_period)->startOfDay();
+
+        return $periodStart->gt($closed);
+    }
+
+    /**
+     * Query-level counterpart of isCycleClosedFor(): a profile is "open" for
+     * (year, month) when it has no stop marker, or the marker is on/after
+     * the requested period start. Used by
+     * GenerateMonthlyRefrendsService::generateForPeriod()'s bulk query so a
+     * cut becario is silently excluded, the same way `active=false` already
+     * is.
+     */
+    public function scopeOpenForPeriod($query, int $year, int $month)
+    {
+        $periodStart = Carbon::create($year, $month, 1)->startOfDay()->toDateString();
+
+        return $query->where(function ($q) use ($periodStart) {
+            $q->whereNull('cycle_closed_period')
+                ->orWhere('cycle_closed_period', '>=', $periodStart);
+        });
     }
 
     // Scopes

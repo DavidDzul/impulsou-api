@@ -171,6 +171,48 @@ class TelmexCoverageControllerTest extends TestCase
         $this->assertNotContains($activeCoverage->user_id, $ids);
     }
 
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c). A becario whose
+     * profile already has a cycle stop marker (EGRESADO/BAJA_DEFINITIVA cut)
+     * never accrues future months, so offering a brand-new Telmex coverage
+     * for them would create a coverage that can never be repaid.
+     *
+     * @test
+     */
+    public function eligible_excludes_becarios_with_a_closed_cycle(): void
+    {
+        $eligibleProfile = $this->makeProfile('TELMEX');
+        $cutProfile = $this->makeProfile('TELMEX_IU', ['cycle_closed_period' => '2026-01-01']);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson('/api/admin/telmex-coverages/eligible');
+
+        $response->assertStatus(200);
+        $ids = array_column($response->json('data'), 'id');
+        $this->assertContains($eligibleProfile->user_id, $ids);
+        $this->assertNotContains($cutProfile->user_id, $ids);
+    }
+
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c). BAJA_DEFINITIVA sets
+     * users.active=false alongside the stop marker — this check is a
+     * defensive second signal independent of the profile marker.
+     *
+     * @test
+     */
+    public function eligible_excludes_becarios_with_an_inactive_user(): void
+    {
+        $eligibleProfile = $this->makeProfile('TELMEX');
+        $inactiveProfile = $this->makeProfile('TELMEX');
+        User::where('id', $inactiveProfile->user_id)->update(['active' => false]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson('/api/admin/telmex-coverages/eligible');
+
+        $response->assertStatus(200);
+        $ids = array_column($response->json('data'), 'id');
+        $this->assertContains($eligibleProfile->user_id, $ids);
+        $this->assertNotContains($inactiveProfile->user_id, $ids);
+    }
+
     /** @test */
     public function eligible_without_permission_returns_403(): void
     {
@@ -292,6 +334,24 @@ class TelmexCoverageControllerTest extends TestCase
         $this->assertNotEmpty($response->json('msg'));
     }
 
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c).
+     *
+     * @test
+     */
+    public function store_rejects_activation_for_a_becario_with_a_closed_cycle(): void
+    {
+        $profile = $this->makeProfile('TELMEX', ['cycle_closed_period' => '2026-01-01']);
+
+        $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/telmex-coverages', [
+            'user_id'      => $profile->user_id,
+            'start_period' => '2026-02-01',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('ciclo cerrado', $response->json('msg'));
+    }
+
     /** @test */
     public function store_without_permission_returns_403(): void
     {
@@ -392,6 +452,28 @@ class TelmexCoverageControllerTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertSame('ACTIVA', $response->json('data.status'));
+    }
+
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c).
+     *
+     * @test
+     */
+    public function reactivate_rejects_a_becario_with_a_closed_cycle(): void
+    {
+        $coverage = $this->makeCoverage([
+            'status'        => 'CANCELADA',
+            'cancel_reason' => 'Activado por error inicialmente.',
+            'cancelled_at'  => now(),
+        ]);
+        ScholarshipProfile::where('user_id', $coverage->user_id)
+            ->update(['cycle_closed_period' => '2026-01-01']);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->postJson("/api/admin/telmex-coverages/{$coverage->id}/reactivate");
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('ciclo cerrado', $response->json('msg'));
     }
 
     /** @test */

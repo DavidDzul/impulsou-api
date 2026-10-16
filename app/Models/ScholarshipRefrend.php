@@ -24,6 +24,35 @@ class ScholarshipRefrend extends Model
      */
     public const RESOLUTION_EGRESO_RETICULA = 'EGRESO_RETICULA';
 
+    /**
+     * sdd/egresado-baja-definitiva, design D12: resolution_type values that
+     * are never a payment-batch candidate. Includes RESOLUTION_EGRESO_RETICULA
+     * (sdd/egresado-status-timing, design D5 — already excluded) plus the two
+     * staff-selectable terminal cuts. Used by PaymentBatchService::rows()'s
+     * Filter C with a grouped whereNull/whereNotIn — a bare `!=`/`NOT IN`
+     * would evaluate SQL NULL for every unresolved row and silently drop the
+     * entire normal payroll.
+     */
+    public const NON_CANDIDATE_RESOLUTIONS = [
+        self::RESOLUTION_EGRESO_RETICULA,
+        'EGRESADO',
+        'BAJA_DEFINITIVA',
+    ];
+
+    /**
+     * sdd/egresado-baja-definitiva, design D5/D10: the two staff-selectable
+     * resolution_type values that close a becario's scholarship cycle as
+     * terminal (final_amount=0, workflow_status=CLOSED, locked, profile stop
+     * marker set via CloseScholarshipCycleAction). Deliberately excludes
+     * RESOLUTION_EGRESO_RETICULA — that one is server-only and already
+     * handled by its own code path (GenerateMonthlyRefrendsService), not by
+     * RecordPaymentSituationAction's switch.
+     */
+    public const CYCLE_CUT_RESOLUTIONS = [
+        'EGRESADO',
+        'BAJA_DEFINITIVA',
+    ];
+
     protected $table = 'scholarship_refrends';
 
     protected $fillable = [

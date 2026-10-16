@@ -33,7 +33,7 @@ class RecordPaymentSituationActionTelmexCoverageTest extends TestCase
         $this->actingAs(User::factory()->create(['user_type' => 'ADMIN', 'active' => true]));
     }
 
-    private function makeCoveredRefrend(float $baseAmount, float $coveredAmount, array $overrides = []): ScholarshipRefrend
+    private function makeCoveredRefrend(float $baseAmount, float $coveredAmount, array $overrides = [], string $coverageStatus = 'ACTIVA'): ScholarshipRefrend
     {
         $user = User::factory()->create([
             'user_type' => 'BEC_ACTIVE',
@@ -46,7 +46,7 @@ class RecordPaymentSituationActionTelmexCoverageTest extends TestCase
             'scholarship_type_at_activation'  => ScholarshipType::TELMEX->value,
             'start_period'                    => '2026-01-01',
             'end_period'                      => null,
-            'status'                          => 'ACTIVA',
+            'status'                          => $coverageStatus,
         ]);
 
         return ScholarshipRefrend::create(array_merge([
@@ -117,12 +117,36 @@ class RecordPaymentSituationActionTelmexCoverageTest extends TestCase
         $this->assertSame('2450.00', $result->final_amount); // 500 iu + 1950 covered
     }
 
+    /**
+     * sdd/egresado-baja-definitiva, amendment-3 (PR2b): an ACTIVA Telmex
+     * coverage now blocks a cycle cut outright (CycleCutActiveTelmexCoverage
+     * Exception) — EN_COBRO does not block (repayment tracking continues
+     * after the cut), so the money-math scenario below uses that status
+     * instead of makeCoveredRefrend()'s ACTIVA default.
+     */
     /** @test */
     public function baja_definitiva_zeroes_the_covered_part(): void
     {
-        $refrend = $this->makeCoveredRefrend(1000.0, 1950.0);
+        $refrend = $this->makeCoveredRefrend(1000.0, 1950.0, [], 'EN_COBRO');
 
         $result = $this->action->execute($refrend, ['resolution_type' => 'BAJA_DEFINITIVA'], $refrend->user_id);
+
+        $this->assertSame('0.00', $result->final_amount);
+    }
+
+    /**
+     * sdd/egresado-baja-definitiva, design D5 (PR2a task 2a.7): EGRESADO is
+     * now a terminal cycle cut, same shape as BAJA_DEFINITIVA — the Telmex
+     * covered top-up is skipped for both, not added outside $dueAmount.
+     * Uses EN_COBRO coverage status for the same reason as the
+     * BAJA_DEFINITIVA test above (amendment-3's ACTIVA guard).
+     */
+    /** @test */
+    public function egresado_zeroes_the_covered_part(): void
+    {
+        $refrend = $this->makeCoveredRefrend(1000.0, 1950.0, [], 'EN_COBRO');
+
+        $result = $this->action->execute($refrend, ['resolution_type' => 'EGRESADO'], $refrend->user_id);
 
         $this->assertSame('0.00', $result->final_amount);
     }

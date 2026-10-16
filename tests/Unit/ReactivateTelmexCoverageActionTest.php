@@ -6,6 +6,7 @@ use App\Actions\Scholarship\ReactivateTelmexCoverageAction;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\TelmexCoverage;
 use App\Models\User;
@@ -81,6 +82,36 @@ class ReactivateTelmexCoverageActionTest extends TestCase
     public function rejects_reactivating_a_non_cancelada_coverage(): void
     {
         $coverage = $this->makeCoverage(['status' => 'ACTIVA', 'cancel_reason' => null, 'cancelled_at' => null]);
+
+        $this->expectException(\DomainException::class);
+        $this->action->execute($coverage, 1);
+    }
+
+    /**
+     * sdd/egresado-baja-definitiva, amendment-5 (PR2c). Reactivation is
+     * also an "activation path" (status goes back to ACTIVA) — a becario
+     * cut after the coverage was cancelled must not be able to reactivate
+     * it via this route either.
+     *
+     * @test
+     */
+    public function rejects_reactivation_when_the_becarios_cycle_is_closed(): void
+    {
+        $coverage = $this->makeCoverage();
+        ScholarshipProfile::factory()->create([
+            'user_id'             => $coverage->user_id,
+            'cycle_closed_period' => '2026-01-01',
+        ]);
+
+        $this->expectException(\DomainException::class);
+        $this->action->execute($coverage, 1);
+    }
+
+    /** @test */
+    public function rejects_reactivation_when_the_becarios_user_is_inactive(): void
+    {
+        $coverage = $this->makeCoverage();
+        User::where('id', $coverage->user_id)->update(['active' => false]);
 
         $this->expectException(\DomainException::class);
         $this->action->execute($coverage, 1);
