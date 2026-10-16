@@ -8,6 +8,7 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipWithholding;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -132,24 +133,14 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
     }
 
     /** @test */
-    public function retenida_at_100_percent_does_not_diverge_since_nothing_is_paid_now(): void
+    public function retenida_at_100_percent_is_rejected_on_an_advance_paid_month(): void
     {
-        // A full (100%) withholding also reduces final_amount to 0.00 — this
-        // is the boundary between RETENIDA's two behaviors (see the partial
-        // case below, which DOES diverge).
+        // pagos-adelantados-doble-pago F2: a retention ledger on an advance-paid
+        // month could be paid out a second time via "Pago meses retenidos".
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
-        $this->action->execute($refrend, [
-            'resolution_type'   => 'RETENIDA',
-            'withholding_mode'  => 'percentage',
-            'withholding_value' => 100,
-        ], $this->admin->id);
-
-        $advanceMonth->refresh();
-        $this->assertSame('REACHED', $advanceMonth->status);
-        $this->assertSame('RETENIDA', $advanceMonth->settled_resolution_type);
-        $this->assertNull($advanceMonth->divergence_reason);
+        $this->assertRetenidaRejected($refrend, $advanceMonth, 100);
     }
 
     // ── Non-zero amount → divergence, a reason is required ───────────────────
@@ -231,24 +222,70 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
     }
 
     /** @test */
-    public function a_diverging_retenida_resolution_is_accepted_with_a_reason(): void
+    public function a_partial_retenida_is_rejected_on_an_advance_paid_month_even_with_a_reason(): void
     {
-        // A PARTIAL (50%) withholding leaves final_amount at 500.00 — a
-        // genuine non-zero payment this month, unlike the 100% case above.
         $refrend      = $this->makeRefrend(1000.00);
         $advanceMonth = $this->linkAdvanceMonth($refrend, 1000.00);
 
-        $this->action->execute($refrend, [
-            'resolution_type'           => 'RETENIDA',
+        $this->assertRetenidaRejected($refrend, $advanceMonth, 50, 'Retención parcial por incidencia administrativa.');
+    }
+
+    private function assertRetenidaRejected(
+        ScholarshipRefrend $refrend,
+        ScholarshipAdvancePaymentMonth $advanceMonth,
+        int $percentage,
+        ?string $reason = null
+    ): void {
+        try {
+            $this->action->execute($refrend, array_filter([
+                'resolution_type'           => 'RETENIDA',
+                'withholding_mode'          => 'percentage',
+                'withholding_value'         => $percentage,
+                'advance_divergence_reason' => $reason,
+            ]), $this->admin->id);
+            $this->fail('Expected DomainException was not thrown.');
+        } catch (\DomainException $e) {
+            $this->assertSame('Este mes ya se pagó por adelantado; use Sin pago (0%).', $e->getMessage());
+        }
+
+        $this->assertSame(0, ScholarshipWithholding::count());
+        $refrend->refresh();
+        $this->assertSame('DRAFT', $refrend->workflow_status);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->status);
+        $this->assertSame('PENDING', $advanceMonth->fresh()->status);
+    }
+
+    /** @test */
+    public function sin_pago_and_descuento_definitivo_are_still_allowed_on_an_advance_paid_month(): void
+    {
+        $sinPago = $this->makeRefrend(1000.00);
+        $this->linkAdvanceMonth($sinPago, 1000.00);
+        $this->action->execute($sinPago, ['resolution_type' => 'SIN_PAGO'], $this->admin->id);
+        $this->assertSame('LISTO_PARA_PAGO', $sinPago->fresh()->workflow_status);
+
+        $descuento = $this->makeRefrend(1000.00);
+        $this->linkAdvanceMonth($descuento, 1000.00);
+        $this->action->execute($descuento, [
+            'resolution_type'           => 'DESCUENTO_DEFINITIVO',
             'withholding_mode'          => 'percentage',
-            'withholding_value'         => 50,
-            'advance_divergence_reason' => 'Retención parcial por incidencia administrativa.',
+            'withholding_value'         => 100,
+        ], $this->admin->id);
+        $this->assertSame('LISTO_PARA_PAGO', $descuento->fresh()->workflow_status);
+    }
+
+    /** @test */
+    public function retenida_still_works_on_a_refrend_without_an_advance_link(): void
+    {
+        $refrend = $this->makeRefrend(1000.00);
+
+        $this->action->execute($refrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 100,
         ], $this->admin->id);
 
-        $advanceMonth->refresh();
-        $this->assertSame('OVERRIDDEN', $advanceMonth->status);
-        $this->assertSame('RETENIDA', $advanceMonth->settled_resolution_type);
-        $this->assertSame('Retención parcial por incidencia administrativa.', $advanceMonth->divergence_reason);
+        $this->assertSame(RefrendStatus::WITHHELD, $refrend->fresh()->status);
+        $this->assertSame(1, ScholarshipWithholding::count());
     }
 
     // ── No-op for normal (non-advance) refrends ──────────────────────────────

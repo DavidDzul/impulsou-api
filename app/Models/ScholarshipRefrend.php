@@ -220,6 +220,18 @@ class ScholarshipRefrend extends Model
         return $this->hasOne(ScholarshipWithholding::class, 'origin_refrend_id');
     }
 
+    /** Advance-payment child row linked to THIS refrend (refrend_id is UNIQUE), any status. */
+    public function advancePaymentMonth(): HasOne
+    {
+        return $this->hasOne(ScholarshipAdvancePaymentMonth::class, 'refrend_id');
+    }
+
+    /** True when this month was already paid in advance (any link status). */
+    public function hasLinkedAdvanceMonth(): bool
+    {
+        return $this->advancePaymentMonth()->exists();
+    }
+
     /**
      * The Telmex coverage this refrend's period was frozen against at
      * generation/recalculation time (sdd/telmex-cobertura-iu, design D1/D2).
