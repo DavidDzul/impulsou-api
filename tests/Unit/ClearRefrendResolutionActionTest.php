@@ -181,6 +181,71 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->action->execute($refrend, $this->admin->id);
     }
 
+    // ── sdd/egresado-baja-definitiva, design D5/spec "Rejected by
+    // reclassification and undo" (PR2a task 2a.10): confirms a refrend
+    // actually closed via CloseScholarshipCycleAction (not just a raw
+    // CLOSED fixture) is rejected by undo — end-to-end through
+    // RecordPaymentSituationAction, not a hand-built row. ────────────────
+
+    /** @test */
+    public function rejects_undo_after_an_egresado_cut(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, [
+            'resolution_type' => null,
+            'workflow_status' => 'DRAFT',
+        ]);
+
+        $recordAction = $this->app->make(RecordPaymentSituationAction::class);
+        $closed = $recordAction->execute($refrend, ['resolution_type' => 'EGRESADO'], $this->admin->id);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('El refrendo está bloqueado y no admite cambios.');
+
+        $this->action->execute($closed, $this->admin->id);
+    }
+
+    /** @test */
+    public function rejects_undo_after_a_baja_definitiva_cut(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, [
+            'resolution_type' => null,
+            'workflow_status' => 'DRAFT',
+        ]);
+
+        $recordAction = $this->app->make(RecordPaymentSituationAction::class);
+        $closed = $recordAction->execute($refrend, ['resolution_type' => 'BAJA_DEFINITIVA'], $this->admin->id);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('El refrendo está bloqueado y no admite cambios.');
+
+        $this->action->execute($closed, $this->admin->id);
+    }
+
+    /** @test */
+    public function rejects_reclassification_after_an_egresado_cut(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, [
+            'resolution_type' => null,
+            'workflow_status' => 'DRAFT',
+        ]);
+
+        $recordAction = $this->app->make(RecordPaymentSituationAction::class);
+        $closed = $recordAction->execute($refrend, ['resolution_type' => 'EGRESADO'], $this->admin->id);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage(
+            'Solo se puede registrar la situación en refrendos en estado DRAFT, CON_INCIDENCIA o LISTO_PARA_PAGO.'
+        );
+
+        $recordAction->execute($closed, ['resolution_type' => 'BECA_MES'], $this->admin->id);
+    }
+
     // ── Guard 3 & 4: ledger integrity ────────────────────────────────────────
 
     /** @test */

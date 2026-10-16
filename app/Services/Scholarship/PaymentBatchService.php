@@ -183,16 +183,18 @@ class PaymentBatchService
             PaymentBatchSegmentPolicy::applyBatchCandidacy($query, 'r', $batchType);
         }
 
-        // Filter C (sdd/egresado-status-timing, design D5): the
-        // auto-generated retícula month+2 egreso row is not a batch
-        // candidate at all. Grouped whereNull OR != is MANDATORY — a bare
-        // `!=` would evaluate NULL for every unresolved row and silently
-        // drop the entire normal payroll (SQL NULL semantics). Filter A
-        // gets away with a bare `!=` only because snapshot_scholarship_type
-        // is NOT NULL.
+        // Filter C (sdd/egresado-status-timing, design D5, extended by
+        // sdd/egresado-baja-definitiva design D12): the auto-generated
+        // retícula month+2 egreso row, plus the two staff-selectable
+        // terminal cuts (EGRESADO, BAJA_DEFINITIVA), are not batch
+        // candidates at all. Grouped whereNull OR NOT IN is MANDATORY — a
+        // bare `!=`/`NOT IN` would evaluate NULL for every unresolved row
+        // and silently drop the entire normal payroll (SQL NULL semantics).
+        // Filter A gets away with a bare `!=` only because
+        // snapshot_scholarship_type is NOT NULL.
         $query->where(function ($where) {
             $where->whereNull('r.resolution_type')
-                ->orWhere('r.resolution_type', '!=', ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA);
+                ->orWhereNotIn('r.resolution_type', ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS);
         });
 
         $refrends = $query

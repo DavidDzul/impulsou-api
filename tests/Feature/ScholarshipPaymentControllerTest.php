@@ -1055,12 +1055,16 @@ class ScholarshipPaymentControllerTest extends TestCase
     {
         $readOnlyUser = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
         $readOnlyUser->givePermissionTo('ADM_READ_PAYMENTS');
-        $this->makeReadyRefrend(['resolution_type' => 'EGRESADO']);
+        // sdd/egresado-baja-definitiva, design D12 (PR2a task 2a.9): EGRESADO
+        // swapped out — it is now excluded from batch candidacy entirely
+        // (Filter C), so it can no longer be used as a "this row still
+        // appears" fixture here. SUSPENDIDA is unaffected by that filter.
+        $this->makeReadyRefrend(['resolution_type' => 'SUSPENDIDA']);
 
         $response = $this->actingAs($readOnlyUser)->getJson($this->indexUrl());
 
         $response->assertStatus(200);
-        $this->assertSame('EGRESADO', $response->json('data.rows.0.resolution_type'));
+        $this->assertSame('SUSPENDIDA', $response->json('data.rows.0.resolution_type'));
     }
 
     // ── byGeneration() (sdd/pagos-consulta-por-generacion) ──────────────────

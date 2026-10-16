@@ -692,17 +692,22 @@ class PaymentBatchServiceTest extends TestCase
         ], $summary);
     }
 
-    // 8+1 pass-through matrix (task 1.2): one refrend per resolution_type
-    // value verified against ScholarshipRefrendController.php:334's
-    // validation rule, plus a null row. BECA_MES is asserted PRESENT, not
-    // excluded (user override of the proposal's D5 exclusion). array_keys()
-    // is checked exactly so a 9th, unexpected key never silently appears.
+    // 6+1 pass-through matrix (task 1.2, shrunk by sdd/egresado-baja-definitiva
+    // PR2a task 2a.9): one refrend per resolution_type value verified against
+    // ScholarshipRefrendController.php:334's validation rule, plus a null row.
+    // BECA_MES is asserted PRESENT, not excluded (user override of the
+    // proposal's D5 exclusion). BAJA_DEFINITIVA and EGRESADO are deliberately
+    // EXCLUDED from this list — design D12 added both to
+    // ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS, so neither can ever reach
+    // this pass-through assertion (see the dedicated absent-from-candidates
+    // tests above). array_keys() is checked exactly so a 9th, unexpected key
+    // never silently appears.
     /** @test */
-    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_eight_values_and_null(): void
+    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_six_values_and_null(): void
     {
         $values = [
             'BECA_MES', 'SIN_PAGO', 'RETENIDA', 'SUSPENDIDA',
-            'BAJA_DEFINITIVA', 'EGRESADO', 'REEMBOLSO_PARCIAL', 'DESCUENTO_DEFINITIVO',
+            'REEMBOLSO_PARCIAL', 'DESCUENTO_DEFINITIVO',
         ];
 
         foreach ($values as $value) {
@@ -720,7 +725,7 @@ class PaymentBatchServiceTest extends TestCase
 
         $rows = collect($this->rows())->keyBy('snapshot_name');
 
-        $this->assertCount(9, $rows);
+        $this->assertCount(7, $rows);
 
         foreach ($values as $value) {
             $row = $rows["Becario {$value}"];
@@ -1557,11 +1562,72 @@ class PaymentBatchServiceTest extends TestCase
     public function other_resolution_types_are_never_excluded_by_filter_c(): void
     {
         $this->makeReadyRefrend(['resolution_type' => 'BECA_MES']);
-        $this->makeReadyRefrend(['resolution_type' => 'EGRESADO']);
+        $this->makeReadyRefrend(['resolution_type' => 'RETENIDA']);
 
         $rows = $this->rows();
 
-        $this->assertCount(2, $rows, 'Filter C must only ever exclude resolution_type=EGRESO_RETICULA, never any other value.');
+        $this->assertCount(2, $rows, 'Filter C must only ever exclude ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS, never any other value.');
+    }
+
+    // ── sdd/egresado-baja-definitiva, design D12 (PR2a): terminal manual cuts
+    // join EGRESO_RETICULA as excluded from batch candidacy ────────────────
+
+    /** @test */
+    public function an_egresado_cut_row_is_absent_entirely_from_candidates(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'    => 0.00,
+            'resolution_type' => 'EGRESADO',
+            'workflow_status' => 'CLOSED',
+            'locked_at'       => now(),
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(0, $rows, 'An EGRESADO cut row must be absent entirely, same as EGRESO_RETICULA.');
+    }
+
+    /** @test */
+    public function a_baja_definitiva_cut_row_is_absent_entirely_from_candidates(): void
+    {
+        $this->makeReadyRefrend([
+            'final_amount'    => 0.00,
+            'resolution_type' => 'BAJA_DEFINITIVA',
+            'workflow_status' => 'CLOSED',
+            'locked_at'       => now(),
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(0, $rows, 'A BAJA_DEFINITIVA cut row must be absent entirely, same as EGRESO_RETICULA.');
+    }
+
+    /** @test */
+    public function cut_rows_are_excluded_while_a_normal_row_in_the_same_batch_still_appears(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario Normal',
+            'resolution_type'  => null,
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario Egresado',
+            'final_amount'     => 0.00,
+            'resolution_type'  => 'EGRESADO',
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+        $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario Baja',
+            'final_amount'     => 0.00,
+            'resolution_type'  => 'BAJA_DEFINITIVA',
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario Normal', $rows[0]['snapshot_name']);
     }
 
     // ── Part 2 (sdd/pagos-batch-sede-totals, design D9-D12): rows() additive

@@ -22,7 +22,8 @@ class RecordPaymentSituationAction
         private ScholarshipLoggingService $logging,
         private RefrendPaymentTotalsSyncer $totalsSyncer,
         private AttendancePenaltyService $attendancePenalty,
-        private AdvancePaymentReconciler $advanceReconciler
+        private AdvancePaymentReconciler $advanceReconciler,
+        private CloseScholarshipCycleAction $closeCycle
     ) {}
 
     /**
@@ -130,17 +131,16 @@ class RecordPaymentSituationAction
                 break;
 
             case 'BAJA_DEFINITIVA':
+            case 'EGRESADO':
+                // sdd/egresado-baja-definitiva, design D5: both are now
+                // terminal cycle cuts — identical refrend-field shape. The
+                // distinguishing user-level effect (active=false vs.
+                // GraduateBecarioAction, design D10) is applied later, inside
+                // the transaction, by CloseScholarshipCycleAction.
                 $updates['final_amount']        = '0.00';
                 $updates['discount_percentage'] = '100.00';
                 $updates['discount_amount']     = number_format($dueAmount, 2, '.', '');
                 $updates['status']              = RefrendStatus::CANCELLED->value;
-                break;
-
-            case 'EGRESADO':
-                $updates['final_amount']        = number_format($dueAmount, 2, '.', '');
-                $updates['discount_percentage'] = '0.00';
-                $updates['discount_amount']     = '0.00';
-                $neutralizePenalties            = true;
                 break;
 
             case 'REEMBOLSO_PARCIAL':
@@ -155,20 +155,34 @@ class RecordPaymentSituationAction
         // sdd/telmex-cobertura-iu, design D4 / decisions-2 dec2: the covered
         // Telmex part is added OUTSIDE the IU-only $dueAmount computed above
         // — every branch's final_amount stays IU-only, then the covered part
-        // is added here unconditionally EXCEPT for BAJA_DEFINITIVA (the
-        // refrend is CANCELLED, never paid). SIN_PAGO/RETENIDA/SUSPENDIDA/
-        // DESCUENTO_DEFINITIVO/BECA_MES/EGRESADO/REEMBOLSO_PARCIAL all still
-        // pay the covered part — client rule: "Telmex money is never
-        // discounted/withheld". The withholding ledger amount above is
-        // computed from $dueAmount and therefore stays IU-only, untouched.
+        // is added here unconditionally EXCEPT for the two terminal cycle
+        // cuts (sdd/egresado-baja-definitiva, design D5: BAJA_DEFINITIVA and,
+        // as of that change, EGRESADO too — the refrend is CLOSED/CANCELLED,
+        // never paid). SIN_PAGO/RETENIDA/SUSPENDIDA/DESCUENTO_DEFINITIVO/
+        // BECA_MES/REEMBOLSO_PARCIAL all still pay the covered part — client
+        // rule: "Telmex money is never discounted/withheld". The withholding
+        // ledger amount above is computed from $dueAmount and therefore
+        // stays IU-only, untouched.
         $covered = $refrend->coveredPayableAmount();
-        if ($covered > 0 && $type !== 'BAJA_DEFINITIVA') {
+        if ($covered > 0 && !in_array($type, ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true)) {
             $updates['final_amount'] = number_format(
                 round((float) $updates['final_amount'] + $covered, 2),
                 2,
                 '.',
                 ''
             );
+        }
+
+        // sdd/egresado-baja-definitiva, design D5/D10 (PR2a): both terminal
+        // cuts close the refrend as CLOSED + locked instead of the generic
+        // LISTO_PARA_PAGO set at the top of $updates. The user-level effect
+        // (GraduateBecarioAction vs. active=false) and the profile stop
+        // marker are applied inside the transaction below by
+        // CloseScholarshipCycleAction.
+        if (in_array($type, ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true)) {
+            $updates['workflow_status'] = 'CLOSED';
+            $updates['locked_at']       = now();
+            $updates['locked_by_id']    = $userId;
         }
 
         // Liquidation of pending retained months: selects individual ledger rows
@@ -201,12 +215,16 @@ class RecordPaymentSituationAction
                 $this->attendancePenalty->neutralizeAttendancePenalties($refrend);
             }
 
-            // A permanent withdrawal must stop this becario from being
+            // sdd/egresado-baja-definitiva, design D4/D10 (PR2a): both
+            // terminal cycle cuts delegate their side effects (profile stop
+            // marker + user-level effect — GraduateBecarioAction for
+            // EGRESADO, active=false for BAJA_DEFINITIVA) to
+            // CloseScholarshipCycleAction. This stops the becario from being
             // generated any further refrends — GenerateMonthlyRefrendsService
-            // only considers active=true users (same mechanism
-            // reticula_end_date already relies on for a natural graduation).
-            if ($updates['resolution_type'] === 'BAJA_DEFINITIVA') {
-                $refrend->user()->update(['active' => false]);
+            // honors the marker (design D2/D3), the same way `active=false`
+            // already stopped BAJA_DEFINITIVA generation pre-change.
+            if (in_array($updates['resolution_type'], ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true)) {
+                $this->closeCycle->execute($refrend, $updates['resolution_type'], $userId);
             }
 
             if ($ledgerAmount !== null && $ledgerAmount > 0) {

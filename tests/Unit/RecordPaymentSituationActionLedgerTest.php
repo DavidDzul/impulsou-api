@@ -476,7 +476,11 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
     /** @test */
     public function full_amount_resolution_types_neutralize_active_attendance_discounts(): void
     {
-        foreach (['BECA_MES', 'EGRESADO', 'REEMBOLSO_PARCIAL'] as $type) {
+        // sdd/egresado-baja-definitiva, design D5 (PR2a task 2a.6): EGRESADO
+        // dropped from this list — it is no longer a full-amount resolution
+        // type. It is now a terminal cycle cut (final_amount=0, same shape
+        // as BAJA_DEFINITIVA), so it never reaches neutralizePenalties.
+        foreach (['BECA_MES', 'REEMBOLSO_PARCIAL'] as $type) {
             $user    = $this->makeBecario();
             $refrend = $this->makeRefrend($user->id);
             $discount = $this->makeActiveRetardosDiscount($refrend->id);
