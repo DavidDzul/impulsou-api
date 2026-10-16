@@ -66,6 +66,18 @@ class ClearRefrendResolutionAction
                 $existingLedger->update(['status' => 'CANCELLED']);
             }
 
+            // Re-open the advance month settled by the resolution being undone, so no
+            // stale settled_resolution_type / divergence_reason / reached_at remain.
+            $advanceMonth = $refrend->advancePaymentMonth()->lockForUpdate()->first();
+            if ($advanceMonth && $advanceMonth->status !== 'PENDING') {
+                $advanceMonth->update([
+                    'status'                  => 'PENDING',
+                    'settled_resolution_type' => null,
+                    'divergence_reason'       => null,
+                    'reached_at'              => null,
+                ]);
+            }
+
             $refrend->update([
                 'workflow_status'             => 'DRAFT',
                 'status'                      => RefrendStatus::DRAFT->value,

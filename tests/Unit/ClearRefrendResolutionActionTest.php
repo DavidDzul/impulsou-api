@@ -9,6 +9,7 @@ use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Models\ClassModel;
 use App\Models\Generation;
+use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendIncident;
@@ -582,5 +583,64 @@ class ClearRefrendResolutionActionTest extends TestCase
                 ->count(),
             'The D2 dedupe delete must only ever remove machine-generated (created_by_id IS NULL) incidents.'
         );
+    }
+
+    // -- pagos-adelantados-doble-pago F4 --------------------------------------
+
+    private function linkAdvanceMonth(ScholarshipRefrend $refrend, array $overrides = []): ScholarshipAdvancePaymentMonth
+    {
+        return ScholarshipAdvancePaymentMonth::factory()->create(array_merge([
+            'user_id'      => $refrend->user_id,
+            'period_year'  => $refrend->period_year,
+            'period_month' => $refrend->period_month,
+            'amount'       => '1000.00',
+            'refrend_id'   => $refrend->id,
+        ], $overrides));
+    }
+
+    /**
+     * @test
+     * @dataProvider settledAdvanceStates
+     */
+    public function clearing_resets_a_settled_advance_month_to_pending(string $status, string $type, ?string $reason): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['resolution_type' => $type]);
+        $month   = $this->linkAdvanceMonth($refrend, [
+            'status'                  => $status,
+            'settled_resolution_type' => $type,
+            'divergence_reason'       => $reason,
+            'reached_at'              => now(),
+        ]);
+
+        $this->action->execute($refrend, $this->admin->id);
+
+        $month->refresh();
+        $this->assertSame('PENDING', $month->status);
+        $this->assertNull($month->settled_resolution_type);
+        $this->assertNull($month->divergence_reason);
+        $this->assertNull($month->reached_at);
+    }
+
+    public function settledAdvanceStates(): array
+    {
+        return [
+            'reached'    => ['REACHED', 'SIN_PAGO', null],
+            'overridden' => ['OVERRIDDEN', 'BECA_MES', 'Pago adicional autorizado por dirección.'],
+        ];
+    }
+
+    /** @test */
+    public function clearing_leaves_an_already_pending_advance_month_untouched(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user);
+        $month   = $this->linkAdvanceMonth($refrend, ['status' => 'PENDING']);
+
+        $this->action->execute($refrend, $this->admin->id);
+
+        $this->assertSame('PENDING', $month->fresh()->status);
     }
 }
