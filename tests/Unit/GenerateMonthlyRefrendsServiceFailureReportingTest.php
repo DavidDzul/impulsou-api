@@ -50,6 +50,7 @@ class GenerateMonthlyRefrendsServiceFailureReportingTest extends TestCase
             'reticula_start_date' => null,
             'reticula_end_date'   => null,
             'payment_start_date'  => now()->toDateString(),
+            'config_set_at'        => now(),
         ], $profileOverrides));
     }
 
@@ -112,6 +113,7 @@ class GenerateMonthlyRefrendsServiceFailureReportingTest extends TestCase
         $this->assertSame(0, $stats['skipped']);
         $this->assertSame(0, $stats['skipped_out_of_reticula']);
         $this->assertSame(0, $stats['errors']);
+        $this->assertSame(0, $stats['skipped_config_pending']);
         $this->assertCount(0, $stats['failures']);
     }
 

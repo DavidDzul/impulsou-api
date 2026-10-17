@@ -106,6 +106,7 @@ class GenerateMonthlyRefrendsServiceSnapshotInvarianceTest extends TestCase
             'reticula_start_date'               => null,
             'reticula_end_date'                 => null,
             'payment_start_date'                => '2026-01-01',
+            'config_set_at'        => now(),
             'active_discount_percentage'        => 30,
             'discount_reason'                    => 'Bajo rendimiento académico',
             'discount_valid_from'               => '2026-01-01',

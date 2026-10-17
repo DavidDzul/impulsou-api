@@ -60,6 +60,7 @@ class ScholarshipAdvancePaymentEndpointTest extends TestCase
             'reticula_start_date' => null,
             'reticula_end_date'   => null,
             'payment_start_date'  => now()->toDateString(),
+            'config_set_at'        => now(),
         ]);
 
         return ScholarshipRefrend::create(array_merge([

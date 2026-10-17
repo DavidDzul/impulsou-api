@@ -49,6 +49,7 @@ class GenerateMonthlyRefrendsServiceActiveUserTest extends TestCase
             'reticula_start_date' => null,
             'reticula_end_date'   => null,
             'payment_start_date'  => now()->subYear()->toDateString(),
+            'config_set_at'        => now(),
         ], $profileOverrides));
     }
 

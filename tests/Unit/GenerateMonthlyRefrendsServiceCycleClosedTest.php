@@ -51,6 +51,7 @@ class GenerateMonthlyRefrendsServiceCycleClosedTest extends TestCase
             'monto_apoyo'         => 0,
             'reticula_start_date' => null,
             'reticula_end_date'   => null,
+            'config_set_at'       => now(),
         ], $overrides));
     }
 

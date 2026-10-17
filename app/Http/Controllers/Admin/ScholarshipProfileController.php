@@ -8,6 +8,7 @@ use App\Http\Requests\StoreScholarshipProfileRequest;
 use App\Http\Requests\UpdateScholarshipProfileConfigRequest;
 use App\Http\Requests\UpdateScholarshipProfileRequest;
 use App\Models\ScholarshipProfile;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -78,10 +79,19 @@ class ScholarshipProfileController extends Controller
      * el middleware `permission:ADM_EDIT_SCHOLARSHIP_PROFILE` en la ruta
      * (design D2/D9, sdd/scholarship-profile-config-to-admin). Distinto de
      * update() (que ahora prohíbe estos 4 campos, design D3).
+     *
+     * sdd/perfil-beca-montos-admin: es un upsert por user_id (un solo perfil
+     * por usuario). Si el becario no tiene perfil lo crea; siempre responde
+     * 200 y marca config_set_at = now(). 404 si el usuario no existe.
      */
     public function updateConfig(UpdateScholarshipProfileConfigRequest $request, int $userId)
     {
-        $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
+        if (!User::whereKey($userId)->exists()) {
+            return response()->json(['res' => false, 'msg' => 'Becario no encontrado.'], 404);
+        }
+
+        // One profile per user (unique user_id): always keyed on user_id only.
+        $profile = ScholarshipProfile::firstOrNew(['user_id' => $userId]);
 
         $data = $request->safe()->toArray();
 
@@ -96,7 +106,11 @@ class ScholarshipProfileController extends Controller
             $data['iu_payment_amount'] = null;
         }
 
-        $profile->update($data);
+        // sdd/perfil-beca-montos-admin: the marker is written ONLY here, on
+        // every save (create or update) — generation skips profiles without it.
+        $profile->fill($data);
+        $profile->config_set_at = now();
+        $profile->save();
 
         return response()->json(['res' => true, 'data' => $profile->fresh()]);
     }
