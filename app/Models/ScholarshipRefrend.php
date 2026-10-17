@@ -67,7 +67,6 @@ class ScholarshipRefrend extends Model
         'resolution_type',
         'resolution_cause',
         'resolution_notes',
-        'suspension_percentage',
         'withholding_mode',
         'withholding_value',
         'snapshot_gross_amount',
@@ -83,7 +82,6 @@ class ScholarshipRefrend extends Model
         'discount_amount',
         'final_amount',
         'amount_pending_from_previous',
-        'refund_amount_from_previous',
         'snapshot_name',
         'snapshot_generation',
         'snapshot_generation_id',
@@ -107,7 +105,6 @@ class ScholarshipRefrend extends Model
         'payment_batch_id',
         'carryover_months_count',
         'carryover_months_detail',
-        'suspension_scope',
         'pedagogia_resolved_at',
         'pedagogia_resolved_by_id',
         'attendance_penalty_override',
@@ -128,7 +125,6 @@ class ScholarshipRefrend extends Model
         'discount_amount'              => 'decimal:2',
         'final_amount'                 => 'decimal:2',
         'amount_pending_from_previous' => 'decimal:2',
-        'refund_amount_from_previous'   => 'decimal:2',
         'advance_payment_amount'       => 'decimal:2',
         'withholding_value'             => 'decimal:2',
         'average_grade_snapshot'       => 'decimal:2',
@@ -159,7 +155,6 @@ class ScholarshipRefrend extends Model
         return number_format(
             (float) $this->final_amount
             + (float) $this->amount_pending_from_previous
-            + (float) ($this->refund_amount_from_previous ?? 0)
             + (float) ($this->advance_payment_amount ?? 0),
             2,
             '.',

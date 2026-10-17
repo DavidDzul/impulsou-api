@@ -203,7 +203,6 @@ class ScholarshipPaymentController extends Controller
                     'discount_percentage'           => $refrend->discount_percentage,
                     'discount_amount'                => $refrend->discount_amount,
                     'amount_pending_from_previous'  => $refrend->amount_pending_from_previous,
-                    'refund_amount_from_previous'    => $refrend->refund_amount_from_previous,
                     'final_amount'                   => $refrend->final_amount,
                     'total_to_pay'                   => $refrend->total_to_pay,
                 ],
