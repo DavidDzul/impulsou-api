@@ -27,6 +27,9 @@ class UpdateScholarshipProfileRequest extends FormRequest
             'monthly_amount'             => 'prohibited',
             'monto_apoyo'                => 'prohibited',
             'advance_payment_eligible'   => 'prohibited',
+            // sdd/perfil-beca-montos-admin: config_set_at is written ONLY by
+            // the admin-only updateConfig endpoint.
+            'config_set_at'              => 'prohibited',
             'active_discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_valid_from'        => 'nullable|date|required_with:active_discount_percentage|before_or_equal:discount_valid_until',
             'discount_valid_until'       => 'nullable|date|required_with:active_discount_percentage',

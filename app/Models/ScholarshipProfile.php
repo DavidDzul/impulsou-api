@@ -31,6 +31,7 @@ class ScholarshipProfile extends Model
         'cycle_closed_period',
         'cycle_closure_reason',
         'cycle_closed_refrend_id',
+        'config_set_at',
         'active_discount_percentage',
         'discount_reason',
         'discount_valid_from',
@@ -55,6 +56,7 @@ class ScholarshipProfile extends Model
         'advance_payment_eligible'        => 'boolean',
         'cycle_closed_period'             => 'date',
         'cycle_closure_reason'            => CycleClosureReason::class,
+        'config_set_at'                   => 'datetime',
         'active_discount_percentage'      => 'decimal:2',
         'discount_valid_from'             => 'date',
         'discount_valid_until'            => 'date',
@@ -224,6 +226,11 @@ class ScholarshipProfile extends Model
      * by the normal flow before the marker stops anything further.
      * Mirrors scopeOpenForPeriod()'s boundary; the two are tested together.
      */
+    public function isConfigSet(): bool
+    {
+        return $this->config_set_at !== null;
+    }
+
     public function isCycleClosedFor(int $year, int $month): bool
     {
         if ($this->cycle_closed_period === null) {
