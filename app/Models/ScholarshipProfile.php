@@ -217,6 +217,12 @@ class ScholarshipProfile extends Model
             && $on->lte($until->copy()->startOfDay());
     }
 
+    /** Whether Administración has saved the beca amounts (sdd/perfil-beca-montos-admin). */
+    public function isConfigSet(): bool
+    {
+        return $this->config_set_at !== null;
+    }
+
     // Cycle closure (sdd/egresado-baja-definitiva, design D1/D2)
 
     /**
@@ -226,11 +232,6 @@ class ScholarshipProfile extends Model
      * by the normal flow before the marker stops anything further.
      * Mirrors scopeOpenForPeriod()'s boundary; the two are tested together.
      */
-    public function isConfigSet(): bool
-    {
-        return $this->config_set_at !== null;
-    }
-
     public function isCycleClosedFor(int $year, int $month): bool
     {
         if ($this->cycle_closed_period === null) {
