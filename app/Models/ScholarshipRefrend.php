@@ -326,7 +326,7 @@ class ScholarshipRefrend extends Model
         }
 
         // New workflow active states — explicitly unlocked regardless of status enum
-        if (in_array($this->workflow_status, ['DRAFT', 'CON_INCIDENCIA', 'PENDIENTE_NOTIFICACION', 'LISTO_PARA_PAGO'])) {
+        if (in_array($this->workflow_status, ['DRAFT', 'CON_INCIDENCIA', 'LISTO_PARA_PAGO'])) {
             return false;
         }
 
