@@ -55,7 +55,6 @@ class RefrendBulkQueryService
                 'r.resolution_type',
                 'r.resolution_cause',
                 'r.resolution_notes',
-                'r.suspension_percentage',
                 'r.snapshot_gross_amount',
                 'r.snapshot_monto_apoyo',
                 'r.snapshot_temporary_increase_amount',
@@ -74,7 +73,6 @@ class RefrendBulkQueryService
                 'r.snapshot_telmex_covered_amount',
                 'r.final_amount',
                 'r.amount_pending_from_previous',
-                'r.refund_amount_from_previous',
                 // advance_payment_amount (sdd/pago-adelantado, design D6):
                 // NOT NULL DEFAULT 0 (migration 2026_09_24_000003), written
                 // only on the ORIGIN refrend by RecordAdvancePaymentAction.
@@ -260,7 +258,6 @@ class RefrendBulkQueryService
                 'resolution_type'          => $r->resolution_type ?? null,
                 'resolution_cause'         => $r->resolution_cause ?? null,
                 'resolution_notes'         => $r->resolution_notes ?? null,
-                'suspension_percentage'    => $r->suspension_percentage ?? null,
                 'snapshot_gross_amount'        => $r->snapshot_gross_amount,
                 'snapshot_monto_apoyo'         => $r->snapshot_monto_apoyo,
                 'snapshot_temporary_increase_amount' => $r->snapshot_temporary_increase_amount,
@@ -274,14 +271,13 @@ class RefrendBulkQueryService
                 'snapshot_telmex_covered_amount'   => $r->snapshot_telmex_covered_amount,
                 'final_amount'             => $r->final_amount,
                 'amount_pending_from_previous' => $r->amount_pending_from_previous,
-                'refund_amount_from_previous'   => $r->refund_amount_from_previous ?? '0.00',
                 'advance_payment_amount'   => $r->advance_payment_amount ?? '0.00',
                 // CROSS-REFERENCE (sdd/pago-adelantado, design D6): this
                 // formula is mirrored in TWO other places that must stay in
                 // lockstep — ScholarshipRefrend::getTotalToPayAttribute()
                 // and PaymentBatchService::totalToPay(). If a term is
                 // added/changed here, add/change it in both.
-                'total_to_pay'             => (float) $r->final_amount + (float) ($r->amount_pending_from_previous ?? 0) + (float) ($r->refund_amount_from_previous ?? 0) + (float) ($r->advance_payment_amount ?? 0),
+                'total_to_pay'             => (float) $r->final_amount + (float) ($r->amount_pending_from_previous ?? 0) + (float) ($r->advance_payment_amount ?? 0),
                 'snapshot_name'            => $r->snapshot_name,
                 'snapshot_generation'      => $r->snapshot_generation,
                 'snapshot_generation_id'   => $r->snapshot_generation_id,

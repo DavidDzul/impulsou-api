@@ -232,7 +232,6 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
 
         $this->assertSame('0.00', (string) $refrend->final_amount);
         $this->assertSame('0.00', (string) $refrend->amount_pending_from_previous);
-        $this->assertSame('0.00', (string) $refrend->refund_amount_from_previous);
         $this->assertSame('0.00', (string) $refrend->advance_payment_amount);
         $this->assertSame(\App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA, $refrend->resolution_type);
         $this->assertSame('CLOSED', $refrend->workflow_status);

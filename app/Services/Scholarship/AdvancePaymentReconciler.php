@@ -25,7 +25,7 @@ use App\Models\ScholarshipRefrend;
  * top of what the becario already received via the advance — the real
  * double-payment risk, and the case that needs an explanation. A
  * final_amount = 0 outcome (SIN_PAGO, BAJA_DEFINITIVA, a 100%
- * RETENIDA/SUSPENDIDA) is the safe, expected outcome and never requires a
+ * RETENIDA) is the safe, expected outcome and never requires a
  * reason (corrected 2026-09-25 — the original check compared against the
  * advance-paid amount and had this backwards).
  */

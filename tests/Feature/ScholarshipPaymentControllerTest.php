@@ -549,6 +549,26 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertSame('1450.00', $data['amount_breakdown']['total_to_pay']);
     }
 
+    /** @test */
+    public function document_total_to_pay_is_final_plus_pending_plus_advance_without_dead_keys(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+            'advance_payment_amount'       => 300.00,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $breakdown = $response->json('data.amount_breakdown');
+
+        $this->assertSame('1500.00', $breakdown['total_to_pay']);
+        $this->assertArrayNotHasKey('refund_amount_from_previous', $breakdown);
+        $this->assertArrayNotHasKey('suspension_percentage', $breakdown);
+    }
+
     // ── document(): temporary increase (sdd/payment-document-temp-increase-breakdown) ──
 
     /** @test */
@@ -1058,13 +1078,13 @@ class ScholarshipPaymentControllerTest extends TestCase
         // sdd/egresado-baja-definitiva, design D12 (PR2a task 2a.9): EGRESADO
         // swapped out — it is now excluded from batch candidacy entirely
         // (Filter C), so it can no longer be used as a "this row still
-        // appears" fixture here. SUSPENDIDA is unaffected by that filter.
-        $this->makeReadyRefrend(['resolution_type' => 'SUSPENDIDA']);
+        // appears" fixture here. SIN_PAGO is unaffected by that filter.
+        $this->makeReadyRefrend(['resolution_type' => 'SIN_PAGO']);
 
         $response = $this->actingAs($readOnlyUser)->getJson($this->indexUrl());
 
         $response->assertStatus(200);
-        $this->assertSame('SUSPENDIDA', $response->json('data.rows.0.resolution_type'));
+        $this->assertSame('SIN_PAGO', $response->json('data.rows.0.resolution_type'));
     }
 
     // ── byGeneration() (sdd/pagos-consulta-por-generacion) ──────────────────

@@ -80,9 +80,6 @@ class RecordPaymentSituationAction
             'resolution_type'         => $type,
             'resolution_cause'        => $data['resolution_cause'] ?? null,
             'resolution_notes'        => $data['resolution_notes'] ?? null,
-            // Reset here; only REEMBOLSO_PARCIAL overwrites it below, so a stale
-            // refund never survives re-resolving to another type.
-            'refund_amount_from_previous' => '0.00',
             'atencion_reviewed_by_id' => $userId,
             'atencion_reviewed_at'    => now(),
         ];
@@ -94,7 +91,7 @@ class RecordPaymentSituationAction
         // Set true for full-amount resolution types (final_amount = $dueAmount
         // with no stored discount) so active RETARDOS/FALTA_INJUSTIFICADA rows
         // don't survive orphaned against a final_amount that no longer reflects
-        // them (D7). SIN_PAGO/RETENIDA/SUSPENDIDA/BAJA_DEFINITIVA are excluded:
+        // them (D7). SIN_PAGO/RETENIDA/BAJA_DEFINITIVA are excluded:
         // their stored amount is intentionally reduced by those rows.
         $neutralizePenalties = false;
 
@@ -124,15 +121,6 @@ class RecordPaymentSituationAction
                 $updates = array_merge($updates, $withholdingUpdates);
                 break;
 
-            case 'SUSPENDIDA':
-                $pct     = (float) ($data['suspension_percentage'] ?? 0);
-                $reduced = round($dueAmount * (1 - $pct / 100), 2);
-                $updates['suspension_percentage'] = $pct;
-                $updates['final_amount']          = number_format($reduced, 2, '.', '');
-                $updates['discount_percentage']   = number_format($pct, 2, '.', '');
-                $updates['discount_amount']       = number_format(round($dueAmount * $pct / 100, 2), 2, '.', '');
-                break;
-
             case 'BAJA_DEFINITIVA':
             case 'EGRESADO':
                 // sdd/egresado-baja-definitiva, design D5: both are now
@@ -144,14 +132,6 @@ class RecordPaymentSituationAction
                 $updates['discount_percentage'] = '100.00';
                 $updates['discount_amount']     = number_format($dueAmount, 2, '.', '');
                 $updates['status']              = RefrendStatus::CANCELLED->value;
-                break;
-
-            case 'REEMBOLSO_PARCIAL':
-                $updates['final_amount']                = number_format($dueAmount, 2, '.', '');
-                $updates['discount_percentage']         = '0.00';
-                $updates['discount_amount']             = '0.00';
-                $updates['refund_amount_from_previous'] = number_format((float) ($data['refund_amount'] ?? 0), 2, '.', '');
-                $neutralizePenalties                    = true;
                 break;
         }
 
@@ -173,8 +153,8 @@ class RecordPaymentSituationAction
         // is added here unconditionally EXCEPT for the two terminal cycle
         // cuts (sdd/egresado-baja-definitiva, design D5: BAJA_DEFINITIVA and,
         // as of that change, EGRESADO too — the refrend is CLOSED/CANCELLED,
-        // never paid). SIN_PAGO/RETENIDA/SUSPENDIDA/DESCUENTO_DEFINITIVO/
-        // BECA_MES/REEMBOLSO_PARCIAL all still pay the covered part — client
+        // never paid). SIN_PAGO/RETENIDA/DESCUENTO_DEFINITIVO/
+        // BECA_MES all still pay the covered part — client
         // rule: "Telmex money is never discounted/withheld". The withholding
         // ledger amount above is computed from $dueAmount and therefore
         // stays IU-only, untouched.

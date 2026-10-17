@@ -168,7 +168,7 @@ class BulkPayActionTest extends TestCase
     /** @test */
     public function skips_a_refrend_not_yet_approved_with_the_correct_reason(): void
     {
-        $refrend = $this->makePayableRefrend(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $refrend = $this->makePayableRefrend(['workflow_status' => 'CON_INCIDENCIA']);
 
         $result = $this->action->execute([$refrend->id], $this->admin->id);
 
@@ -178,7 +178,7 @@ class BulkPayActionTest extends TestCase
         $this->assertStringContainsString('Pendiente de aprobación', $result['errors'][0]['reason']);
 
         $refrend->refresh();
-        $this->assertSame('PENDIENTE_NOTIFICACION', $refrend->workflow_status);
+        $this->assertSame('CON_INCIDENCIA', $refrend->workflow_status);
         $this->assertNull($refrend->locked_at);
     }
 

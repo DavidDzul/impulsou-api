@@ -71,7 +71,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
     /** @test */
     public function not_approved_when_workflow_status_is_not_listo_para_pago(): void
     {
-        $row = $this->makeRow(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $row = $this->makeRow(['workflow_status' => 'CON_INCIDENCIA']);
 
         $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
 
@@ -188,7 +188,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
     public function four_blocking_reasons_can_fire_at_once_when_not_already_paid(): void
     {
         $row = $this->makeRow([
-            'workflow_status'  => 'PENDIENTE_NOTIFICACION',
+            'workflow_status'  => 'CON_INCIDENCIA',
             'status'           => 'WITHHELD',
             'final_amount'     => 0,
         ]);
@@ -311,7 +311,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
     /** @test */
     public function malformed_account_number_combines_with_other_blocking_reasons(): void
     {
-        $row = $this->makeRow(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $row = $this->makeRow(['workflow_status' => 'CON_INCIDENCIA']);
 
         $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true, accountNumber: 'BAD');
 

@@ -76,7 +76,6 @@ class PaymentBatchService
      *     snapshot_discount_percentage: ?string,
      *     final_amount: string,
      *     amount_pending_from_previous: string,
-     *     refund_amount_from_previous: string,
      *     snapshot_telmex_coverage_id: ?int,
      *     snapshot_telmex_covered_amount: ?string,
      *     telmex_covered: bool,
@@ -127,11 +126,11 @@ class PaymentBatchService
      *
      * snapshot_generation/snapshot_generation_id/snapshot_gross_amount/
      * discount_percentage/snapshot_discount_percentage/final_amount/
-     * amount_pending_from_previous/refund_amount_from_previous
+     * amount_pending_from_previous
      * (sdd/lotes-pago-generacion-desglose) are raw pass-throughs added for
      * the administration-panel Lotes de pago breakdown columns and
-     * generación grouping. final_amount/amount_pending_from_previous/
-     * refund_amount_from_previous were already SELECTed above (consumed
+     * generación grouping. final_amount/amount_pending_from_previous
+     * were already SELECTed above (consumed
      * internally by totalToPay()/has_pending_from_previous) — only their
      * emission on the returned row is new. Purely informational, same
      * invariant as every other flag here: MUST NOT be read by
@@ -209,7 +208,6 @@ class PaymentBatchService
                 'r.payment_batch_id',
                 'r.final_amount',
                 'r.amount_pending_from_previous',
-                'r.refund_amount_from_previous',
                 // advance_payment_amount (sdd/pago-adelantado, design D6):
                 // NOT NULL DEFAULT 0, feeds totalToPay() below — see the
                 // lockstep cross-reference comment there. Selected here (not
@@ -259,7 +257,7 @@ class PaymentBatchService
                 // (sdd/lotes-pago-generacion-desglose, design Interfaces):
                 // raw pass-throughs feeding the Lotes de pago breakdown
                 // columns and generación grouping. final_amount/
-                // amount_pending_from_previous/refund_amount_from_previous
+                // amount_pending_from_previous
                 // were already selected above (consumed internally by
                 // totalToPay()/has_pending_from_previous) — only their
                 // return-array emission is new here. Purely informational,
@@ -417,7 +415,7 @@ class PaymentBatchService
                 'snapshot_monto_apoyo'      => $row->snapshot_monto_apoyo,
                 // snapshot_generation/snapshot_generation_id/snapshot_gross_amount/
                 // discount_percentage/snapshot_discount_percentage/final_amount/
-                // amount_pending_from_previous/refund_amount_from_previous
+                // amount_pending_from_previous
                 // (sdd/lotes-pago-generacion-desglose, design Interfaces):
                 // raw pass-throughs for the Lotes de pago breakdown columns
                 // and generación grouping — DB::table() bypasses the
@@ -435,7 +433,6 @@ class PaymentBatchService
                 'snapshot_discount_percentage' => $row->snapshot_discount_percentage,
                 'final_amount'                 => $row->final_amount,
                 'amount_pending_from_previous' => $row->amount_pending_from_previous,
-                'refund_amount_from_previous'  => $row->refund_amount_from_previous,
                 // snapshot_telmex_coverage_id/snapshot_telmex_covered_amount/
                 // telmex_covered (sdd/telmex-cobertura-iu, design): raw
                 // pass-throughs + a derived boolean chip, same convention as
@@ -487,7 +484,6 @@ class PaymentBatchService
                 'scholarship_refrends.snapshot_name',
                 'scholarship_refrends.final_amount',
                 'scholarship_refrends.amount_pending_from_previous',
-                'scholarship_refrends.refund_amount_from_previous',
                 // advance_payment_amount (sdd/pago-adelantado, design D6):
                 // selected so totalToPay() computes the correct exported
                 // total — the money term is shared with rows(), unlike the
@@ -774,7 +770,7 @@ class PaymentBatchService
 
     /**
      * Reuses RefrendBulkQueryService's exact existing formula
-     * (final_amount + amount_pending_from_previous + refund_amount_from_previous
+     * (final_amount + amount_pending_from_previous
      * + advance_payment_amount), formatted the same way
      * ScholarshipRefrend::getTotalToPayAttribute() does — as a decimal
      * string, since the driver returns this value as a string on MySQL and
@@ -793,7 +789,6 @@ class PaymentBatchService
         return number_format(
             (float) $row->final_amount
             + (float) ($row->amount_pending_from_previous ?? 0)
-            + (float) ($row->refund_amount_from_previous ?? 0)
             + (float) ($row->advance_payment_amount ?? 0),
             2,
             '.',

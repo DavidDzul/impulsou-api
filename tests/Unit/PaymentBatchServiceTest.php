@@ -396,17 +396,17 @@ class PaymentBatchServiceTest extends TestCase
     }
 
     /** @test */
-    public function total_to_pay_includes_refund_amount_from_previous(): void
+    public function total_to_pay_is_final_plus_pending_plus_advance(): void
     {
         $this->makeReadyRefrend([
-            'final_amount'                 => 800.00,
-            'amount_pending_from_previous' => 0,
-            'refund_amount_from_previous'  => 50.00,
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+            'advance_payment_amount'       => 300.00,
         ]);
 
         $rows = $this->rows();
 
-        $this->assertSame('850.00', $rows[0]['total_to_pay']);
+        $this->assertSame('1500.00', $rows[0]['total_to_pay']);
     }
 
     // ── sdd/pago-adelantado D6: total_to_pay += advance_payment_amount ───────
@@ -466,7 +466,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->makeReadyRefrend();
         $this->makeReadyRefrend();
         $this->makeReadyRefrend();
-        $this->makeReadyRefrend(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $this->makeReadyRefrend(['workflow_status' => 'CON_INCIDENCIA']);
         $this->makeReadyRefrend([], ['enrollment' => null]);
 
         $rows    = $this->rows();
@@ -553,7 +553,7 @@ class PaymentBatchServiceTest extends TestCase
         ]);
         $this->makePaidRefrendForBatch($batch);
         // Not stamped with this batch's id — simulates a skipped/discharged becario.
-        $this->makeReadyRefrend(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $this->makeReadyRefrend(['workflow_status' => 'CON_INCIDENCIA']);
 
         $rows = $this->service->paidRows($batch);
 
@@ -692,7 +692,7 @@ class PaymentBatchServiceTest extends TestCase
         ], $summary);
     }
 
-    // 6+1 pass-through matrix (task 1.2, shrunk by sdd/egresado-baja-definitiva
+    // 4+1 pass-through matrix (task 1.2, shrunk by sdd/egresado-baja-definitiva
     // PR2a task 2a.9): one refrend per resolution_type value verified against
     // ScholarshipRefrendController.php:334's validation rule, plus a null row.
     // BECA_MES is asserted PRESENT, not excluded (user override of the
@@ -703,11 +703,10 @@ class PaymentBatchServiceTest extends TestCase
     // tests above). array_keys() is checked exactly so a 9th, unexpected key
     // never silently appears.
     /** @test */
-    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_six_values_and_null(): void
+    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_live_values_and_null(): void
     {
         $values = [
-            'BECA_MES', 'SIN_PAGO', 'RETENIDA', 'SUSPENDIDA',
-            'REEMBOLSO_PARCIAL', 'DESCUENTO_DEFINITIVO',
+            'BECA_MES', 'SIN_PAGO', 'RETENIDA', 'DESCUENTO_DEFINITIVO',
         ];
 
         foreach ($values as $value) {
@@ -725,7 +724,7 @@ class PaymentBatchServiceTest extends TestCase
 
         $rows = collect($this->rows())->keyBy('snapshot_name');
 
-        $this->assertCount(7, $rows);
+        $this->assertCount(5, $rows);
 
         foreach ($values as $value) {
             $row = $rows["Becario {$value}"];
@@ -762,7 +761,7 @@ class PaymentBatchServiceTest extends TestCase
             // boundary-lock test below).
             'snapshot_generation', 'snapshot_generation_id', 'snapshot_gross_amount',
             'discount_percentage', 'snapshot_discount_percentage',
-            'final_amount', 'amount_pending_from_previous', 'refund_amount_from_previous',
+            'final_amount', 'amount_pending_from_previous',
             // sdd/telmex-cobertura-iu, design: raw pass-throughs + derived
             // boolean chip, purely informational — same invariant and same
             // paidRows() scope boundary as every other field in this list.
@@ -789,7 +788,6 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_discount_percentage' => 10,
             'final_amount'                 => 1000.00,
             'amount_pending_from_previous' => 200.00,
-            'refund_amount_from_previous'  => 50.00,
         ]);
         $this->makeReadyRefrend([
             'snapshot_name'                => 'Becario Telmex IU',
@@ -801,7 +799,6 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_discount_percentage' => null,
             'final_amount'                 => 1500.00,
             'amount_pending_from_previous' => 0,
-            'refund_amount_from_previous'  => 0,
         ]);
         $this->makeReadyRefrend([
             'snapshot_name'                      => 'Becario Telmex',
@@ -814,7 +811,6 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_discount_percentage'         => null,
             'final_amount'                         => 500.00,
             'amount_pending_from_previous'         => 0,
-            'refund_amount_from_previous'           => 0,
         ]);
 
         $rows = collect($this->rows())->keyBy('snapshot_name');
@@ -831,7 +827,6 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertEquals(10.00, $iuRow['snapshot_discount_percentage']);
         $this->assertEquals(1000.00, $iuRow['final_amount']);
         $this->assertEquals(200.00, $iuRow['amount_pending_from_previous']);
-        $this->assertEquals(50.00, $iuRow['refund_amount_from_previous']);
         $this->assertTrue($iuRow['is_payable']);
         $this->assertSame([], $iuRow['blocking_reasons']);
 
@@ -1698,7 +1693,6 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_discount_percentage' => 10,
             'final_amount'                 => 1000.00,
             'amount_pending_from_previous' => 200.00,
-            'refund_amount_from_previous'  => 50.00,
         ]);
 
         $rows = $this->service->paidRows($batch);
@@ -1711,7 +1705,6 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertArrayNotHasKey('snapshot_discount_percentage', $rows[0]);
         $this->assertArrayNotHasKey('final_amount', $rows[0]);
         $this->assertArrayNotHasKey('amount_pending_from_previous', $rows[0]);
-        $this->assertArrayNotHasKey('refund_amount_from_previous', $rows[0]);
     }
 
     /** @test */
@@ -1947,7 +1940,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->makeReadyRefrend(['snapshot_name' => 'Becario Pending']);
         $this->makeReadyRefrend([
             'snapshot_name'   => 'Becario Blocked',
-            'workflow_status' => 'PENDIENTE_NOTIFICACION',
+            'workflow_status' => 'CON_INCIDENCIA',
         ]);
 
         $rows    = $this->rows();
@@ -1972,7 +1965,7 @@ class PaymentBatchServiceTest extends TestCase
             'base_amount'               => 1000.00,
             'snapshot_monto_apoyo'      => 100.00,
             'final_amount'              => 1100.00,
-            'workflow_status'           => 'PENDIENTE_NOTIFICACION',
+            'workflow_status'           => 'CON_INCIDENCIA',
         ]);
 
         $rows    = $this->rows();

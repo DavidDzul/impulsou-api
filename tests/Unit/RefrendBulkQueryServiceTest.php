@@ -309,6 +309,22 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertSame(4000.0, $result['rows'][0]['refrend']['total_to_pay']);
     }
 
+    /** @test */
+    public function total_to_pay_is_final_plus_pending_plus_advance_and_row_has_no_dead_keys(): void
+    {
+        $this->makeRefrend([
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+            'advance_payment_amount'       => 300.00,
+        ]);
+
+        $refrend = $this->buildTable()['rows'][0]['refrend'];
+
+        $this->assertSame(1500.0, $refrend['total_to_pay']);
+        $this->assertArrayNotHasKey('refund_amount_from_previous', $refrend);
+        $this->assertArrayNotHasKey('suspension_percentage', $refrend);
+    }
+
     // ── sdd/pago-adelantado: advance-paid row indicator ───────────────────────
     // Spec "Row indicator in psicol-panel bulk tables". Purely informational
     // — this section never touches is_payable/blocking_reasons (that

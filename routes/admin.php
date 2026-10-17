@@ -144,7 +144,6 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('generate', [ScholarshipRefrendController::class, 'generate']);
         Route::post('generate/{userId}', [ScholarshipRefrendController::class, 'generateForUser']);
         Route::post('bulk/approve', [ScholarshipRefrendController::class, 'bulkApprove']);
-        Route::post('bulk/notify', [ScholarshipRefrendController::class, 'bulkNotify']);
         Route::post('bulk/pay', [ScholarshipRefrendController::class, 'bulkPay'])
             ->middleware('permission:ADM_PROCESS_PAYMENTS');
         // Single-refrend routes (model binding)
@@ -159,7 +158,6 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('{refrend}/atencion-flag', [ScholarshipRefrendController::class, 'atencionFlag']);
         Route::post('{refrend}/atencion-clear', [ScholarshipRefrendController::class, 'atencionClearFlag']);
         Route::post('{refrend}/pedagogia-resolve', [ScholarshipRefrendController::class, 'pedagogiaResolve']);
-        Route::post('{refrend}/notify', [ScholarshipRefrendController::class, 'notifyStudent']);
         Route::patch('{refrend}/inline', [ScholarshipRefrendController::class, 'patchInline']);
         Route::post('{refrend}/recalculate', [ScholarshipRefrendController::class, 'recalculate']);
         Route::put('{refrend}/discharge', [ScholarshipRefrendController::class, 'discharge']);

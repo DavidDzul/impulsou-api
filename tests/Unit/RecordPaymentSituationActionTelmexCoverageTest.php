@@ -104,19 +104,6 @@ class RecordPaymentSituationActionTelmexCoverageTest extends TestCase
         $this->assertSame('300.00', (string) $ledger->withheld_amount); // IU-only, not 2250
     }
 
-    /** @test */
-    public function suspendida_keeps_the_covered_part(): void
-    {
-        $refrend = $this->makeCoveredRefrend(1000.0, 1950.0);
-
-        $result = $this->action->execute($refrend, [
-            'resolution_type'        => 'SUSPENDIDA',
-            'suspension_percentage'  => 50,
-        ], $refrend->user_id);
-
-        $this->assertSame('2450.00', $result->final_amount); // 500 iu + 1950 covered
-    }
-
     /**
      * sdd/egresado-baja-definitiva, amendment-3 (PR2b): an ACTIVA Telmex
      * coverage now blocks a cycle cut outright (CycleCutActiveTelmexCoverage
