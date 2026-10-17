@@ -31,6 +31,15 @@ class ScholarshipProfileFactory extends Factory
             // RemovePaymentDatesFromScholarshipProfilesTable). Kept here only
             // to satisfy that legacy constraint in tests; unused elsewhere.
             'payment_start_date'         => now()->toDateString(),
+            // sdd/perfil-beca-montos-admin: configured by default so
+            // factory-based suites keep generating; use configPending().
+            'config_set_at'              => now(),
         ];
+    }
+
+    /** Amounts never saved by Administración (config_set_at NULL). */
+    public function configPending(): static
+    {
+        return $this->state(fn () => ['config_set_at' => null]);
     }
 }

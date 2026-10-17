@@ -63,6 +63,7 @@ class GenerateWithGenerationIdTest extends TestCase
             'reticula_end_date'          => null,
             // payment_start_date column still exists on SQLite (dropColumn skipped)
             'payment_start_date'         => now()->toDateString(),
+            'config_set_at'        => now(),
         ], $profileOverrides));
 
         return $user;
