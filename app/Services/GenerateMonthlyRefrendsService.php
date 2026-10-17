@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\Scholarship\GraduateBecarioAction;
 use App\Exceptions\ReticulaPeriodOutOfRangeException;
+use App\Exceptions\ScholarshipConfigPendingException;
 use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
@@ -43,7 +44,11 @@ class GenerateMonthlyRefrendsService
      * becario NOT created (both kinds), for UI-level detail. `errors` keeps
      * counting every other \Throwable exactly as before.
      *
-     * @return array{created: int, skipped: int, skipped_out_of_reticula: int, errors: int, failures: array<int, array{user_id: int, name: string, reason: string, kind: string}>}
+     * sdd/perfil-beca-montos-admin: a profile whose config_set_at marker is
+     * NULL is counted under `skipped_config_pending` (always present, 0 when
+     * none) with a failures[] entry of the same kind; not an error.
+     *
+     * @return array{created: int, skipped: int, skipped_out_of_reticula: int, skipped_config_pending: int, errors: int, failures: array<int, array{user_id: int, name: string, reason: string, kind: string}>}
      */
     public function generateForPeriod(
         int $year,
@@ -55,6 +60,7 @@ class GenerateMonthlyRefrendsService
             'created'                  => 0,
             'skipped'                  => 0,
             'skipped_out_of_reticula'  => 0,
+            'skipped_config_pending'   => 0,
             'errors'                   => 0,
             'failures'                 => [],
         ];
@@ -91,6 +97,12 @@ class GenerateMonthlyRefrendsService
             } catch (ReticulaPeriodOutOfRangeException $e) {
                 $stats['skipped_out_of_reticula']++;
                 $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'skipped_out_of_reticula');
+            } catch (ScholarshipConfigPendingException $e) {
+                // sdd/perfil-beca-montos-admin: amounts never saved by
+                // Administración — an expected skip, not an error (no
+                // Log::error, `errors`/`skipped` untouched).
+                $stats['skipped_config_pending']++;
+                $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'skipped_config_pending');
             } catch (ScholarshipCycleClosedException $e) {
                 // sdd/egresado-baja-definitiva, design D3: defense-in-depth —
                 // openForPeriod() above already excludes these rows from the
@@ -152,6 +164,7 @@ class GenerateMonthlyRefrendsService
 
         $this->assertUserIsActive($profile);
         $this->assertCycleOpen($profile, $year, $month);
+        $this->assertConfigSet($profile);
 
         // Validar que el periodo no sea futuro y esté dentro del rango de la
         // retícula. generateForUser() keeps ZERO new parameters and cannot be
@@ -190,6 +203,7 @@ class GenerateMonthlyRefrendsService
     ): ScholarshipRefrend {
         $this->assertUserIsActive($profile);
         $this->assertCycleOpen($profile, $year, $month);
+        $this->assertConfigSet($profile);
         $this->assertPeriodIsFuture($year, $month);
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
@@ -239,6 +253,20 @@ class GenerateMonthlyRefrendsService
         throw new ScholarshipCycleClosedException(
             "No se puede generar el refrendo de {$month}/{$year}: el ciclo del becario está cerrado desde {$closed}."
         );
+    }
+
+    /**
+     * sdd/perfil-beca-montos-admin: a profile whose beca amounts were never
+     * saved by Administración (config_set_at NULL) must not generate any
+     * refrend — it would silently produce $0 (monthly_amount defaults to
+     * 0.00). Evaluated right after assertCycleOpen(), so a closed cycle
+     * keeps its own error. A configured $0 amount passes (marker set).
+     */
+    private function assertConfigSet(ScholarshipProfile $profile): void
+    {
+        if (!$profile->isConfigSet()) {
+            throw new ScholarshipConfigPendingException();
+        }
     }
 
     /**

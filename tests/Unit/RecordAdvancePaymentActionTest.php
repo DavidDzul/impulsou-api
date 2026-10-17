@@ -55,6 +55,7 @@ class RecordAdvancePaymentActionTest extends TestCase
             'reticula_start_date' => null,
             'reticula_end_date'   => null,
             'payment_start_date'  => now()->toDateString(),
+            'config_set_at'        => now(),
         ], $overrides));
     }
 
@@ -78,6 +79,26 @@ class RecordAdvancePaymentActionTest extends TestCase
             'snapshot_campus'              => 'MERIDA',
             'snapshot_scholarship_type'    => ScholarshipType::IU->value,
         ], $overrides));
+    }
+
+    /** @test */
+    public function a_config_pending_profile_is_rejected_and_nothing_is_persisted(): void
+    {
+        $profile = $this->makeProfile(['config_set_at' => null]);
+        $origin  = $this->makeOriginRefrend($profile->user_id);
+
+        try {
+            $this->action->execute($origin, [
+                'months' => [['year' => 2026, 'month' => 12]],
+            ], $this->admin->id);
+            $this->fail('Expected ScholarshipConfigPendingException.');
+        } catch (\App\Exceptions\ScholarshipConfigPendingException $e) {
+            $this->assertSame('El becario no tiene montos de beca configurados por Administración.', $e->getMessage());
+        }
+
+        $this->assertSame(0, ScholarshipAdvancePayment::count());
+        $this->assertSame(0, ScholarshipAdvancePaymentMonth::count());
+        $this->assertSame(1, ScholarshipRefrend::where('user_id', $profile->user_id)->count());
     }
 
     // ── Validation matrix ────────────────────────────────────────────────────
