@@ -466,7 +466,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->makeReadyRefrend();
         $this->makeReadyRefrend();
         $this->makeReadyRefrend();
-        $this->makeReadyRefrend(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $this->makeReadyRefrend(['workflow_status' => 'CON_INCIDENCIA']);
         $this->makeReadyRefrend([], ['enrollment' => null]);
 
         $rows    = $this->rows();
@@ -553,7 +553,7 @@ class PaymentBatchServiceTest extends TestCase
         ]);
         $this->makePaidRefrendForBatch($batch);
         // Not stamped with this batch's id — simulates a skipped/discharged becario.
-        $this->makeReadyRefrend(['workflow_status' => 'PENDIENTE_NOTIFICACION']);
+        $this->makeReadyRefrend(['workflow_status' => 'CON_INCIDENCIA']);
 
         $rows = $this->service->paidRows($batch);
 
@@ -692,7 +692,7 @@ class PaymentBatchServiceTest extends TestCase
         ], $summary);
     }
 
-    // 6+1 pass-through matrix (task 1.2, shrunk by sdd/egresado-baja-definitiva
+    // 4+1 pass-through matrix (task 1.2, shrunk by sdd/egresado-baja-definitiva
     // PR2a task 2a.9): one refrend per resolution_type value verified against
     // ScholarshipRefrendController.php:334's validation rule, plus a null row.
     // BECA_MES is asserted PRESENT, not excluded (user override of the
@@ -703,11 +703,10 @@ class PaymentBatchServiceTest extends TestCase
     // tests above). array_keys() is checked exactly so a 9th, unexpected key
     // never silently appears.
     /** @test */
-    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_six_values_and_null(): void
+    public function rows_passes_resolution_type_and_resolution_cause_through_unchanged_for_all_live_values_and_null(): void
     {
         $values = [
-            'BECA_MES', 'SIN_PAGO', 'RETENIDA', 'SUSPENDIDA',
-            'REEMBOLSO_PARCIAL', 'DESCUENTO_DEFINITIVO',
+            'BECA_MES', 'SIN_PAGO', 'RETENIDA', 'DESCUENTO_DEFINITIVO',
         ];
 
         foreach ($values as $value) {
@@ -725,7 +724,7 @@ class PaymentBatchServiceTest extends TestCase
 
         $rows = collect($this->rows())->keyBy('snapshot_name');
 
-        $this->assertCount(7, $rows);
+        $this->assertCount(5, $rows);
 
         foreach ($values as $value) {
             $row = $rows["Becario {$value}"];
@@ -1947,7 +1946,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->makeReadyRefrend(['snapshot_name' => 'Becario Pending']);
         $this->makeReadyRefrend([
             'snapshot_name'   => 'Becario Blocked',
-            'workflow_status' => 'PENDIENTE_NOTIFICACION',
+            'workflow_status' => 'CON_INCIDENCIA',
         ]);
 
         $rows    = $this->rows();
@@ -1972,7 +1971,7 @@ class PaymentBatchServiceTest extends TestCase
             'base_amount'               => 1000.00,
             'snapshot_monto_apoyo'      => 100.00,
             'final_amount'              => 1100.00,
-            'workflow_status'           => 'PENDIENTE_NOTIFICACION',
+            'workflow_status'           => 'CON_INCIDENCIA',
         ]);
 
         $rows    = $this->rows();

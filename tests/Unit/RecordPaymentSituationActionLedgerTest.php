@@ -480,17 +480,12 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
         // dropped from this list — it is no longer a full-amount resolution
         // type. It is now a terminal cycle cut (final_amount=0, same shape
         // as BAJA_DEFINITIVA), so it never reaches neutralizePenalties.
-        foreach (['BECA_MES', 'REEMBOLSO_PARCIAL'] as $type) {
+        foreach (['BECA_MES'] as $type) {
             $user    = $this->makeBecario();
             $refrend = $this->makeRefrend($user->id);
             $discount = $this->makeActiveRetardosDiscount($refrend->id);
 
-            $data = ['resolution_type' => $type];
-            if ($type === 'REEMBOLSO_PARCIAL') {
-                $data['refund_amount'] = 0;
-            }
-
-            $result = $this->action->execute($refrend, $data, $this->admin->id);
+            $result = $this->action->execute($refrend, ['resolution_type' => $type], $this->admin->id);
 
             $discount->refresh();
             $this->assertSame(

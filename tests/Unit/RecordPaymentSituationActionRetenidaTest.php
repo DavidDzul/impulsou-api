@@ -282,34 +282,4 @@ class RecordPaymentSituationActionRetenidaTest extends TestCase
         $this->retenida($full, 100);
         $this->assertTrue($this->hasNothingToPay($full));
     }
-
-    /**
-     * @test
-     * @dataProvider typesThatResetRefund
-     */
-    public function refund_from_previous_is_zeroed_when_leaving_reembolso_parcial(string $type): void
-    {
-        $refrend = $this->makeRefrend(1000.00);
-        $this->action->execute($refrend, ['resolution_type' => 'REEMBOLSO_PARCIAL', 'refund_amount' => 500], $refrend->user_id);
-        $this->assertSame('500.00', $refrend->fresh()->refund_amount_from_previous);
-
-        $result = $this->action->execute($refrend->fresh(), ['resolution_type' => $type], $refrend->user_id);
-
-        $this->assertSame('0.00', $result->refund_amount_from_previous);
-    }
-
-    public function typesThatResetRefund(): array
-    {
-        return [['BECA_MES'], ['SIN_PAGO']];
-    }
-
-    /** @test */
-    public function reembolso_parcial_still_stores_the_provided_refund_amount(): void
-    {
-        $refrend = $this->makeRefrend(1000.00);
-
-        $result = $this->action->execute($refrend, ['resolution_type' => 'REEMBOLSO_PARCIAL', 'refund_amount' => 300], $refrend->user_id);
-
-        $this->assertSame('300.00', $result->refund_amount_from_previous);
-    }
 }

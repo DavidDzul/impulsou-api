@@ -8,11 +8,9 @@ use App\Actions\Scholarship\RecordAdvancePaymentAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
 use App\Actions\Scholarship\BulkApproveAction;
-use App\Actions\Scholarship\BulkNotifyAction;
 use App\Actions\Scholarship\BulkPayAction;
 use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
-use App\Actions\Scholarship\NotifyStudentAction;
 use App\Actions\Scholarship\ResolveAprobacionAction;
 use App\Exceptions\Contracts\CarriesErrorPayload;
 use App\Http\Controllers\Controller;
@@ -361,15 +359,13 @@ class ScholarshipRefrendController extends Controller
         $dueAmount   = round($gross * (1 - $academicPct / 100), 2);
 
         $data = $request->validate([
-            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,SUSPENDIDA,BAJA_DEFINITIVA,EGRESADO,REEMBOLSO_PARCIAL,DESCUENTO_DEFINITIVO',
+            'resolution_type'         => 'required|in:BECA_MES,SIN_PAGO,RETENIDA,BAJA_DEFINITIVA,EGRESADO,DESCUENTO_DEFINITIVO',
             'resolution_cause'        => 'nullable|string|max:200',
-            'resolution_notes'        => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|string|max:1000',
+            'resolution_notes'        => 'nullable|string|max:1000',
             // Capturable (not mandatory — the Action enforces "required only on
             // divergence" server-side, since a static required_if cannot express
             // "the applied amount diverges from what was advance-paid").
             'advance_divergence_reason' => 'nullable|string|max:200',
-            'suspension_percentage'   => 'required_if:resolution_type,SUSPENDIDA|nullable|numeric|in:25,30,50,65,75,100',
-            'refund_amount'           => 'required_if:resolution_type,REEMBOLSO_PARCIAL|nullable|numeric|min:0.01',
             'withholding_mode'        => 'required_if:resolution_type,RETENIDA,DESCUENTO_DEFINITIVO|nullable|in:percentage,fixed',
             'withholding_value'       => [
                 'required_if:resolution_type,RETENIDA,DESCUENTO_DEFINITIVO',
@@ -598,28 +594,6 @@ class ScholarshipRefrendController extends Controller
     }
 
     /**
-     * Notifies the student and advances the refrend from PENDIENTE_NOTIFICACION.
-     */
-    public function notifyStudent(Request $request, ScholarshipRefrend $refrend): JsonResponse
-    {
-        $data = $request->validate([
-            'notification_method' => 'nullable|string|max:50',
-        ]);
-
-        try {
-            $updated = app(NotifyStudentAction::class)->execute(
-                $refrend,
-                $data['notification_method'] ?? null,
-                auth()->id()
-            );
-        } catch (\DomainException $e) {
-            return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['res' => true, 'data' => $updated]);
-    }
-
-    /**
      * Bulk-approves multiple DRAFT refrends → LISTO_PARA_PAGO.
      */
     public function bulkApprove(Request $request): JsonResponse
@@ -630,26 +604,6 @@ class ScholarshipRefrendController extends Controller
         ]);
 
         $result = app(BulkApproveAction::class)->execute($request->ids, auth()->id());
-
-        return response()->json(['res' => true, 'data' => $result]);
-    }
-
-    /**
-     * Bulk-notifies multiple PENDIENTE_NOTIFICACION refrends.
-     */
-    public function bulkNotify(Request $request): JsonResponse
-    {
-        $request->validate([
-            'ids'                 => 'required|array|min:1',
-            'ids.*'               => 'integer|exists:scholarship_refrends,id',
-            'notification_method' => 'nullable|string|max:50',
-        ]);
-
-        $result = app(BulkNotifyAction::class)->execute(
-            $request->ids,
-            $request->notification_method ?? null,
-            auth()->id()
-        );
 
         return response()->json(['res' => true, 'data' => $result]);
     }
