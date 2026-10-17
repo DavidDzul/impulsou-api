@@ -72,7 +72,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             'resolution_type'              => 'BECA_MES',
             'resolution_cause'             => 'BAJO_PROMEDIO',
             'resolution_notes'             => 'Nota de resolución.',
-            'suspension_percentage'        => null,
             'withholding_mode'             => null,
             'withholding_value'            => null,
             'base_amount'                  => 1000.00,
@@ -80,7 +79,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             'discount_amount'              => 0,
             'final_amount'                 => 1000.00,
             'amount_pending_from_previous' => 0,
-            'refund_amount_from_previous'  => 0,
             'snapshot_name'                => 'Test Becario',
             'snapshot_gross_amount'        => 1000.00,
             'snapshot_monto_apoyo'         => 0,
@@ -365,22 +363,6 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->assertSame('CANCELLED', $ledger->fresh()->status);
     }
 
-    /** @test */
-    public function undoes_suspendida_and_returns_to_draft(): void
-    {
-        $user = $this->makeBecario();
-        $this->makeProfile($user);
-        $refrend = $this->makeResolvedRefrend($user, [
-            'resolution_type'       => 'SUSPENDIDA',
-            'suspension_percentage' => 50,
-        ]);
-
-        $result = $this->action->execute($refrend, $this->admin->id);
-
-        $this->assertSame('DRAFT', $result->workflow_status);
-        $this->assertNull($result->resolution_type);
-    }
-
     // ── Field reset correctness ──────────────────────────────────────────────
 
     /** @test */
@@ -389,11 +371,9 @@ class ClearRefrendResolutionActionTest extends TestCase
         $user = $this->makeBecario();
         $this->makeProfile($user);
         $refrend = $this->makeResolvedRefrend($user, [
-            'resolution_type'             => 'SUSPENDIDA',
+            'resolution_type'             => 'SIN_PAGO',
             'resolution_cause'            => 'BAJO_PROMEDIO',
             'resolution_notes'            => 'Notas.',
-            'suspension_percentage'       => 50,
-            'refund_amount_from_previous' => 275.50,
             'notified_at'                 => now(),
             'notified_by_id'              => $this->admin->id,
             'notification_method'         => 'EMAIL',
@@ -405,11 +385,8 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->assertNull($result->resolution_cause);
         $this->assertNull($result->resolution_notes);
         $this->assertSame(RefrendStatus::DRAFT, $result->status);
-        $this->assertNull($result->suspension_percentage);
         $this->assertNull($result->withholding_mode);
         $this->assertNull($result->withholding_value);
-        // NOT NULL decimal(10,2) column — must be '0.00', never null.
-        $this->assertSame('0.00', $result->refund_amount_from_previous);
         $this->assertNull($result->notified_at);
         $this->assertNull($result->notified_by_id);
         $this->assertNull($result->notification_method);

@@ -80,9 +80,6 @@ class RecordPaymentSituationAction
             'resolution_type'         => $type,
             'resolution_cause'        => $data['resolution_cause'] ?? null,
             'resolution_notes'        => $data['resolution_notes'] ?? null,
-            // Kept until the column is dropped (api-3); nothing writes it any more,
-            // so this only clears any stale legacy value on re-resolution.
-            'refund_amount_from_previous' => '0.00',
             'atencion_reviewed_by_id' => $userId,
             'atencion_reviewed_at'    => now(),
         ];

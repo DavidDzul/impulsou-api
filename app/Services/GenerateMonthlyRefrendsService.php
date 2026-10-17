@@ -370,7 +370,6 @@ class GenerateMonthlyRefrendsService
                 $refrend->update([
                     'final_amount'                 => 0,
                     'amount_pending_from_previous' => 0,
-                    'refund_amount_from_previous'  => 0,
                     'advance_payment_amount'       => 0,
                     'resolution_type'              => ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
                     'resolution_notes'             => $notes,

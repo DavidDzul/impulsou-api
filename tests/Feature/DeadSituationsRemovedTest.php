@@ -76,7 +76,7 @@ class DeadSituationsRemovedTest extends TestCase
     public static function deadResolutionPayloads(): array
     {
         return [
-            'SUSPENDIDA' => [['resolution_type' => 'SUSPENDIDA', 'suspension_percentage' => 50]],
+            'SUSPENDIDA' => [['resolution_type' => 'SUSPENDIDA', 'resolution_cause' => 'x']],
             'REEMBOLSO_PARCIAL' => [['resolution_type' => 'REEMBOLSO_PARCIAL', 'refund_amount' => 300, 'resolution_notes' => 'x']],
         ];
     }

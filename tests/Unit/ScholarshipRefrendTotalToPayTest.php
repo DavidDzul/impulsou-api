@@ -61,16 +61,15 @@ class ScholarshipRefrendTotalToPayTest extends TestCase
     }
 
     /** @test */
-    public function total_to_pay_is_unchanged_with_refund_and_zero_advance_payment_amount(): void
+    public function total_to_pay_is_final_plus_pending_plus_advance(): void
     {
         $refrend = $this->makeRefrend([
-            'final_amount'                 => 800.00,
-            'amount_pending_from_previous' => 0,
-            'refund_amount_from_previous'  => 50.00,
-            'advance_payment_amount'       => 0,
+            'final_amount'                 => 1000.00,
+            'amount_pending_from_previous' => 200.00,
+            'advance_payment_amount'       => 300.00,
         ]);
 
-        $this->assertSame('850.00', $refrend->fresh()->total_to_pay);
+        $this->assertSame('1500.00', $refrend->fresh()->total_to_pay);
     }
 
     // ── Correct-sum: non-zero advance_payment_amount case ──────────────────────
@@ -88,15 +87,14 @@ class ScholarshipRefrendTotalToPayTest extends TestCase
     }
 
     /** @test */
-    public function total_to_pay_sums_all_four_terms_together(): void
+    public function total_to_pay_sums_all_three_terms_together(): void
     {
         $refrend = $this->makeRefrend([
             'final_amount'                 => 1000.00,
             'amount_pending_from_previous' => 200.00,
-            'refund_amount_from_previous'  => 50.00,
             'advance_payment_amount'       => 3000.00,
         ]);
 
-        $this->assertSame('4250.00', $refrend->fresh()->total_to_pay);
+        $this->assertSame('4200.00', $refrend->fresh()->total_to_pay);
     }
 }
