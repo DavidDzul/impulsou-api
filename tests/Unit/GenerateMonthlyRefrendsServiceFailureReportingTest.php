@@ -47,8 +47,8 @@ class GenerateMonthlyRefrendsServiceFailureReportingTest extends TestCase
             'scholarship_type'    => ScholarshipType::IU->value,
             'monthly_amount'      => 2000.00,
             'monto_apoyo'         => 0,
-            'reticula_start_date' => null,
-            'reticula_end_date'   => null,
+            'reticula_start_date' => '2000-01-01',
+            'reticula_end_date'   => '2099-12-31',
             'payment_start_date'  => now()->toDateString(),
             'config_set_at'        => now(),
         ], $profileOverrides));
@@ -114,6 +114,7 @@ class GenerateMonthlyRefrendsServiceFailureReportingTest extends TestCase
         $this->assertSame(0, $stats['skipped_out_of_reticula']);
         $this->assertSame(0, $stats['errors']);
         $this->assertSame(0, $stats['skipped_config_pending']);
+        $this->assertSame(0, $stats['skipped_reticula_missing']);
         $this->assertCount(0, $stats['failures']);
     }
 

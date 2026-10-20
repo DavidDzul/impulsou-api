@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Actions\Scholarship\GraduateBecarioAction;
 use App\Exceptions\ReticulaPeriodOutOfRangeException;
 use App\Exceptions\ScholarshipConfigPendingException;
+use App\Exceptions\ScholarshipReticulaMissingException;
 use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
@@ -48,7 +49,12 @@ class GenerateMonthlyRefrendsService
      * NULL is counted under `skipped_config_pending` (always present, 0 when
      * none) with a failures[] entry of the same kind; not an error.
      *
-     * @return array{created: int, skipped: int, skipped_out_of_reticula: int, skipped_config_pending: int, errors: int, failures: array<int, array{user_id: int, name: string, reason: string, kind: string}>}
+     * sdd/egresar-boton-corte-ciclo: a profile with no reticula_start_date or
+     * no reticula_end_date is counted under `skipped_reticula_missing` (always
+     * present, 0 when none) with a failures[] entry of the same kind; not an
+     * error.
+     *
+     * @return array{created: int, skipped: int, skipped_out_of_reticula: int, skipped_config_pending: int, skipped_reticula_missing: int, errors: int, failures: array<int, array{user_id: int, name: string, reason: string, kind: string}>}
      */
     public function generateForPeriod(
         int $year,
@@ -61,6 +67,7 @@ class GenerateMonthlyRefrendsService
             'skipped'                  => 0,
             'skipped_out_of_reticula'  => 0,
             'skipped_config_pending'   => 0,
+            'skipped_reticula_missing' => 0,
             'errors'                   => 0,
             'failures'                 => [],
         ];
@@ -103,6 +110,11 @@ class GenerateMonthlyRefrendsService
                 // Log::error, `errors`/`skipped` untouched).
                 $stats['skipped_config_pending']++;
                 $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'skipped_config_pending');
+            } catch (ScholarshipReticulaMissingException $e) {
+                // sdd/egresar-boton-corte-ciclo: retícula dates not loaded —
+                // an expected skip, not an error (no Log::error).
+                $stats['skipped_reticula_missing']++;
+                $stats['failures'][] = $this->buildFailureEntry($profile, $e, 'skipped_reticula_missing');
             } catch (ScholarshipCycleClosedException $e) {
                 // sdd/egresado-baja-definitiva, design D3: defense-in-depth —
                 // openForPeriod() above already excludes these rows from the
@@ -165,6 +177,7 @@ class GenerateMonthlyRefrendsService
         $this->assertUserIsActive($profile);
         $this->assertCycleOpen($profile, $year, $month);
         $this->assertConfigSet($profile);
+        $this->assertReticulaSet($profile);
 
         // Validar que el periodo no sea futuro y esté dentro del rango de la
         // retícula. generateForUser() keeps ZERO new parameters and cannot be
@@ -204,6 +217,7 @@ class GenerateMonthlyRefrendsService
         $this->assertUserIsActive($profile);
         $this->assertCycleOpen($profile, $year, $month);
         $this->assertConfigSet($profile);
+        $this->assertReticulaSet($profile);
         $this->assertPeriodIsFuture($year, $month);
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
@@ -266,6 +280,20 @@ class GenerateMonthlyRefrendsService
     {
         if (!$profile->isConfigSet()) {
             throw new ScholarshipConfigPendingException();
+        }
+    }
+
+    /**
+     * sdd/egresar-boton-corte-ciclo: both retícula dates are required to
+     * generate any refrend. A NULL start lets generation backfill months
+     * before the career began; a NULL end leaves it unbounded forward — both
+     * are money risks. Evaluated right after assertConfigSet() and before the
+     * period guards, so a closed cycle and a pending config keep priority.
+     */
+    private function assertReticulaSet(ScholarshipProfile $profile): void
+    {
+        if ($profile->reticula_start_date === null || $profile->reticula_end_date === null) {
+            throw new ScholarshipReticulaMissingException();
         }
     }
 

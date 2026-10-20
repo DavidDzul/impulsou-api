@@ -34,6 +34,11 @@ class ScholarshipProfileFactory extends Factory
             // sdd/perfil-beca-montos-admin: configured by default so
             // factory-based suites keep generating; use configPending().
             'config_set_at'              => now(),
+            // sdd/egresar-boton-corte-ciclo: generation requires BOTH reticula
+            // dates. Wide window by default so factory-based suites keep
+            // generating; use reticulaMissing() for the NULL case.
+            'reticula_start_date'        => '2000-01-01',
+            'reticula_end_date'          => '2099-12-31',
         ];
     }
 
@@ -41,5 +46,11 @@ class ScholarshipProfileFactory extends Factory
     public function configPending(): static
     {
         return $this->state(fn () => ['config_set_at' => null]);
+    }
+
+    /** Retícula dates never loaded (both NULL). */
+    public function reticulaMissing(): static
+    {
+        return $this->state(fn () => ['reticula_start_date' => null, 'reticula_end_date' => null]);
     }
 }
