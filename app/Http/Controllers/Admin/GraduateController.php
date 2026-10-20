@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Exceptions\UserTypeLockedException;
 use App\Models\User;
+use App\Support\Scholarship\UserTypeChangeGuard;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\WelcomeMail;
@@ -30,10 +32,10 @@ class GraduateController extends Controller
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
         if ($user->isRoot()) {
-            $data = User::where('user_type', 'BEC_INACTIVE')->get();
+            $data = User::withExists('scholarshipProfile as has_scholarship_profile')->where('user_type', 'BEC_INACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus
-            $data = User::where('campus', $user->campus,)->where('user_type', 'BEC_INACTIVE')->get();
+            $data = User::withExists('scholarshipProfile as has_scholarship_profile')->where('campus', $user->campus,)->where('user_type', 'BEC_INACTIVE')->get();
         }
 
         return response()->json([
@@ -84,7 +86,7 @@ class GraduateController extends Controller
      */
     public function show($id)
     {
-        $user = User::findOrFail($id);
+        $user = User::withExists('scholarshipProfile as has_scholarship_profile')->findOrFail($id);
 
         return response()->json([
             'user' => $user
@@ -103,6 +105,12 @@ class GraduateController extends Controller
         $user = User::findOrFail($id);
         $data = $request->validate(User::updateRulesUser($user->id));
 
+        try {
+            UserTypeChangeGuard::assertAllowed($user, $data);
+        } catch (UserTypeLockedException $e) {
+            return $e->toResponse();
+        }
+
         if ($request->filled('password')) {
             $data['password'] = Hash::make($data['password']);
         }
@@ -112,6 +120,7 @@ class GraduateController extends Controller
         }
 
         $user->fill($data)->save();
+        $user->setAttribute('has_scholarship_profile', $user->scholarshipProfile()->exists());
 
         return response()->json([
             'res' => true,
