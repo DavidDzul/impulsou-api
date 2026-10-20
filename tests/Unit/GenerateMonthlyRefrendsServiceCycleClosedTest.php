@@ -49,8 +49,8 @@ class GenerateMonthlyRefrendsServiceCycleClosedTest extends TestCase
             'scholarship_type'    => ScholarshipType::IU->value,
             'monthly_amount'      => 2000.00,
             'monto_apoyo'         => 0,
-            'reticula_start_date' => null,
-            'reticula_end_date'   => null,
+            'reticula_start_date' => '2000-01-01',
+            'reticula_end_date'   => '2099-12-31',
             'config_set_at'       => now(),
         ], $overrides));
     }

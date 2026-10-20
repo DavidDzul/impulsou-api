@@ -57,8 +57,8 @@ class RecordAdvancePaymentActionTelmexCoverageTest extends TestCase
             'monthly_amount'      => 1800.00,
             'monto_apoyo'         => 150.00,
             'iu_payment_amount'   => 300.00,
-            'reticula_start_date' => null,
-            'reticula_end_date'   => null,
+            'reticula_start_date' => '2000-01-01',
+            'reticula_end_date'   => '2099-12-31',
             'payment_start_date'  => now()->toDateString(),
             'config_set_at'        => now(),
         ], $overrides));

@@ -59,8 +59,8 @@ class GenerateWithGenerationIdTest extends TestCase
             'scholarship_type'           => ScholarshipType::IU->value,
             'monthly_amount'             => 2500.00,
             'active_discount_percentage' => null,
-            'reticula_start_date'        => null,
-            'reticula_end_date'          => null,
+            'reticula_start_date'        => '2000-01-01',
+            'reticula_end_date'          => '2099-12-31',
             // payment_start_date column still exists on SQLite (dropColumn skipped)
             'payment_start_date'         => now()->toDateString(),
             'config_set_at'        => now(),

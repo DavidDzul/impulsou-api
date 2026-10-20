@@ -38,8 +38,8 @@ class GenerateMonthlyRefrends extends Command
         $stats = $this->service->generateForPeriod($year, $month);
 
         $this->table(
-            ['Creados', 'Omitidos (ya existían)', 'Pendientes de configuración', 'Errores'],
-            [[$stats['created'], $stats['skipped'], $stats['skipped_config_pending'], $stats['errors']]]
+            ['Creados', 'Omitidos (ya existían)', 'Pendientes de configuración', 'Sin retícula cargada', 'Errores'],
+            [[$stats['created'], $stats['skipped'], $stats['skipped_config_pending'], $stats['skipped_reticula_missing'], $stats['errors']]]
         );
 
         if ($stats['errors'] > 0) {
