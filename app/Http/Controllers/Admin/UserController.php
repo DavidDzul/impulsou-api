@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Exceptions\UserTypeLockedException;
 use App\Models\User;
+use App\Support\Scholarship\UserTypeChangeGuard;
 use Illuminate\Support\Facades\Hash;
 
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -38,10 +40,10 @@ class UserController extends Controller
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
         if ($user->isRoot()) {
-            $data = User::where('user_type', 'BEC_ACTIVE')->get();
+            $data = User::withExists('scholarshipProfile as has_scholarship_profile')->where('user_type', 'BEC_ACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus
-            $data = User::where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
+            $data = User::withExists('scholarshipProfile as has_scholarship_profile')->where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
         }
 
 
@@ -91,7 +93,7 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::findOrFail($id);
+        $user = User::withExists('scholarshipProfile as has_scholarship_profile')->findOrFail($id);
 
         return response()->json([
             'user' => $user
@@ -106,6 +108,12 @@ class UserController extends Controller
         $user = User::findOrFail($id);
         $data = $request->validate(User::updateRulesUser($user->id));
 
+        try {
+            UserTypeChangeGuard::assertAllowed($user, $data);
+        } catch (UserTypeLockedException $e) {
+            return $e->toResponse();
+        }
+
         if ($request->filled('password')) {
             $data['password'] = Hash::make($data['password']);
         }
@@ -115,6 +123,7 @@ class UserController extends Controller
         }
 
         $user->fill($data)->save();
+        $user->setAttribute('has_scholarship_profile', $user->scholarshipProfile()->exists());
 
         return response()->json([
             'res' => true,
