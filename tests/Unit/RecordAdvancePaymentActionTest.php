@@ -52,8 +52,8 @@ class RecordAdvancePaymentActionTest extends TestCase
             'scholarship_type'    => ScholarshipType::IU->value,
             'monthly_amount'      => 2000.00,
             'monto_apoyo'         => 0,
-            'reticula_start_date' => null,
-            'reticula_end_date'   => null,
+            'reticula_start_date' => '2000-01-01',
+            'reticula_end_date'   => '2099-12-31',
             'payment_start_date'  => now()->toDateString(),
             'config_set_at'        => now(),
         ], $overrides));
@@ -474,16 +474,21 @@ class RecordAdvancePaymentActionTest extends TestCase
     }
 
     /** @test */
-    public function a_profile_with_no_reticula_end_date_is_never_blocked_by_the_boundary_guard(): void
+    public function a_profile_with_no_reticula_end_date_is_rejected_as_reticula_missing(): void
     {
         $profile = $this->makeProfile(['reticula_end_date' => null]);
         $origin  = $this->makeOriginRefrend($profile->user_id);
 
-        $header = $this->action->execute($origin, [
-            'months' => [['year' => 2027, 'month' => 6]],
-        ], $this->admin->id);
+        try {
+            $this->action->execute($origin, [
+                'months' => [['year' => 2027, 'month' => 6]],
+            ], $this->admin->id);
+            $this->fail('Expected ScholarshipReticulaMissingException.');
+        } catch (\App\Exceptions\ScholarshipReticulaMissingException $e) {
+            $this->assertSame(\App\Exceptions\ScholarshipReticulaMissingException::MESSAGE, $e->getMessage());
+        }
 
-        $this->assertNotNull($header);
+        $this->assertSame(0, ScholarshipAdvancePayment::count());
     }
 
     /**

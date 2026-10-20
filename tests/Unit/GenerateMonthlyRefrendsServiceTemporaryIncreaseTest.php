@@ -44,8 +44,8 @@ class GenerateMonthlyRefrendsServiceTemporaryIncreaseTest extends TestCase
             'monto_apoyo'         => 0,
             // Wide open reticula so only the temporary increase snapshot
             // wiring is exercised, not the reticula range guard.
-            'reticula_start_date' => null,
-            'reticula_end_date'   => null,
+            'reticula_start_date' => '2000-01-01',
+            'reticula_end_date'   => '2099-12-31',
             'payment_start_date'  => now()->toDateString(),
             'config_set_at'        => now(),
         ], $overrides));
