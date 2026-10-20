@@ -262,6 +262,30 @@ class ScholarshipProfile extends Model
         });
     }
 
+    /**
+     * sdd/generaciones-activas-refrendos, R1: the ONE definition of a
+     * "becario with pending payments". Mirrors the filter of
+     * GenerateMonthlyRefrendsService::generateForPeriod() (user active, open
+     * for the period, NO user_type filter, config_set_at ignored) and keeps
+     * only profiles whose egresoAdministrativoDate() falls in the current
+     * month or later.
+     *
+     * month(egreso) = month(startOfMonth(end) + 2) >= month(now)
+     *   <=> end >= startOfMonth(now) - 2 months,
+     * so the boundary is a plain date comparison (portable across MySQL and
+     * SQLite) and a NULL reticula_end_date is excluded naturally.
+     */
+    public function scopePendingPaymentsWindow($query, ?Carbon $now = null)
+    {
+        $now = ($now ?? Carbon::now())->copy();
+        $earliestEnd = $now->copy()->startOfMonth()->subMonths(2)->toDateString();
+
+        return $query
+            ->whereHas('user', fn ($q) => $q->where('users.active', true))
+            ->openForPeriod($now->year, $now->month)
+            ->where('scholarship_profiles.reticula_end_date', '>=', $earliestEnd);
+    }
+
     // Scopes
 
     public function scopeActive($query)
