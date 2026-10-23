@@ -111,6 +111,7 @@ class ScholarshipAdvancePaymentEndpointTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson($this->url($origin->id), [
             'months' => $months,
+            'cause'  => 'Viaje académico',
         ]);
 
         $response->assertStatus(422);
@@ -126,6 +127,7 @@ class ScholarshipAdvancePaymentEndpointTest extends TestCase
                 ['year' => 2026, 'month' => 12],
                 ['year' => 2026, 'month' => 12],
             ],
+            'cause' => 'Viaje académico',
         ]);
 
         $response->assertStatus(422);
@@ -140,9 +142,66 @@ class ScholarshipAdvancePaymentEndpointTest extends TestCase
             'months' => [
                 ['year' => 2026, 'month' => 9], // same as origin's own period
             ],
+            'cause' => 'Viaje académico',
         ]);
 
         $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function it_returns_422_with_a_cause_error_when_cause_is_missing(): void
+    {
+        $origin = $this->makeOriginRefrend();
+
+        $response = $this->actingAs($this->admin)->postJson($this->url($origin->id), [
+            'months' => [['year' => 2026, 'month' => 12]],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('cause');
+        $this->assertSame(0, ScholarshipAdvancePayment::count());
+    }
+
+    /**
+     * @test
+     * @dataProvider blankCauseProvider
+     */
+    public function it_returns_422_when_cause_is_blank_or_whitespace_only(string $cause): void
+    {
+        $origin = $this->makeOriginRefrend();
+
+        $response = $this->actingAs($this->admin)->postJson($this->url($origin->id), [
+            'months' => [['year' => 2026, 'month' => 12]],
+            'cause'  => $cause,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('cause');
+        $this->assertSame(0, ScholarshipAdvancePayment::count());
+    }
+
+    public function blankCauseProvider(): array
+    {
+        return [
+            'empty string' => [''],
+            'spaces only'  => ['   '],
+            'tabs/newline' => ["	 
+"],
+        ];
+    }
+
+    /** @test */
+    public function it_returns_422_when_cause_exceeds_200_characters(): void
+    {
+        $origin = $this->makeOriginRefrend();
+
+        $response = $this->actingAs($this->admin)->postJson($this->url($origin->id), [
+            'months' => [['year' => 2026, 'month' => 12]],
+            'cause'  => str_repeat('a', 201),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('cause');
     }
 
     /** @test */
@@ -208,6 +267,7 @@ class ScholarshipAdvancePaymentEndpointTest extends TestCase
         try {
             $response = $this->actingAs($this->admin)->postJson($this->url($origin->id), [
                 'months' => [['year' => 2026, 'month' => 12]],
+                'cause'  => 'Viaje académico',
             ]);
 
             $response->assertStatus(422);
