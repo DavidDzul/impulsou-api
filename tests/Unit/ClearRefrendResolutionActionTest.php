@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Actions\Scholarship\ClearRefrendResolutionAction;
+use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -17,6 +18,7 @@ use App\Models\ScholarshipRefrendLog;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Models\User;
+use App\Services\RecalculateRefrendService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -619,5 +621,116 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->action->execute($refrend, $this->admin->id);
 
         $this->assertSame('PENDING', $month->fresh()->status);
+    }
+
+    // -- recalculation keeps the incident status -------------------------------
+
+    private function makeHumanIncident(ScholarshipRefrend $refrend): ScholarshipRefrendIncident
+    {
+        return ScholarshipRefrendIncident::create([
+            'scholarship_refrend_id' => $refrend->id,
+            'incident_category'      => 'ACADEMICO',
+            'incident_type'          => 'OTRO',
+            'description'            => 'Incidencia registrada por un humano.',
+            'priority'               => 'LOW',
+            'created_by_id'          => $this->admin->id,
+        ]);
+    }
+
+    /** @test */
+    public function undoing_an_advance_payment_resolution_keeps_con_incidencia_when_a_human_incident_exists(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend  = $this->makeResolvedRefrend($user, ['workflow_status' => 'CON_INCIDENCIA', 'resolution_type' => null]);
+        $incident = $this->makeHumanIncident($refrend);
+        $this->linkAdvanceMonth($refrend, ['status' => 'PENDING']);
+
+        $this->app->make(RecordPaymentSituationAction::class)
+            ->execute($refrend->fresh(), ['resolution_type' => 'SIN_PAGO'], $this->admin->id);
+        $this->assertSame('LISTO_PARA_PAGO', $refrend->fresh()->workflow_status);
+
+        $result = $this->action->execute($refrend->fresh(), $this->admin->id);
+
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+        $this->assertNotNull(ScholarshipRefrendIncident::find($incident->id));
+    }
+
+    /** @test */
+    public function undoing_a_beca_mes_resolution_keeps_con_incidencia_when_a_human_incident_exists(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend  = $this->makeResolvedRefrend($user, ['workflow_status' => 'CON_INCIDENCIA', 'resolution_type' => null]);
+        $incident = $this->makeHumanIncident($refrend);
+
+        $this->app->make(RecordPaymentSituationAction::class)
+            ->execute($refrend->fresh(), ['resolution_type' => 'BECA_MES'], $this->admin->id);
+
+        $result = $this->action->execute($refrend->fresh(), $this->admin->id);
+
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+        $this->assertNotNull(ScholarshipRefrendIncident::find($incident->id));
+    }
+
+    /** @test */
+    public function full_recalculate_of_a_draft_refrend_with_a_human_incident_is_con_incidencia(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['workflow_status' => 'DRAFT', 'resolution_type' => null]);
+        $this->makeHumanIncident($refrend);
+
+        $result = $this->app->make(RecalculateRefrendService::class)->fullRecalculate($refrend->fresh());
+
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+    }
+
+    /** @test */
+    public function a_human_flag_over_the_machine_descuento_perfil_incident_survives_recalculation(): void
+    {
+        $user    = $this->makeBecario();
+        $profile = $this->makeProfile($user, [
+            'active_discount_percentage' => 20,
+            'discount_valid_from'        => '2026-02-01',
+            'discount_valid_until'       => '2026-06-01',
+        ]);
+        $refrend = $this->makeResolvedRefrend($user, ['workflow_status' => 'DRAFT', 'resolution_type' => null]);
+        $service = $this->app->make(RecalculateRefrendService::class);
+
+        // The recalculation creates the machine incident (created_by_id NULL).
+        $refrend = $service->fullRecalculate($refrend->fresh());
+        $machine = $refrend->incidents()->where('incident_type', 'DESCUENTO_PERFIL')->firstOrFail();
+        $this->assertNull($machine->created_by_id);
+
+        // A human flags over it, keeping the same type.
+        $this->app->make(FlagRefrendIncidentAction::class)->execute($refrend->fresh(), [
+            'incident_category' => 'ACADEMICO',
+            'incident_type'     => 'DESCUENTO_PERFIL',
+            'description'       => 'Revisado por atención.',
+            'priority'          => 'HIGH',
+        ], '', $this->admin->id);
+        $this->assertSame($this->admin->id, $machine->fresh()->created_by_id);
+
+        // Discount removed, refrend back to DRAFT, recalculated.
+        $profile->update(['active_discount_percentage' => null, 'discount_valid_from' => null, 'discount_valid_until' => null]);
+        $refrend->fresh()->update(['workflow_status' => 'DRAFT']);
+        $result = $service->fullRecalculate($refrend->fresh());
+
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+        $this->assertSame($this->admin->id, ScholarshipRefrendIncident::findOrFail($machine->id)->created_by_id);
+    }
+
+    /** @test */
+    public function undo_without_any_incident_or_discount_returns_to_draft(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['resolution_type' => 'BECA_MES']);
+
+        $result = $this->action->execute($refrend, $this->admin->id);
+
+        $this->assertSame('DRAFT', $result->workflow_status);
+        $this->assertSame(0, $result->incidents()->count());
     }
 }
