@@ -90,7 +90,7 @@ class ReticulaMissingEndpointsTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson(
             "/api/admin/scholarship-refrends/{$origin->id}/advance-payment",
-            ['months' => [['year' => 2026, 'month' => 12]]]
+            ['months' => [['year' => 2026, 'month' => 12]], 'cause' => 'Viaje académico']
         );
 
         $response->assertStatus(422);

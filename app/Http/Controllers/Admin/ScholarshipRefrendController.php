@@ -489,7 +489,7 @@ class ScholarshipRefrendController extends Controller
             ],
             'months.*.year'  => 'required|integer|min:2020|max:2100',
             'months.*.month' => 'required|integer|min:1|max:12',
-            'cause'          => 'nullable|string|max:200',
+            'cause'          => 'required|string|max:200',
             'notes'          => 'nullable|string|max:1000',
         ]);
 
