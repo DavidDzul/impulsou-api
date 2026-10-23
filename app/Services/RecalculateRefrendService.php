@@ -50,7 +50,12 @@ class RecalculateRefrendService
                 && $snapshot['snapshot_discount_percentage'] !== null
                 && (float) $snapshot['snapshot_discount_percentage'] > 0;
 
-            $newWorkflowStatus   = $hasProfileDiscount ? 'CON_INCIDENCIA' : 'DRAFT';
+            // Incidents are permanent, so a human-filed one (created_by_id set) must
+            // keep the refrend in CON_INCIDENCIA across recalculations. Machine rows
+            // (created_by_id NULL) are re-derived below from the profile discount.
+            $hasHumanIncident = $refrend->incidents()->whereNotNull('created_by_id')->exists();
+
+            $newWorkflowStatus   = ($hasProfileDiscount || $hasHumanIncident) ? 'CON_INCIDENCIA' : 'DRAFT';
             $incidentDescription = null;
 
             if ($hasProfileDiscount) {
@@ -108,7 +113,11 @@ class RecalculateRefrendService
                 ->whereNull('created_by_id')
                 ->delete();
 
-            if ($hasProfileDiscount && $incidentDescription !== null) {
+            // Invariant: a refrend has at most ONE incident. A human-filed incident
+            // supersedes the machine discount note (the discount itself still applies
+            // through the snapshot), so the machine row is only created when no human
+            // incident exists.
+            if ($hasProfileDiscount && !$hasHumanIncident && $incidentDescription !== null) {
                 $refrend->incidents()->create([
                     'incident_category' => 'ACADEMICO',
                     'incident_type'     => 'DESCUENTO_PERFIL',

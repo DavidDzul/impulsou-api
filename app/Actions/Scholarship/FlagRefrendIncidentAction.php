@@ -31,6 +31,9 @@ class FlagRefrendIncidentAction
                     'description'       => $incidentData['description'],
                     'priority'          => $incidentData['priority'],
                     'incident_date'     => $incidentData['incident_date'] ?? null,
+                    // Taking over a machine-generated row (created_by_id NULL) makes it
+                    // a human incident, so recalculation no longer deletes it.
+                    'created_by_id'     => $existingIncident->created_by_id ?? $userId,
                 ]);
                 $logEvent = 'ATENCION_INCIDENT_UPDATED';
             } else {
