@@ -721,6 +721,91 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->assertSame($this->admin->id, ScholarshipRefrendIncident::findOrFail($machine->id)->created_by_id);
     }
 
+    private function makeDiscountProfile(User $user): ScholarshipProfile
+    {
+        return $this->makeProfile($user, [
+            'active_discount_percentage' => 20,
+            'discount_valid_from'        => '2026-02-01',
+            'discount_valid_until'       => '2026-06-01',
+        ]);
+    }
+
+    /** @test */
+    public function a_human_incident_supersedes_the_machine_discount_incident_keeping_one_row(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeDiscountProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['workflow_status' => 'DRAFT', 'resolution_type' => null]);
+        $human   = $this->makeHumanIncident($refrend);
+
+        $result = $this->app->make(RecalculateRefrendService::class)->fullRecalculate($refrend->fresh());
+
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+        $this->assertGreaterThan(0, (float) $result->snapshot_discount_percentage);
+        $this->assertSame([$human->id], $result->incidents()->pluck('id')->all());
+    }
+
+    /** @test */
+    public function undoing_a_resolution_with_a_human_incident_and_active_discount_keeps_one_incident(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeDiscountProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['workflow_status' => 'CON_INCIDENCIA', 'resolution_type' => null]);
+        $human   = $this->makeHumanIncident($refrend);
+        $this->app->make(RecordPaymentSituationAction::class)
+            ->execute($refrend->fresh(), ['resolution_type' => 'BECA_MES'], $this->admin->id);
+
+        $result = $this->action->execute($refrend->fresh(), $this->admin->id);
+
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+        $this->assertSame([$human->id], $result->incidents()->pluck('id')->all());
+    }
+
+    /** @test */
+    public function a_human_flag_with_a_different_type_over_the_machine_row_leaves_one_incident_after_recalculation(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeDiscountProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['workflow_status' => 'DRAFT', 'resolution_type' => null]);
+        $service = $this->app->make(RecalculateRefrendService::class);
+
+        $refrend = $service->fullRecalculate($refrend->fresh());
+        $this->assertSame(1, $refrend->incidents()->count());
+
+        $this->app->make(FlagRefrendIncidentAction::class)->execute($refrend->fresh(), [
+            'incident_category' => 'ACADEMICO',
+            'incident_type'     => 'OTRO',
+            'description'       => 'Revisado por atención.',
+            'priority'          => 'HIGH',
+        ], '', $this->admin->id);
+
+        $refrend->fresh()->update(['workflow_status' => 'DRAFT']);
+        $result = $service->fullRecalculate($refrend->fresh());
+
+        $incidents = $result->incidents()->get();
+        $this->assertCount(1, $incidents);
+        $this->assertSame($this->admin->id, $incidents->first()->created_by_id);
+        $this->assertSame('OTRO', $incidents->first()->incident_type);
+        $this->assertSame('CON_INCIDENCIA', $result->workflow_status);
+    }
+
+    /** @test */
+    public function discount_only_recalculation_twice_yields_exactly_one_machine_incident(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeDiscountProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, ['workflow_status' => 'DRAFT', 'resolution_type' => null]);
+        $service = $this->app->make(RecalculateRefrendService::class);
+
+        $refrend = $service->fullRecalculate($refrend->fresh());
+        $refrend->fresh()->update(['workflow_status' => 'DRAFT']);
+        $result = $service->fullRecalculate($refrend->fresh());
+
+        $this->assertSame(1, $result->incidents()->count());
+        $this->assertNull($result->incidents()->first()->created_by_id);
+        $this->assertSame('DESCUENTO_PERFIL', $result->incidents()->first()->incident_type);
+    }
+
     /** @test */
     public function undo_without_any_incident_or_discount_returns_to_draft(): void
     {

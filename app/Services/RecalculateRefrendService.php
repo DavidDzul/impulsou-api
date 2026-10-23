@@ -113,7 +113,11 @@ class RecalculateRefrendService
                 ->whereNull('created_by_id')
                 ->delete();
 
-            if ($hasProfileDiscount && $incidentDescription !== null) {
+            // Invariant: a refrend has at most ONE incident. A human-filed incident
+            // supersedes the machine discount note (the discount itself still applies
+            // through the snapshot), so the machine row is only created when no human
+            // incident exists.
+            if ($hasProfileDiscount && !$hasHumanIncident && $incidentDescription !== null) {
                 $refrend->incidents()->create([
                     'incident_category' => 'ACADEMICO',
                     'incident_type'     => 'DESCUENTO_PERFIL',
