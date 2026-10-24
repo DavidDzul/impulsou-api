@@ -495,15 +495,39 @@ class GenerationPaymentRowsTest extends TestCase
         $this->assertSame(1, $summary['telmex_without_iu_payment']);
     }
 
+    /** Breakdown-based discounts: academic + penalty/retention - manual adjustment. */
+    private function breakdownDiscounts(ScholarshipRefrend $refrend): float
+    {
+        $b = app(RefrendAmountBreakdown::class)->forRefrend($refrend->fresh());
+
+        return (float) $b['academic_discount_amount'] + (float) $b['discount_amount'] - (float) ($b['manual_adjustment'] ?? 0);
+    }
+
     /** @test */
     public function row_discounts_match_the_refrend_amount_breakdown_for_every_type(): void
     {
+        $telmexCoveragePending = $this->makePureTelmex('Cubierta Pendiente', [
+            'snapshot_telmex_covered_amount' => 3500.00,
+            'final_amount'                   => 3500.00,
+            'amount_pending_from_previous'   => 200.00,
+        ]);
+        $coverage = TelmexCoverage::create([
+            'user_id'                        => $telmexCoveragePending->user_id,
+            'scholarship_type_at_activation' => ScholarshipType::TELMEX->value,
+            'start_period'                   => '2026-01-01',
+            'end_period'                     => null,
+            'status'                         => 'ACTIVA',
+        ]);
+        $telmexCoveragePending->update(['snapshot_telmex_coverage_id' => $coverage->id]);
+
         $refrends = [
             $this->makeIuWithEverything(),
             $this->makeTelmexIuWithCoverage(),
             $this->makeTelmexWithIncrease(),
-            $this->makeRefrend(['final_amount' => 900.00]),
+            $this->makeRefrend(['final_amount' => 900.00]),    // manual override down
+            $this->makeRefrend(['final_amount' => 1100.00]),   // manual override up
             $this->makeRefrend(['amount_pending_from_previous' => 200.00, 'advance_payment_amount' => 50.00]),
+            $telmexCoveragePending,
         ];
 
         $data = $this->fetch();
@@ -512,15 +536,48 @@ class GenerationPaymentRowsTest extends TestCase
             $b   = app(RefrendAmountBreakdown::class)->forRefrend($refrend->fresh());
             $row = $this->rowFor($data, $refrend->id);
 
-            $expected = (float) $b['academic_discount_amount'] + (float) $b['discount_amount'] - (float) ($b['manual_adjustment'] ?? 0);
-            $this->assertEqualsWithDelta($expected, (float) $row['discounts'], 0.001, "discounts of refrend {$refrend->id}");
+            $this->assertEqualsWithDelta($this->breakdownDiscounts($refrend), (float) $row['discounts'], 0.001, "discounts of refrend {$refrend->id}");
             $this->assertEqualsWithDelta((float) $b['telmex_covered_amount'], (float) $row['telmex_coverage'], 0.001);
             $this->assertEqualsWithDelta((float) $b['total_to_pay'], (float) $row['total_to_pay'], 0.001);
+            $this->assertEqualsWithDelta(
+                (float) $b['amount_pending_from_previous'] + (float) $b['advance_payment_amount'],
+                (float) $row['pending_and_advance'],
+                0.001
+            );
         }
     }
 
+    /**
+     * KNOWN DIVERGENCE (characterization): `discounts` is the residual of the
+     * row's columns against total_to_pay, while the breakdown derives it from
+     * the stored discount fields. They agree whenever the frozen snapshot is
+     * internally consistent (base + apoyo + increase = gross, which every
+     * generation path guarantees). If a snapshot is inconsistent, the residual
+     * absorbs the gap, so the row still reconciles but `discounts` is larger
+     * than the breakdown's by exactly (base + apoyo + increase - gross).
+     *
+     * @test
+     */
+    public function an_inconsistent_snapshot_makes_discounts_diverge_from_the_breakdown_by_exactly_the_gap(): void
+    {
+        // base 1000 + apoyo 100 should give gross 1100, but gross says 1000,
+        // with no discount of any kind and final 1000.
+        $refrend = $this->makeRefrend([
+            'base_amount'           => 1000.00,
+            'snapshot_monto_apoyo'  => 100.00,
+            'snapshot_gross_amount' => 1000.00,
+            'final_amount'          => 1000.00,
+        ]);
+
+        $row = $this->rowFor($this->fetch(), $refrend->id);
+
+        $this->assertEqualsWithDelta(0.0, $this->breakdownDiscounts($refrend), 0.001);
+        $this->assertSame('100.00', $row['discounts']);
+        $this->assertTrue($this->reconciles($row), 'the residual keeps the row reconciled');
+    }
+
     /** @test */
-    public function the_payable_floor_keeps_the_row_reconciling_by_a_negative_discount_of_one_cent(): void
+    public function the_payable_floor_shifts_discounts_one_cent_below_the_breakdown(): void
     {
         // Fully discounted IU row: total_to_pay 0.00 floors to 0.01 for the bank file.
         $refrend = $this->makeRefrend(['discount_amount' => 1000.00, 'final_amount' => 0.00]);
@@ -529,7 +586,60 @@ class GenerationPaymentRowsTest extends TestCase
 
         $this->assertSame('0.01', $row['total_to_pay']);
         $this->assertSame('999.99', $row['discounts']);
+        $this->assertEqualsWithDelta(1000.00, $this->breakdownDiscounts($refrend), 0.001);
+        $this->assertEqualsWithDelta(
+            0.01,
+            $this->breakdownDiscounts($refrend) - (float) $row['discounts'],
+            0.0001,
+            'the floor is the only source of delta against the breakdown'
+        );
         $this->assertTrue($this->reconciles($row));
+    }
+
+    // ── NO_IU_PAYMENT with money pending from other months ──────────────────
+
+    /** @test */
+    public function a_no_iu_payment_row_with_pending_and_advance_shows_that_money_but_stays_out_of_the_summary(): void
+    {
+        $this->makeIuWithEverything();
+        $before = $this->fetch()['summary'];
+
+        $telmex = $this->makePureTelmex('Pendiente Paz', [
+            'amount_pending_from_previous' => 200.00,
+            'advance_payment_amount'       => 50.00,
+        ]);
+        $data = $this->fetch();
+        $row  = $this->rowFor($data, $telmex->id);
+
+        $this->assertSame('NO_IU_PAYMENT', $row['state']);
+        $this->assertSame('250.00', $row['pending_and_advance']);
+        $this->assertSame('250.00', $row['total_to_pay']);
+        foreach (['beca', 'apoyo', 'pago_iu', 'temporary_increase', 'telmex_coverage', 'discounts'] as $column) {
+            $this->assertSame('0.00', $row[$column]);
+        }
+        $this->assertTrue($this->reconciles($row));
+
+        $this->assertSame(1, $data['summary']['telmex_without_iu_payment']);
+        $this->assertSame('250.00', $data['summary']['telmex_without_iu_payment_pending_amount']);
+
+        $expected = $before;
+        $expected['telmex_without_iu_payment'] = 1;
+        $expected['telmex_without_iu_payment_pending_amount'] = '250.00';
+        $this->assertSame($expected, $data['summary'], 'no other summary figure may move');
+    }
+
+    /** @test */
+    public function the_pending_amount_of_no_iu_payment_rows_sums_only_those_rows(): void
+    {
+        $this->makePureTelmex('Uno', ['amount_pending_from_previous' => 100.00]);
+        $this->makePureTelmex('Dos', ['advance_payment_amount' => 30.50]);
+        $this->makePureTelmex('Tres');
+        $this->makeRefrend(['amount_pending_from_previous' => 999.00]); // payment row
+
+        $summary = $this->fetch()['summary'];
+
+        $this->assertSame(3, $summary['telmex_without_iu_payment']);
+        $this->assertSame('130.50', $summary['telmex_without_iu_payment_pending_amount']);
     }
 
     /** @test */
@@ -541,5 +651,6 @@ class GenerationPaymentRowsTest extends TestCase
         $this->assertSame('0.00', $data['summary']['temporary_increase_amount']);
         $this->assertSame('0.00', $data['summary']['pending_and_advance_amount']);
         $this->assertSame(0, $data['summary']['telmex_without_iu_payment']);
+        $this->assertSame('0.00', $data['summary']['telmex_without_iu_payment_pending_amount']);
     }
 }
