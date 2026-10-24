@@ -32,10 +32,10 @@ class GraduateController extends Controller
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
         if ($user->isRoot()) {
-            $data = User::withExists('scholarshipProfile as has_scholarship_profile')->where('user_type', 'BEC_INACTIVE')->get();
+            $data = User::withExists(['scholarshipProfile as has_scholarship_profile', 'scholarshipProfile as amounts_configured' => fn ($q) => $q->whereNotNull('config_set_at')])->where('user_type', 'BEC_INACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus
-            $data = User::withExists('scholarshipProfile as has_scholarship_profile')->where('campus', $user->campus,)->where('user_type', 'BEC_INACTIVE')->get();
+            $data = User::withExists(['scholarshipProfile as has_scholarship_profile', 'scholarshipProfile as amounts_configured' => fn ($q) => $q->whereNotNull('config_set_at')])->where('campus', $user->campus,)->where('user_type', 'BEC_INACTIVE')->get();
         }
 
         return response()->json([
