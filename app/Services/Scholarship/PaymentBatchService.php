@@ -607,8 +607,17 @@ class PaymentBatchService
      * row's amount is not a committed or expected payout. beca_amount/
      * apoyo_amount/pago_iu_amount are the nominal, type-partitioned figures
      * (moneyTotals() over paid+pending); paid_amount/pending_amount are each
-     * group's own total_to_pay sum; total_amount is their sum;
-     * difference_amount MAY be negative (same convention as summary()).
+     * group's own total_to_pay sum; total_amount is their sum.
+     *
+     * difference_amount (sdd/tabla-montos-por-generacion) is the TRUE
+     * "descuentos y retenciones": every nominal component the becario would
+     * receive (beca + apoyo + pago_iu + temporary_increase + telmex_coverage
+     * + pending_and_advance) minus total_amount. It equals the sum of the
+     * per-row `discounts` and is >= 0 except when a manual override RAISED a
+     * final_amount. (Before this change temporary increases and
+     * pending/advance were missing from the nominal side, so they showed up
+     * as a bogus negative "difference".) summary() — the Lotes de pago
+     * flow — keeps its own, unchanged formula.
      *
      * @param array<int, array{
      *     is_payable: bool,
@@ -630,6 +639,8 @@ class PaymentBatchService
      *     apoyo_amount: string,
      *     pago_iu_amount: string,
      *     telmex_coverage_amount: string,
+     *     temporary_increase_amount: string,
+     *     pending_and_advance_amount: string,
      *     paid_amount: string,
      *     pending_amount: string,
      *     total_amount: string,
@@ -675,11 +686,14 @@ class PaymentBatchService
             // 6th bucket as summary(), computed over paid+pending rows only
             // (same scope as beca/apoyo/pago_iu above).
             'telmex_coverage_amount' => number_format($nominal['telmex_coverage'], 2, '.', ''),
+            'temporary_increase_amount'  => number_format($nominal['temporary_increase'], 2, '.', ''),
+            'pending_and_advance_amount' => number_format($nominal['pending_and_advance'], 2, '.', ''),
             'paid_amount'            => number_format($paidAmount, 2, '.', ''),
             'pending_amount'         => number_format($pendingAmount, 2, '.', ''),
             'total_amount'           => number_format($totalAmount, 2, '.', ''),
             'difference_amount'      => number_format(
-                $nominal['beca'] + $nominal['apoyo'] + $nominal['pago_iu'] + $nominal['telmex_coverage'] - $totalAmount,
+                $nominal['beca'] + $nominal['apoyo'] + $nominal['pago_iu'] + $nominal['temporary_increase']
+                    + $nominal['telmex_coverage'] + $nominal['pending_and_advance'] - $totalAmount,
                 2,
                 '.',
                 ''
@@ -696,7 +710,7 @@ class PaymentBatchService
      *
      * @param array{is_payable: bool, payment_batch_id: ?int, status: string} $row
      */
-    private function partitionGroup(array $row): string
+    public function partitionGroup(array $row): string
     {
         $isPaid = $row['payment_batch_id'] !== null || $row['status'] === RefrendStatus::PAID->value;
 
@@ -721,7 +735,7 @@ class PaymentBatchService
      *     snapshot_telmex_coverage_id: ?int,
      *     snapshot_telmex_covered_amount: ?string,
      * }> $rows
-     * @return array{beca: float, apoyo: float, pago_iu: float, telmex_coverage: float, total: float}
+     * @return array{beca: float, apoyo: float, pago_iu: float, telmex_coverage: float, temporary_increase: float, pending_and_advance: float, total: float}
      */
     private function moneyTotals(array $rows): array
     {
@@ -759,12 +773,29 @@ class PaymentBatchService
             0.0
         );
 
+        // temporary_increase / pending_and_advance (sdd/tabla-montos-por-generacion):
+        // only generationSummary() reads these two; summary() ignores them.
+        $temporaryIncrease = array_reduce(
+            $rows,
+            fn (float $carry, array $row) => $carry + (float) ($row['snapshot_temporary_increase_amount'] ?? 0),
+            0.0
+        );
+        $pendingAndAdvance = array_reduce(
+            $rows,
+            fn (float $carry, array $row) => $carry
+                + (float) ($row['amount_pending_from_previous'] ?? 0)
+                + (float) ($row['advance_payment_amount'] ?? 0),
+            0.0
+        );
+
         return [
-            'beca'            => $sumByType('base_amount', ScholarshipType::IU->value),
-            'apoyo'           => $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value),
-            'pago_iu'         => $sumByType('base_amount', ScholarshipType::TELMEX_IU->value),
-            'telmex_coverage' => $telmexCoverage,
-            'total'           => $total,
+            'beca'                => $sumByType('base_amount', ScholarshipType::IU->value),
+            'apoyo'               => $sumByType('snapshot_monto_apoyo', ScholarshipType::IU->value),
+            'pago_iu'             => $sumByType('base_amount', ScholarshipType::TELMEX_IU->value),
+            'telmex_coverage'     => $telmexCoverage,
+            'temporary_increase'  => $temporaryIncrease,
+            'pending_and_advance' => $pendingAndAdvance,
+            'total'               => $total,
         ];
     }
 
