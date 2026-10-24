@@ -13,6 +13,7 @@ use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\BankPaymentFileName;
 use App\Services\Scholarship\BankPaymentFileSerializer;
 use App\Services\Scholarship\PaymentBatchService;
+use App\Services\Scholarship\RefrendAmountBreakdown;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -196,16 +197,7 @@ class ScholarshipPaymentController extends Controller
                 'atencion_observations'   => $refrend->atencion_observations,
                 'pedagogia_observations'  => $refrend->pedagogia_observations,
                 'resolution_notes'        => $refrend->resolution_notes,
-                'amount_breakdown' => [
-                    'base_amount'                   => $refrend->base_amount,
-                    'temporary_increase_amount'     => $refrend->snapshot_temporary_increase_amount,
-                    'temporary_increase_reason'     => $refrend->snapshot_temporary_increase_reason,
-                    'discount_percentage'           => $refrend->discount_percentage,
-                    'discount_amount'                => $refrend->discount_amount,
-                    'amount_pending_from_previous'  => $refrend->amount_pending_from_previous,
-                    'final_amount'                   => $refrend->final_amount,
-                    'total_to_pay'                   => $refrend->total_to_pay,
-                ],
+                'amount_breakdown' => app(RefrendAmountBreakdown::class)->forRefrend($refrend),
                 'retentions' => app(RefrendRetentionBreakdown::class)->forRefrend($refrend),
                 'advance_payment' => app(AdvancePaymentDocumentContext::class)->forRefrend($refrend),
             ],

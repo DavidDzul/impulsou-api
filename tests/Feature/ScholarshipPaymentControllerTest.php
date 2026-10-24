@@ -606,6 +606,40 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertNull($data['amount_breakdown']['temporary_increase_reason']);
     }
 
+    // ── document(): reconciling amount breakdown ────────────────────────────
+
+    /** @test */
+    public function document_returns_a_reconciling_amount_breakdown(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type'    => ScholarshipType::IU->value,
+            'base_amount'                  => 1000.00,
+            'snapshot_monto_apoyo'         => 20.00,
+            'snapshot_gross_amount'        => 1020.00,
+            'final_amount'                 => 1020.00,
+            'amount_pending_from_previous' => 100.00,
+            'advance_payment_amount'       => 50.00,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)
+            ->getJson("/api/admin/scholarship-payments/{$refrend->id}/document");
+
+        $response->assertStatus(200);
+        $b = $response->json('data.amount_breakdown');
+
+        $this->assertSame('IU', $b['scholarship_type']);
+        $this->assertSame('1000.00', $b['base_amount']);
+        $this->assertSame('20.00', $b['monto_apoyo']);
+        $this->assertSame('1020.00', $b['gross_amount']);
+        $this->assertNull($b['academic_discount_percentage']);
+        $this->assertSame('Descuentos por penalizaciones', $b['discount_label']);
+        $this->assertSame('0.00', $b['telmex_covered_amount']);
+        $this->assertNull($b['manual_adjustment']);
+        $this->assertSame('50.00', $b['advance_payment_amount']);
+        $this->assertSame('1020.00', $b['final_amount']);
+        $this->assertSame('1170.00', $b['total_to_pay']);
+    }
+
     // ── document(): retentions (sdd/withholding-detail-display, PR2) ───────────
 
     /** @test */
