@@ -12,6 +12,7 @@ use App\Services\Scholarship\AdvancePaymentDocumentContext;
 use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\BankPaymentFileName;
 use App\Services\Scholarship\BankPaymentFileSerializer;
+use App\Services\Scholarship\GenerationPaymentReport;
 use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendAmountBreakdown;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
@@ -93,8 +94,9 @@ class ScholarshipPaymentController extends Controller
      * matches ScholarshipRefrendController's own validated-id convention) —
      * `findOrFail` only guards a delete race after validation passes.
      *
-     * Response is summary-only (sdd/pagos-por-generacion-estado-pago, design
-     * D5): no `rows` key, mirroring index()'s `res`/`data` envelope.
+     * Response carries the cards `summary` plus per-becario amounts `rows`
+     * (sdd/tabla-montos-por-generacion; originally summary-only, design D5),
+     * mirroring index()'s `res`/`data` envelope.
      * `generation` echoes the server-resolved campus so the UI can display
      * it without re-deriving it client-side. `summary` comes from
      * `generationSummary()` — NOT `summary()`, which Lotes de pago
@@ -112,19 +114,18 @@ class ScholarshipPaymentController extends Controller
 
         $generation = Generation::findOrFail($data['generation_id']);
 
-        $service = app(PaymentBatchService::class);
-        $rows    = $service->rows(
+        $report = app(GenerationPaymentReport::class)->build(
             $generation->campus,
             (int) $data['period_year'],
             (int) $data['period_month'],
             (int) $data['generation_id']
         );
-        $summary = $service->generationSummary($rows);
 
         return response()->json([
             'res'  => true,
             'data' => [
-                'summary'    => $summary,
+                'summary'    => $report['summary'],
+                'rows'       => $report['rows'],
                 'generation' => [
                     'id'              => $generation->id,
                     'generation_name' => $generation->generation_name,

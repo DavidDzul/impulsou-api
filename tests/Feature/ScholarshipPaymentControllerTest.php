@@ -1210,13 +1210,15 @@ class ScholarshipPaymentControllerTest extends TestCase
     }
 
     /**
-     * Response shape (spec "Response is summary-only (no rows)"): equals
-     * `summary(rows(campus, year, month, generationId))` exactly, with no
-     * `rows` key, and a refrend from a DIFFERENT generación at the same
+     * Response shape: `summary` equals `generationSummary(rows(campus, year,
+     * month, generationId))` plus the additive `telmex_without_iu_payment`
+     * count, `rows` carries one entry per counted refrend
+     * (sdd/tabla-montos-por-generacion lifted the original "summary-only"
+     * contract), and a refrend from a DIFFERENT generación at the same
      * campus+period must not be counted (narrowing, design D1).
      */
     /** @test */
-    public function by_generation_returns_summary_only_shape_equal_to_service_summary_of_rows(): void
+    public function by_generation_returns_summary_equal_to_service_summary_of_rows_plus_rows(): void
     {
         $generation = $this->makeGeneration(['generation_name' => 'Gen 2026-A']);
         $this->makeReadyRefrend(['snapshot_generation_id' => $generation->id, 'snapshot_campus' => $generation->campus]);
@@ -1233,13 +1235,14 @@ class ScholarshipPaymentControllerTest extends TestCase
         $response->assertStatus(200);
         $data = $response->json('data');
 
-        $this->assertArrayNotHasKey('rows', $data);
+        $this->assertArrayHasKey('rows', $data);
+        $this->assertCount(2, $data['rows']);
         $this->assertArrayHasKey('summary', $data);
         $this->assertArrayHasKey('generation', $data);
 
         $service         = app(PaymentBatchService::class);
         $expectedRows    = $service->rows($generation->campus, self::YEAR, self::MONTH, $generation->id);
-        $expectedSummary = $service->generationSummary($expectedRows);
+        $expectedSummary = $service->generationSummary($expectedRows) + ['telmex_without_iu_payment' => 0];
 
         $this->assertSame($expectedSummary, $data['summary']);
         $this->assertSame(2, $data['summary']['total']);

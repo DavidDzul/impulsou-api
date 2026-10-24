@@ -2072,6 +2072,44 @@ class PaymentBatchServiceTest extends TestCase
     }
 
     /** @test */
+    public function generation_summary_difference_amount_counts_increases_and_pending_advance_as_nominal(): void
+    {
+        // gross 1000 + increase 300 - 100 penalty = final 1200; +200 pending +50 advance = 1450.
+        // Pre-change formula gave 1000 - 1450 = -450; the true discounts are 100.
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::IU->value,
+            'base_amount'                        => 1000.00,
+            'snapshot_temporary_increase_amount' => 300.00,
+            'discount_amount'                    => 100.00,
+            'final_amount'                       => 1200.00,
+            'amount_pending_from_previous'       => 200.00,
+            'advance_payment_amount'             => 50.00,
+        ]);
+
+        $summary = $this->service->generationSummary($this->rows());
+
+        $this->assertSame('300.00', $summary['temporary_increase_amount']);
+        $this->assertSame('250.00', $summary['pending_and_advance_amount']);
+        $this->assertSame('1450.00', $summary['total_amount']);
+        $this->assertSame('100.00', $summary['difference_amount']);
+    }
+
+    /** @test */
+    public function generation_summary_excludes_blocked_rows_from_increase_and_pending_advance(): void
+    {
+        $this->makeReadyRefrend([
+            'workflow_status'                    => 'CON_INCIDENCIA',
+            'snapshot_temporary_increase_amount' => 300.00,
+            'amount_pending_from_previous'       => 200.00,
+        ]);
+
+        $summary = $this->service->generationSummary($this->rows());
+
+        $this->assertSame('0.00', $summary['temporary_increase_amount']);
+        $this->assertSame('0.00', $summary['pending_and_advance_amount']);
+    }
+
+    /** @test */
     public function generation_summary_is_all_zero_for_an_empty_set(): void
     {
         $summary = $this->service->generationSummary([]);
@@ -2083,6 +2121,8 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame('0.00', $summary['beca_amount']);
         $this->assertSame('0.00', $summary['apoyo_amount']);
         $this->assertSame('0.00', $summary['pago_iu_amount']);
+        $this->assertSame('0.00', $summary['temporary_increase_amount']);
+        $this->assertSame('0.00', $summary['pending_and_advance_amount']);
         $this->assertSame('0.00', $summary['paid_amount']);
         $this->assertSame('0.00', $summary['pending_amount']);
         $this->assertSame('0.00', $summary['total_amount']);
