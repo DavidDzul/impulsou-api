@@ -3,6 +3,7 @@
 namespace App\Services\Scholarship;
 
 use App\Enums\PaymentBatchType;
+use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentBatch;
@@ -246,6 +247,17 @@ class PaymentBatchService
                 // added for PR3 so the readiness evaluator can enforce
                 // BankDataValidator's RFC rule (design D2).
                 'spd.rfc',
+                // sdd/pago-cheque: spd_id drives has-payment-data (a CHEQUE
+                // spd has no bank_name); the method/beneficiary and the
+                // refrend-side paid snapshot + cheque fields feed the
+                // effective payment method of the row.
+                'spd.id as spd_id',
+                'spd.payment_method as spd_payment_method',
+                'spd.cheque_beneficiary',
+                'r.paid_payment_method',
+                'r.cheque_number',
+                'r.cheque_delivered_at',
+                'r.cheque_notes',
                 // base_amount/snapshot_monto_apoyo (sdd/pagos-batch-sede-totals,
                 // design D9): raw pass-throughs feeding summary()'s type-
                 // partitioned money totals. r.snapshot_scholarship_type is
@@ -310,14 +322,18 @@ class PaymentBatchService
         return $refrends->map(function ($row) use ($refrendIdsWithIncidents, $advancePaidByRefrendId) {
             $advance = $advancePaidByRefrendId->get($row->refrend_id);
             $hasEnrollment  = $row->enrollment !== null && $row->enrollment !== '';
-            $hasPaymentData = $row->bank_name !== null;
+            // sdd/pago-cheque R2.2: a CHEQUE spd has no bank_name, so the
+            // existence of the spd row (not bank_name) is what counts.
+            $hasPaymentData = $row->spd_id !== null;
+            $method         = $this->effectiveMethod($row);
 
             $evaluation = $this->evaluator->evaluate(
                 $row,
                 $hasEnrollment,
                 $hasPaymentData,
                 $row->account_number,
-                $row->rfc
+                $row->rfc,
+                $method
             );
 
             // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
@@ -335,6 +351,13 @@ class PaymentBatchService
                 'account_number'            => $row->account_number,
                 'rfc'                       => $row->rfc,
                 'payment_batch_id'          => $row->payment_batch_id,
+                // sdd/pago-cheque (spec R2.1): effective method + cheque data.
+                'payment_method'            => $method->value,
+                'paid_payment_method'       => $row->paid_payment_method,
+                'cheque_beneficiary'        => $row->cheque_beneficiary,
+                'cheque_number'             => $row->cheque_number,
+                'cheque_delivered_at'       => $row->cheque_delivered_at,
+                'cheque_notes'              => $row->cheque_notes,
                 // status (sdd/pagos-por-generacion-estado-pago, design D2):
                 // raw pass-through of the already-SELECTed r.status column.
                 // DB::table() bypasses the enum cast, so this arrives as a
@@ -477,6 +500,13 @@ class PaymentBatchService
         $rows = $batch->refrends()
             ->leftJoin('users as u', 'u.id', '=', 'scholarship_refrends.user_id')
             ->leftJoin('scholarship_payment_data as spd', 'spd.user_id', '=', 'scholarship_refrends.user_id')
+            ->where(function ($where) {
+                // sdd/pago-cheque D12: defense in depth. Cheque rows never
+                // carry a payment_batch_id, so this should never filter
+                // anything, but the bank file must never list a cheque.
+                $where->whereNull('scholarship_refrends.paid_payment_method')
+                    ->orWhere('scholarship_refrends.paid_payment_method', '!=', PaymentMethod::CHEQUE->value);
+            })
             ->orderBy('scholarship_refrends.snapshot_name')
             ->get([
                 'scholarship_refrends.id as refrend_id',
@@ -522,6 +552,65 @@ class PaymentBatchService
                 // still evaluates the raw (unfloored) total.
                 'total_to_pay'   => PaymentAmountFloor::apply($row->snapshot_scholarship_type, $this->totalToPay($row)),
             ])->values()->all();
+    }
+
+    /**
+     * Effective payment method of a row (sdd/pago-cheque D8): a row in a
+     * payment batch is a transfer; a paid row keeps its snapshot; a pending
+     * row follows the current spd method; no spd means TRANSFER (it still
+     * blocks as MISSING_PAYMENT_DATA, as before).
+     */
+    private function effectiveMethod(object $row): PaymentMethod
+    {
+        if ($row->payment_batch_id !== null) {
+            return PaymentMethod::TRANSFER;
+        }
+
+        return PaymentMethod::tryFrom((string) $row->paid_payment_method)
+            ?? PaymentMethod::tryFrom((string) $row->spd_payment_method)
+            ?? PaymentMethod::TRANSFER;
+    }
+
+    /**
+     * Splits rows() output by effective method, preserving order.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>} [transfer, cheque]
+     */
+    public function partitionByMethod(array $rows): array
+    {
+        $cheque   = array_values(array_filter($rows, fn (array $r) => $r['payment_method'] === PaymentMethod::CHEQUE->value));
+        $transfer = array_values(array_filter($rows, fn (array $r) => $r['payment_method'] !== PaymentMethod::CHEQUE->value));
+
+        return [$transfer, $cheque];
+    }
+
+    /**
+     * Counts and money for the cheque section. "paid" means status PAID.
+     *
+     * @param array<int, array<string, mixed>> $chequeRows
+     * @return array{total: int, ready: int, paid: int, blocking: int, ready_amount: string, paid_amount: string}
+     */
+    public function chequeSummary(array $chequeRows): array
+    {
+        $paid  = array_filter($chequeRows, fn (array $r) => $r['status'] === RefrendStatus::PAID->value);
+        $ready = array_filter($chequeRows, fn (array $r) => $r['is_payable'] && !in_array($r, $paid, true));
+
+        $sum = fn (array $rows) => number_format(
+            array_sum(array_map(fn (array $r) => (float) $r['total_to_pay'], $rows)),
+            2,
+            '.',
+            ''
+        );
+
+        return [
+            'total'        => count($chequeRows),
+            'ready'        => count($ready),
+            'paid'         => count($paid),
+            'blocking'     => count($chequeRows) - count($ready) - count($paid),
+            'ready_amount' => $sum($ready),
+            'paid_amount'  => $sum($paid),
+        ];
     }
 
     /**
