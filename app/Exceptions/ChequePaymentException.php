@@ -5,7 +5,7 @@ namespace App\Exceptions;
 use App\Exceptions\Contracts\CarriesErrorPayload;
 
 /**
- * sdd/pago-cheque, design D13 — guard failures of MarkChequePaidAction.
+ * sdd/pago-cheque, design D13 — guard failures of MarkChequePaidAction and RevertChequePaymentAction.
  * Extends \DomainException and implements CarriesErrorPayload so the
  * controller maps it to the {res, msg, code, data} envelope with the HTTP
  * status the guard requires (409 for a double submit, 422 otherwise).
@@ -39,6 +39,25 @@ class ChequePaymentException extends \DomainException implements CarriesErrorPay
         $message = 'El refrend no se puede pagar: ' . implode('; ', array_column($reasons, 'message'));
 
         return new self($message, 'NOT_PAYABLE', 422, ['reasons' => $reasons]);
+    }
+
+    public static function notChequePaid(): self
+    {
+        return new self('El refrend no está pagado con cheque.', 'NOT_CHEQUE_PAID', 422);
+    }
+
+    public static function cycleClosed(): self
+    {
+        return new self('El ciclo del becario está cerrado.', 'CYCLE_CLOSED', 409);
+    }
+
+    public static function chequeLogMissing(): self
+    {
+        return new self(
+            'No se encontró un registro válido del estado previo al pago por cheque.',
+            'CHEQUE_LOG_MISSING',
+            422
+        );
     }
 
     public function code(): string
