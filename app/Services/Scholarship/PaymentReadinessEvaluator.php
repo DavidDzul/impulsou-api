@@ -2,6 +2,7 @@
 
 namespace App\Services\Scholarship;
 
+use App\Enums\PaymentMethod;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use BackedEnum;
 
@@ -39,6 +40,11 @@ class PaymentReadinessEvaluator
      *                                   data throws loudly rather than
      *                                   silently skipping the check.
      * @param string|null $rfc Required, non-defaulted — see $accountNumber.
+     * @param PaymentMethod $paymentMethod sdd/pago-cheque D7: defaults to
+     *                                    TRANSFER so a forgotten caller still
+     *                                    runs the bank checks (fails closed).
+     *                                    CHEQUE skips BankDataValidator only;
+     *                                    every other rule still applies.
      * @return array{is_payable: bool, blocking_reasons: array<int, array{code: string, message: string}>}
      */
     public function evaluate(
@@ -46,7 +52,8 @@ class PaymentReadinessEvaluator
         bool $hasEnrollment,
         bool $hasPaymentData,
         ?string $accountNumber,
-        ?string $rfc
+        ?string $rfc,
+        PaymentMethod $paymentMethod = PaymentMethod::TRANSFER
     ): array {
         $reasons = [];
 
@@ -102,6 +109,13 @@ class PaymentReadinessEvaluator
         // is passed so the amount check runs against real data, but its
         // NOTHING_TO_PAY reason (if any) is discarded below so there is
         // never a second, conflicting source of truth for that code.
+        if ($paymentMethod === PaymentMethod::CHEQUE) {
+            return [
+                'is_payable'       => empty($reasons),
+                'blocking_reasons' => $reasons,
+            ];
+        }
+
         foreach ($this->bankDataValidator->validate($accountNumber, $rfc, (string) $refrendRow->final_amount) as $bankDataReason) {
             if ($bankDataReason['code'] === 'NOTHING_TO_PAY') {
                 continue;
