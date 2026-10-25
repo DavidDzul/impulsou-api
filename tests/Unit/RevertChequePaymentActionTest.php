@@ -14,6 +14,8 @@ use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\TelmexCoverage;
+use App\Models\TelmexCoveragePayment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -340,5 +342,88 @@ class RevertChequePaymentActionTest extends TestCase
         $this->makeProfile($refrend, ['cycle_closed_period' => '2026-06-01']);
 
         $this->assertSame('NOT_CHEQUE_PAID', $this->failure(fn () => $this->revert($refrend))->code());
+    }
+
+    // ── Telmex coverage ledger (review M1) ──────────────────────────────────
+
+    private function makeCoveredRefrend(string $coverageStatus = 'ACTIVA'): array
+    {
+        $refrend = $this->makeRefrend();
+        $coverage = TelmexCoverage::create([
+            'user_id'                        => $refrend->user_id,
+            'scholarship_type_at_activation' => 'TELMEX',
+            'start_period'                   => '2026-01-01',
+            'end_period'                     => '2026-05-01',
+            'status'                         => $coverageStatus,
+        ]);
+        $refrend->update([
+            'snapshot_telmex_coverage_id'    => $coverage->id,
+            'snapshot_telmex_covered_amount' => 300,
+        ]);
+
+        return [$refrend->fresh(), $coverage];
+    }
+
+    private function makeRepayment(TelmexCoverage $coverage, bool $voided): TelmexCoveragePayment
+    {
+        return TelmexCoveragePayment::create([
+            'coverage_id'   => $coverage->id,
+            'amount'        => 100,
+            'paid_at'       => '2026-06-01',
+            'created_by_id' => $this->admin->id,
+            'is_voided'     => $voided,
+        ]);
+    }
+
+    /** @test */
+    public function non_voided_telmex_repayment_blocks_the_revert_with_409(): void
+    {
+        [$refrend, $coverage] = $this->makeCoveredRefrend();
+        $refrend = $this->markPaid($refrend);
+        $this->makeRepayment($coverage, false);
+
+        $e = $this->failure(fn () => $this->revert($refrend));
+
+        $this->assertSame('TELMEX_REPAYMENT_EXISTS', $e->code());
+        $this->assertSame(409, $e->httpStatus());
+        $this->assertSame('El mes tiene reembolsos de Telmex registrados.', $e->getMessage());
+        $this->assertSame(RefrendStatus::PAID, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function voided_telmex_repayments_do_not_block_and_status_is_recomputed(): void
+    {
+        [$refrend, $coverage] = $this->makeCoveredRefrend('ACTIVA');
+        $refrend = $this->markPaid($refrend);
+        $this->makeRepayment($coverage, true);
+
+        $this->assertSame(RefrendStatus::AUTHORIZED, $this->revert($refrend)->status);
+        // closed window (end_period set) + nothing advanced anymore -> EN_COBRO, not the stale ACTIVA
+        $this->assertSame('EN_COBRO', $coverage->fresh()->status);
+    }
+
+    /** @test */
+    public function mark_and_revert_on_a_telmex_covered_refrend_restores_everything(): void
+    {
+        [$refrend, $coverage] = $this->makeCoveredRefrend();
+
+        $paid = $this->markPaid($refrend);
+        $this->assertSame(RefrendStatus::PAID, $paid->status);
+
+        $reverted = $this->revert($paid);
+        $this->assertSame(RefrendStatus::AUTHORIZED, $reverted->status);
+        $this->assertNull($reverted->cheque_number);
+        $this->assertSame($coverage->id, $reverted->snapshot_telmex_coverage_id);
+    }
+
+    /** @test */
+    public function cycle_closed_guard_runs_before_telmex_repayment_guard(): void
+    {
+        [$refrend, $coverage] = $this->makeCoveredRefrend();
+        $refrend = $this->markPaid($refrend);
+        $this->makeRepayment($coverage, false);
+        $this->makeProfile($refrend, ['cycle_closed_period' => '2026-06-01']);
+
+        $this->assertSame('CYCLE_CLOSED', $this->failure(fn () => $this->revert($refrend))->code());
     }
 }

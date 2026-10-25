@@ -8,6 +8,8 @@ use App\Exceptions\ChequePaymentException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\TelmexCoverage;
+use App\Services\Scholarship\TelmexCoverageLedger;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +20,9 @@ use Illuminate\Support\Facades\DB;
  * Guards run under the row lock, in order: refrend exists (404 by the
  * controller), it is cheque-paid (422 NOT_CHEQUE_PAID), the becario's cycle is
  * open (409 CYCLE_CLOSED — same marker as CloseScholarshipCycleAction; no
- * profile means allowed), then a valid prior state can be read from the latest
+ * profile means allowed), the covering Telmex coverage (if any) has no
+ * non-voided repayments (409 TELMEX_REPAYMENT_EXISTS; otherwise its stored
+ * status is recomputed after the revert), then a valid prior state can be read from the latest
  * CHEQUE_PAID log (422 CHEQUE_LOG_MISSING — spec R4.3; this supersedes the
  * design D14 fallback).
  */
@@ -27,8 +31,10 @@ class RevertChequePaymentAction
     private const RESTORABLE_STATUSES = [RefrendStatus::AUTHORIZED, RefrendStatus::WITHHELD];
     private const RESTORABLE_WORKFLOW = 'LISTO_PARA_PAGO';
 
-    public function __construct(private ScholarshipLoggingService $logging)
-    {
+    public function __construct(
+        private ScholarshipLoggingService $logging,
+        private TelmexCoverageLedger $telmexLedger
+    ) {
     }
 
     /**
@@ -51,6 +57,11 @@ class RevertChequePaymentAction
                 throw ChequePaymentException::cycleClosed();
             }
 
+            $coverage = $this->lockedTelmexCoverage($refrend);
+            if ($coverage !== null && $coverage->payments()->where('is_voided', false)->exists()) {
+                throw ChequePaymentException::telmexRepaymentExists();
+            }
+
             $priorStatus = $this->priorStatusFromLog($refrend);
 
             $old = $this->logging->snapshotRefrend($refrend) + $this->chequeFields($refrend);
@@ -68,6 +79,11 @@ class RevertChequePaymentAction
 
             $refrend = $refrend->fresh();
 
+            if ($coverage !== null) {
+                // The reverted month leaves the "advanced" side of the derived ledger.
+                $this->telmexLedger->recomputeStatus($coverage->fresh());
+            }
+
             $this->logging->log(
                 $refrend,
                 'CHEQUE_PAYMENT_REVERTED',
@@ -78,6 +94,15 @@ class RevertChequePaymentAction
 
             return $refrend;
         });
+    }
+
+    private function lockedTelmexCoverage(ScholarshipRefrend $refrend): ?TelmexCoverage
+    {
+        if ($refrend->snapshot_telmex_coverage_id === null) {
+            return null;
+        }
+
+        return TelmexCoverage::lockForUpdate()->find($refrend->snapshot_telmex_coverage_id);
     }
 
     private function priorStatusFromLog(ScholarshipRefrend $refrend): RefrendStatus

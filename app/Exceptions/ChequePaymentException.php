@@ -51,6 +51,11 @@ class ChequePaymentException extends \DomainException implements CarriesErrorPay
         return new self('El ciclo del becario está cerrado.', 'CYCLE_CLOSED', 409);
     }
 
+    public static function telmexRepaymentExists(): self
+    {
+        return new self('El mes tiene reembolsos de Telmex registrados.', 'TELMEX_REPAYMENT_EXISTS', 409);
+    }
+
     public static function chequeLogMissing(): self
     {
         return new self(
