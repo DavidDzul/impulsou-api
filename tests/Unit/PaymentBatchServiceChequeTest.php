@@ -132,6 +132,23 @@ class PaymentBatchServiceChequeTest extends TestCase
     }
 
     /** @test */
+    public function legacy_paid_row_without_snapshot_is_transfer_even_if_spd_is_now_cheque(): void
+    {
+        $refrend = $this->makeRefrend(PaymentMethod::CHEQUE, [
+            'status'          => 'PAID',
+            'workflow_status' => 'CLOSED',
+            'locked_at'       => now(),
+        ]);
+
+        $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
+        [$transfer, $cheque] = $this->service->partitionByMethod($rows);
+
+        $this->assertSame('TRANSFER', $this->rowFor($refrend)['payment_method']);
+        $this->assertContains($refrend->id, array_column($transfer, 'refrend_id'));
+        $this->assertNotContains($refrend->id, array_column($cheque, 'refrend_id'));
+    }
+
+    /** @test */
     public function pending_refrend_follows_the_current_spd_method(): void
     {
         $refrend = $this->makeRefrend(PaymentMethod::TRANSFER);

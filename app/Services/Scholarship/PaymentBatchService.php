@@ -556,7 +556,8 @@ class PaymentBatchService
 
     /**
      * Effective payment method of a row (sdd/pago-cheque D8): a row in a
-     * payment batch is a transfer; a paid row keeps its snapshot; a pending
+     * payment batch is a transfer; a paid row keeps its snapshot (legacy paid rows without one are
+     * TRANSFER); a pending
      * row follows the current spd method; no spd means TRANSFER (it still
      * blocks as MISSING_PAYMENT_DATA, as before).
      */
@@ -566,8 +567,19 @@ class PaymentBatchService
             return PaymentMethod::TRANSFER;
         }
 
-        return PaymentMethod::tryFrom((string) $row->paid_payment_method)
-            ?? PaymentMethod::tryFrom((string) $row->spd_payment_method)
+        $snapshot = PaymentMethod::tryFrom((string) $row->paid_payment_method);
+        if ($snapshot !== null) {
+            return $snapshot;
+        }
+
+        // Legacy paid row (paid before the snapshot existed): every payment
+        // back then was a transfer, so it must never follow the becario's
+        // CURRENT method.
+        if ($row->status === RefrendStatus::PAID->value || $row->locked_at !== null) {
+            return PaymentMethod::TRANSFER;
+        }
+
+        return PaymentMethod::tryFrom((string) $row->spd_payment_method)
             ?? PaymentMethod::TRANSFER;
     }
 
