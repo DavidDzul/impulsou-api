@@ -41,7 +41,7 @@ class RevertChequePaymentAction
      * @throws ChequePaymentException
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
      */
-    public function execute(int $refrendId, int $userId, string $reason): ScholarshipRefrend
+    public function execute(int $refrendId, string $reason): ScholarshipRefrend
     {
         return DB::transaction(function () use ($refrendId, $reason) {
             $refrend = ScholarshipRefrend::lockForUpdate()->findOrFail($refrendId);

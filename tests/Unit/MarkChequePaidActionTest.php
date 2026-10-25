@@ -144,7 +144,7 @@ class MarkChequePaidActionTest extends TestCase
     public function a_cheque_number_freed_by_a_revert_can_be_reused(): void
     {
         $first = $this->mark($this->makeRefrend(), 'A-100');
-        $this->app->make(RevertChequePaymentAction::class)->execute($first->id, $this->admin->id, 'Cheque extraviado, se reexpide');
+        $this->app->make(RevertChequePaymentAction::class)->execute($first->id, 'Cheque extraviado, se reexpide');
 
         $second = $this->mark($this->makeRefrend(), 'A-100');
 

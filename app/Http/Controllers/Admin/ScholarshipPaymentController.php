@@ -211,7 +211,6 @@ class ScholarshipPaymentController extends Controller
         try {
             $reverted = app(RevertChequePaymentAction::class)->execute(
                 $refrend,
-                (int) auth()->id(),
                 $request->validated()['reason']
             );
         } catch (ModelNotFoundException) {

@@ -82,7 +82,7 @@ class RevertChequePaymentActionTest extends TestCase
 
     private function revert(ScholarshipRefrend $r, string $reason = self::REASON): ScholarshipRefrend
     {
-        return $this->action->execute($r->id, $this->admin->id, $reason);
+        return $this->action->execute($r->id, $reason);
     }
 
     private function failure(callable $fn): ChequePaymentException
@@ -107,7 +107,7 @@ class RevertChequePaymentActionTest extends TestCase
     {
         $this->expectException(ModelNotFoundException::class);
 
-        $this->action->execute(999999, $this->admin->id, self::REASON);
+        $this->action->execute(999999, self::REASON);
     }
 
     /** @test */
