@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\BulkPayAction;
 use App\Actions\Scholarship\MarkChequePaidAction;
+use App\Actions\Scholarship\RevertChequePaymentAction;
 use App\Enums\PaymentBatchType;
 use App\Exceptions\ChequePaymentException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MarkChequePaidRequest;
+use App\Http\Requests\RevertChequePaymentRequest;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
@@ -191,36 +193,72 @@ class ScholarshipPaymentController extends Controller
                 $data['cheque_notes'] ?? null
             );
         } catch (ModelNotFoundException) {
-            // Explicit 404: the global Handler maps ModelNotFoundException to
-            // 400, which would hide an unknown refrend id from the panel.
-            return response()->json([
-                'res'  => false,
-                'msg'  => 'Refrend no encontrado.',
-                'code' => 'NOT_FOUND',
-                'data' => [],
-            ], 404);
+            return $this->refrendNotFound();
         } catch (ChequePaymentException $e) {
-            return response()->json([
-                'res'  => false,
-                'msg'  => $e->getMessage(),
-                'code' => $e->code(),
-                'data' => $e->payload(),
-            ], $e->httpStatus());
+            return $this->chequeError($e);
         }
 
+        return response()->json(['res' => true, 'data' => $this->chequePayload($paid)]);
+    }
+
+    /**
+     * sdd/pago-cheque PR4 (spec R4): reverts ONE cheque payment. Guards
+     * (NOT_CHEQUE_PAID, CYCLE_CLOSED, CHEQUE_LOG_MISSING) live in
+     * RevertChequePaymentAction.
+     */
+    public function revertChequePayment(RevertChequePaymentRequest $request, int $refrend): JsonResponse
+    {
+        try {
+            $reverted = app(RevertChequePaymentAction::class)->execute(
+                $refrend,
+                (int) auth()->id(),
+                $request->validated()['reason']
+            );
+        } catch (ModelNotFoundException) {
+            return $this->refrendNotFound();
+        } catch (ChequePaymentException $e) {
+            return $this->chequeError($e);
+        }
+
+        return response()->json(['res' => true, 'data' => $this->chequePayload($reverted)]);
+    }
+
+    /**
+     * Explicit 404: the global Handler maps ModelNotFoundException to 400,
+     * which would hide an unknown refrend id from the panel.
+     */
+    private function refrendNotFound(): JsonResponse
+    {
         return response()->json([
-            'res'  => true,
-            'data' => [
-                'refrend_id'          => $paid->id,
-                'status'              => $paid->status->value,
-                'workflow_status'     => $paid->workflow_status,
-                'paid_payment_method' => $paid->paid_payment_method?->value,
-                'cheque_number'       => $paid->cheque_number,
-                'cheque_delivered_at' => $paid->cheque_delivered_at?->toDateString(),
-                'cheque_notes'        => $paid->cheque_notes,
-                'locked_at'           => $paid->locked_at?->toISOString(),
-            ],
-        ]);
+            'res'  => false,
+            'msg'  => 'Refrend no encontrado.',
+            'code' => 'NOT_FOUND',
+            'data' => [],
+        ], 404);
+    }
+
+    private function chequeError(ChequePaymentException $e): JsonResponse
+    {
+        return response()->json([
+            'res'  => false,
+            'msg'  => $e->getMessage(),
+            'code' => $e->code(),
+            'data' => $e->payload(),
+        ], $e->httpStatus());
+    }
+
+    private function chequePayload(ScholarshipRefrend $refrend): array
+    {
+        return [
+            'refrend_id'          => $refrend->id,
+            'status'              => $refrend->status->value,
+            'workflow_status'     => $refrend->workflow_status,
+            'paid_payment_method' => $refrend->paid_payment_method?->value,
+            'cheque_number'       => $refrend->cheque_number,
+            'cheque_delivered_at' => $refrend->cheque_delivered_at?->toDateString(),
+            'cheque_notes'        => $refrend->cheque_notes,
+            'locked_at'           => $refrend->locked_at?->toISOString(),
+        ];
     }
 
     /**
