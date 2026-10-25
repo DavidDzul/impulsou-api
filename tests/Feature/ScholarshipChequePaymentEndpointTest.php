@@ -163,6 +163,17 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     }
 
     /** @test */
+    public function non_numeric_refrend_segment_returns_404_not_500(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/scholarship-payments/abc/cheque-payment', ['cheque_number' => 'A123'])
+            ->assertStatus(404);
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/scholarship-payments/abc/cheque-payment/revert', ['reason' => 'Cheque extraviado, se reexpide'])
+            ->assertStatus(404);
+    }
+
+    /** @test */
     public function returns_404_for_an_unknown_refrend(): void
     {
         $this->markPaid(999999)->assertStatus(404);
