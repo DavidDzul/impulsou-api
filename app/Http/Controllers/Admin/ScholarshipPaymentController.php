@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\BulkPayAction;
+use App\Actions\Scholarship\MarkChequePaidAction;
 use App\Enums\PaymentBatchType;
+use App\Exceptions\ChequePaymentException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MarkChequePaidRequest;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
@@ -16,6 +19,7 @@ use App\Services\Scholarship\GenerationPaymentReport;
 use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendAmountBreakdown;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -167,6 +171,56 @@ class ScholarshipPaymentController extends Controller
         }
 
         return ['batch_id' => $paymentBatchIds->first(), 'is_paid' => true];
+    }
+
+    /**
+     * sdd/pago-cheque PR3 (spec R3): marks ONE cheque refrend as paid. All
+     * guards live in MarkChequePaidAction; this method only maps its
+     * ChequePaymentException to the {res, msg, code, data} envelope.
+     */
+    public function markChequePaid(MarkChequePaidRequest $request, int $refrend): JsonResponse
+    {
+        $data = $request->validated();
+
+        try {
+            $paid = app(MarkChequePaidAction::class)->execute(
+                $refrend,
+                (int) auth()->id(),
+                $data['cheque_number'],
+                $data['cheque_delivered_at'] ?? null,
+                $data['cheque_notes'] ?? null
+            );
+        } catch (ModelNotFoundException) {
+            // Explicit 404: the global Handler maps ModelNotFoundException to
+            // 400, which would hide an unknown refrend id from the panel.
+            return response()->json([
+                'res'  => false,
+                'msg'  => 'Refrend no encontrado.',
+                'code' => 'NOT_FOUND',
+                'data' => [],
+            ], 404);
+        } catch (ChequePaymentException $e) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => $e->getMessage(),
+                'code' => $e->code(),
+                'data' => $e->payload(),
+            ], $e->httpStatus());
+        }
+
+        return response()->json([
+            'res'  => true,
+            'data' => [
+                'refrend_id'          => $paid->id,
+                'status'              => $paid->status->value,
+                'workflow_status'     => $paid->workflow_status,
+                'paid_payment_method' => $paid->paid_payment_method?->value,
+                'cheque_number'       => $paid->cheque_number,
+                'cheque_delivered_at' => $paid->cheque_delivered_at?->toDateString(),
+                'cheque_notes'        => $paid->cheque_notes,
+                'locked_at'           => $paid->locked_at?->toISOString(),
+            ],
+        ]);
     }
 
     /**
