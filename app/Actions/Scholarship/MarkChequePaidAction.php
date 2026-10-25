@@ -18,9 +18,11 @@ use Illuminate\Support\Facades\DB;
  * (spec R2.7) — and records the cheque metadata plus the paid-method snapshot.
  *
  * Guards run under the row lock, in order: already paid (409), becario method
- * is CHEQUE (422), then payability (422): resolution never a batch candidate, status
- * AUTHORIZED/WITHHELD only (INVALID_STATUS), then PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also
- * enforces Filter A / Telmex candidacy).
+ * is CHEQUE (422), then payability (422): resolution never a batch candidate,
+ * status AUTHORIZED/WITHHELD only (INVALID_STATUS), then
+ * PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also enforces
+ * Filter A / Telmex candidacy); finally the cheque number must not belong to
+ * another cheque-paid refrend (422 CHEQUE_NUMBER_TAKEN).
  */
 class MarkChequePaidAction
 {
@@ -47,6 +49,8 @@ class MarkChequePaidAction
         ?string $deliveredAt,
         ?string $notes
     ): ScholarshipRefrend {
+        $chequeNumber = trim($chequeNumber);
+
         return DB::transaction(function () use ($refrendId, $userId, $chequeNumber, $deliveredAt, $notes) {
             $refrend = ScholarshipRefrend::with('user')->lockForUpdate()->findOrFail($refrendId);
 
@@ -85,6 +89,21 @@ class MarkChequePaidAction
 
             if (!$evaluation['is_payable']) {
                 throw ChequePaymentException::notPayable($evaluation['blocking_reasons']);
+            }
+
+            // A cheque number identifies ONE currently cheque-paid refrend
+            // (trimmed, case-insensitive). A revert clears cheque_number, so
+            // its number becomes reusable. The locking read narrows the race
+            // window between two concurrent marks; there is no unique index
+            // because the rule is conditional on the paid state.
+            $taken = ScholarshipRefrend::where('paid_payment_method', PaymentMethod::CHEQUE->value)
+                ->where('id', '!=', $refrend->id)
+                ->whereRaw('LOWER(TRIM(cheque_number)) = ?', [mb_strtolower($chequeNumber)])
+                ->lockForUpdate()
+                ->exists();
+
+            if ($taken) {
+                throw ChequePaymentException::chequeNumberTaken();
             }
 
             $old = $this->logging->snapshotRefrend($refrend);

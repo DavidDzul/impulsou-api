@@ -56,6 +56,11 @@ class ChequePaymentException extends \DomainException implements CarriesErrorPay
         return new self('El mes tiene reembolsos de Telmex registrados.', 'TELMEX_REPAYMENT_EXISTS', 409);
     }
 
+    public static function chequeNumberTaken(): self
+    {
+        return new self('Ese número de cheque ya fue registrado.', 'CHEQUE_NUMBER_TAKEN', 422);
+    }
+
     public static function chequeLogMissing(): self
     {
         return new self(

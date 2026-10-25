@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Actions\Scholarship\MarkChequePaidAction;
+use App\Actions\Scholarship\RevertChequePaymentAction;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -101,6 +102,59 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('A123', $refrend->cheque_number);
         $this->assertSame('2026-05-10', $refrend->cheque_delivered_at->toDateString());
         $this->assertSame('Entregado en ventanilla', $refrend->cheque_notes);
+    }
+
+    // ── Duplicate cheque number (review L3) ─────────────────────────────────
+
+    /** @test */
+    public function rejects_a_cheque_number_already_used_by_another_paid_cheque(): void
+    {
+        $this->mark($this->makeRefrend(), 'A-100');
+        $second = $this->makeRefrend();
+
+        $e = $this->failure(fn () => $this->mark($second, 'A-100'));
+
+        $this->assertSame('CHEQUE_NUMBER_TAKEN', $e->code());
+        $this->assertSame(422, $e->httpStatus());
+        $this->assertSame('Ese número de cheque ya fue registrado.', $e->getMessage());
+        $this->assertSame(RefrendStatus::AUTHORIZED, $second->fresh()->status);
+        $this->assertNull($second->fresh()->cheque_number);
+    }
+
+    /** @test */
+    public function duplicate_check_ignores_case_and_surrounding_whitespace(): void
+    {
+        $this->mark($this->makeRefrend(), 'ab-100');
+
+        $e = $this->failure(fn () => $this->mark($this->makeRefrend(), '  AB-100 '));
+
+        $this->assertSame('CHEQUE_NUMBER_TAKEN', $e->code());
+    }
+
+    /** @test */
+    public function accepts_a_different_cheque_number(): void
+    {
+        $this->mark($this->makeRefrend(), 'A-100');
+        $second = $this->mark($this->makeRefrend(), 'A-101');
+
+        $this->assertSame('A-101', $second->cheque_number);
+    }
+
+    /** @test */
+    public function a_cheque_number_freed_by_a_revert_can_be_reused(): void
+    {
+        $first = $this->mark($this->makeRefrend(), 'A-100');
+        $this->app->make(RevertChequePaymentAction::class)->execute($first->id, $this->admin->id, 'Cheque extraviado, se reexpide');
+
+        $second = $this->mark($this->makeRefrend(), 'A-100');
+
+        $this->assertSame('A-100', $second->cheque_number);
+    }
+
+    /** @test */
+    public function stores_the_cheque_number_trimmed(): void
+    {
+        $this->assertSame('A-7', $this->mark($this->makeRefrend(), '  A-7 ')->cheque_number);
     }
 
     /** @test */
