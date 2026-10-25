@@ -57,7 +57,7 @@ class UpdateScholarshipPaymentDataRequest extends FormRequest
                 $value = $this->has($field) ? $this->input($field) : $this->existing()?->{$field};
 
                 if ($value === null || $value === '') {
-                    $validator->errors()->add($field, "El campo {$field} es obligatorio para transferencias.");
+                    $validator->errors()->add($field, $this->transferRequiredMessages()[$field]);
                 }
             }
         });

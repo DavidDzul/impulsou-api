@@ -45,6 +45,35 @@ class ScholarshipPaymentDataChequeTest extends TestCase
         return $this->actingAs($this->admin)->putJson(self::URL . "/{$becario->id}", $payload);
     }
 
+    // -- human labels in transfer errors -------------------------------
+
+    /** @test */
+    public function store_transfer_without_bank_data_uses_human_labels(): void
+    {
+        $becario = $this->becario();
+
+        $response = $this->store(['user_id' => $becario->id, 'curp' => self::CURP]);
+
+        $response->assertStatus(422);
+        $errors = $response->json('errors');
+        $this->assertSame('El banco es obligatorio para transferencias.', $errors['bank_name'][0]);
+        $this->assertSame('El número de cuenta es obligatorio para transferencias.', $errors['account_number'][0]);
+    }
+
+    /** @test */
+    public function update_cheque_to_transfer_without_bank_uses_human_labels(): void
+    {
+        $becario = $this->becario();
+        ScholarshipPaymentData::factory()->cheque()->create(['user_id' => $becario->id]);
+
+        $response = $this->update($becario, ['payment_method' => 'TRANSFER']);
+
+        $response->assertStatus(422);
+        $errors = $response->json('errors');
+        $this->assertSame('El banco es obligatorio para transferencias.', $errors['bank_name'][0]);
+        $this->assertSame('El número de cuenta es obligatorio para transferencias.', $errors['account_number'][0]);
+    }
+
     // -- store ---------------------------------------------------------
 
     /** @test */

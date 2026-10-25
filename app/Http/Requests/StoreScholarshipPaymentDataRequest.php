@@ -48,6 +48,16 @@ class StoreScholarshipPaymentDataRequest extends FormRequest
         ];
     }
 
+    public function messages(): array
+    {
+        $messages = $this->transferRequiredMessages();
+
+        return [
+            'bank_name.required_if'      => $messages['bank_name'],
+            'account_number.required_if' => $messages['account_number'],
+        ];
+    }
+
     /**
      * Validated data ready to persist (spec R1.5 invariants applied).
      */

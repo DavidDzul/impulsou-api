@@ -26,4 +26,17 @@ trait NormalizesPaymentMethodData
 
         return $validated;
     }
+
+    /**
+     * Human-readable "required for transfers" messages (no technical field names).
+     *
+     * @return array<string, string>
+     */
+    protected function transferRequiredMessages(): array
+    {
+        return [
+            'bank_name'      => 'El banco es obligatorio para transferencias.',
+            'account_number' => 'El número de cuenta es obligatorio para transferencias.',
+        ];
+    }
 }
