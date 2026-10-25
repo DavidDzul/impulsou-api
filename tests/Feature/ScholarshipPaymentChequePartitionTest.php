@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Scholarship\BulkPayAction;
 use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendType;
@@ -230,6 +231,44 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
         $file->assertOk();
         $this->assertStringNotContainsString('CHEQUE PERSON', strtoupper($file->streamedContent()));
         $this->assertNotNull($transfer->fresh()->payment_batch_id);
+    }
+
+    /** @test */
+    public function process_batch_totals_only_count_rows_actually_paid_when_a_becario_flips_to_cheque_mid_flight(): void
+    {
+        $this->makeRefrend(PaymentMethod::TRANSFER, [], 'T1');
+        $flipping = $this->makeRefrend(PaymentMethod::TRANSFER, ['final_amount' => 500.00], 'T2');
+        $this->makeRefrend(PaymentMethod::TRANSFER, [], 'T3');
+
+        // Simulates the becario's payment method changing to CHEQUE after the
+        // rows were read and before BulkPayAction takes the row locks.
+        $this->app->bind(BulkPayAction::class, function ($app) use ($flipping) {
+            $inner = new BulkPayAction(
+                $app->make(\App\Services\Scholarship\PaymentReadinessEvaluator::class),
+                $app->make(\App\Services\ScholarshipLoggingService::class)
+            );
+
+            return new class($inner, $flipping->user_id) extends BulkPayAction {
+                public function __construct(private BulkPayAction $inner, private int $userId)
+                {
+                }
+
+                public function execute(array $ids, int $userId, ?\App\Models\ScholarshipPaymentBatch $batch = null): array
+                {
+                    ScholarshipPaymentData::where('user_id', $this->userId)->update(['payment_method' => PaymentMethod::CHEQUE->value]);
+
+                    return $this->inner->execute($ids, $userId, $batch);
+                }
+            };
+        });
+
+        $response = $this->process(3, '2500.00');
+
+        $response->assertOk();
+        $batch = ScholarshipPaymentBatch::findOrFail($response->json('data.batch_id'));
+        $this->assertSame(2, (int) $batch->refrend_count);
+        $this->assertSame('2000.00', number_format((float) $batch->total_amount, 2, '.', ''));
+        $this->assertNull($flipping->fresh()->payment_batch_id);
     }
 
     // -- legacy bulk/pay route -------------------------------------------

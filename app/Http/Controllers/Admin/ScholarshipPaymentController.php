@@ -414,6 +414,15 @@ class ScholarshipPaymentController extends Controller
         $ids    = array_column($rows, 'refrend_id');
         $result = app(BulkPayAction::class)->execute($ids, auth()->id(), $batch);
 
+        // BulkPayAction re-checks every row under its lock and may skip some
+        // (e.g. a becario switched to CHEQUE after the rows were read), so the
+        // batch must reflect what was really paid, not what was read.
+        $paidRefrends = ScholarshipRefrend::where('payment_batch_id', $batch->id)->get();
+        $batch->update([
+            'refrend_count' => $paidRefrends->count(),
+            'total_amount'  => number_format($paidRefrends->sum(fn ($r) => (float) $r->total_to_pay), 2, '.', ''),
+        ]);
+
         $skippedById = collect($result['errors'])->keyBy('id');
 
         $outcomeRows = array_map(function (array $row) use ($skippedById) {
