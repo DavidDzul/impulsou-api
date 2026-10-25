@@ -36,14 +36,14 @@ class ChequePaymentException extends \DomainException implements CarriesErrorPay
      */
     public static function notPayable(array $reasons): self
     {
-        $message = 'El refrend no se puede pagar: ' . implode('; ', array_column($reasons, 'message'));
+        $message = 'El refrendo no se puede pagar: ' . implode('; ', array_column($reasons, 'message'));
 
         return new self($message, 'NOT_PAYABLE', 422, ['reasons' => $reasons]);
     }
 
     public static function notChequePaid(): self
     {
-        return new self('El refrend no está pagado con cheque.', 'NOT_CHEQUE_PAID', 422);
+        return new self('El refrendo no está pagado con cheque.', 'NOT_CHEQUE_PAID', 422);
     }
 
     public static function cycleClosed(): self

@@ -68,7 +68,7 @@ class MarkChequePaidAction
 
             if (in_array($refrend->resolution_type, ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS, true)) {
                 throw ChequePaymentException::notPayable([
-                    ['code' => 'NOT_BATCH_CANDIDATE', 'message' => 'El refrend no es candidato a pago'],
+                    ['code' => 'NOT_BATCH_CANDIDATE', 'message' => 'El refrendo no es candidato a pago'],
                 ]);
             }
 
