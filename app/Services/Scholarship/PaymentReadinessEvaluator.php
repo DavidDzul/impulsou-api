@@ -75,7 +75,7 @@ class PaymentReadinessEvaluator
         }
 
         if (!$hasPaymentData) {
-            $reasons[] = ['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin cuenta bancaria registrada'];
+            $reasons[] = ['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin datos de pago registrados'];
         }
 
         if ($this->statusValue($refrendRow->status) === 'WITHHELD' && (float) $refrendRow->final_amount <= 0) {

@@ -202,7 +202,7 @@ class BulkPayActionTest extends TestCase
         $result = $this->action->execute([$refrend->id], $this->admin->id);
 
         $this->assertSame(1, $result['skipped']);
-        $this->assertStringContainsString('Sin cuenta bancaria registrada', $result['errors'][0]['reason']);
+        $this->assertStringContainsString('Sin datos de pago registrados', $result['errors'][0]['reason']);
     }
 
     /** @test */

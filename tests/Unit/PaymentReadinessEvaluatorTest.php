@@ -130,7 +130,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertSame(
-            [['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin cuenta bancaria registrada']],
+            [['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin datos de pago registrados']],
             $result['blocking_reasons']
         );
     }
