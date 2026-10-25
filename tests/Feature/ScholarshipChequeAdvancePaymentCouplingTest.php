@@ -66,7 +66,7 @@ class ScholarshipChequeAdvancePaymentCouplingTest extends TestCase
             'period_year'                  => 2026,
             'period_month'                 => 9,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => 'DRAFT',
+            'status'                       => 'AUTHORIZED',
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,

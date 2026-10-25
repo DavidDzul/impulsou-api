@@ -61,7 +61,7 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
             'period_year'                  => self::YEAR,
             'period_month'                 => self::MONTH,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => 'DRAFT',
+            'status'                       => 'AUTHORIZED',
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,
@@ -198,9 +198,9 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
 
         $this->process(1, '1000.00')->assertOk();
 
-        $this->assertSame('DRAFT', $ready->fresh()->status->value);
+        $this->assertSame('AUTHORIZED', $ready->fresh()->status->value);
         $this->assertNull($ready->fresh()->payment_batch_id);
-        $this->assertSame('DRAFT', $blocked->fresh()->status->value);
+        $this->assertSame('AUTHORIZED', $blocked->fresh()->status->value);
     }
 
     /** @test */
@@ -285,7 +285,7 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
 
         $response->assertOk();
         $this->assertSame('PAID', $transfer->fresh()->status->value);
-        $this->assertSame('DRAFT', $cheque->fresh()->status->value);
+        $this->assertSame('AUTHORIZED', $cheque->fresh()->status->value);
         $this->assertNull($cheque->fresh()->locked_at);
     }
 

@@ -18,12 +18,18 @@ use Illuminate\Support\Facades\DB;
  * (spec R2.7) — and records the cheque metadata plus the paid-method snapshot.
  *
  * Guards run under the row lock, in order: already paid (409), becario method
- * is CHEQUE (422), then payability (422): resolution never a batch candidate,
- * then PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also
+ * is CHEQUE (422), then payability (422): resolution never a batch candidate, status
+ * AUTHORIZED/WITHHELD only (INVALID_STATUS), then PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also
  * enforces Filter A / Telmex candidacy).
  */
 class MarkChequePaidAction
 {
+    /**
+     * Statuses a cheque can be registered from — exactly the set
+     * RevertChequePaymentAction can restore, so mark/revert round-trip.
+     */
+    public const PAYABLE_STATUSES = [RefrendStatus::AUTHORIZED, RefrendStatus::WITHHELD];
+
     public function __construct(
         private PaymentReadinessEvaluator $evaluator,
         private ScholarshipLoggingService $logging
@@ -59,6 +65,12 @@ class MarkChequePaidAction
             if (in_array($refrend->resolution_type, ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS, true)) {
                 throw ChequePaymentException::notPayable([
                     ['code' => 'NOT_BATCH_CANDIDATE', 'message' => 'El refrend no es candidato a pago'],
+                ]);
+            }
+
+            if (!in_array($refrend->status, self::PAYABLE_STATUSES, true)) {
+                throw ChequePaymentException::notPayable([
+                    ['code' => 'INVALID_STATUS', 'message' => 'El refrendo no está autorizado para pago'],
                 ]);
             }
 

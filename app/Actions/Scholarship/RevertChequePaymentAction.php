@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\DB;
  */
 class RevertChequePaymentAction
 {
-    private const RESTORABLE_STATUSES = [RefrendStatus::AUTHORIZED, RefrendStatus::WITHHELD];
+    private const RESTORABLE_STATUSES = MarkChequePaidAction::PAYABLE_STATUSES;
     private const RESTORABLE_WORKFLOW = 'LISTO_PARA_PAGO';
 
     public function __construct(

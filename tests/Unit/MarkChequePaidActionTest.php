@@ -192,6 +192,28 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('NOT_APPROVED', $e->payload()['reasons'][0]['code']);
     }
 
+    /**
+     * @test
+     * @dataProvider nonRestorableStatuses
+     */
+    public function rejects_statuses_that_a_revert_could_not_restore(string $status): void
+    {
+        $refrend = $this->makeRefrend(['status' => $status, 'workflow_status' => 'LISTO_PARA_PAGO']);
+
+        $e = $this->failure(fn () => $this->mark($refrend));
+
+        $this->assertSame('NOT_PAYABLE', $e->code());
+        $this->assertSame(422, $e->httpStatus());
+        $this->assertSame('INVALID_STATUS', $e->payload()['reasons'][0]['code']);
+        $this->assertSame('El refrendo no está autorizado para pago', $e->payload()['reasons'][0]['message']);
+        $this->assertSame($status, $refrend->fresh()->status->value);
+    }
+
+    public static function nonRestorableStatuses(): array
+    {
+        return [['DRAFT'], ['ATENCION_REVIEW'], ['PEDAGOGIA_REVIEW'], ['CANCELLED']];
+    }
+
     /** @test */
     public function rejects_withheld_without_balance(): void
     {
