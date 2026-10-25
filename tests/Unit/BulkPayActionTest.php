@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Actions\Scholarship\BulkPayAction;
+use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
@@ -333,5 +334,47 @@ class BulkPayActionTest extends TestCase
         $this->assertNull($first->locked_at);
         $this->assertNull($second->locked_at);
         $this->assertDatabaseMissing('scholarship_refrend_logs', ['scholarship_refrend_id' => $first->id]);
+    }
+
+    // -- sdd/pago-cheque PR2 ---------------------------------------------
+
+    /** @test */
+    public function hard_skips_a_cheque_refrend_and_never_pays_it(): void
+    {
+        $refrend = $this->makePayableRefrend(withPaymentData: false);
+        ScholarshipPaymentData::factory()->cheque()->create(['user_id' => $refrend->user_id]);
+
+        $result = $this->action->execute([$refrend->id], $this->admin->id);
+
+        $this->assertSame(0, $result['paid']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame('Pago por cheque: se registra manualmente', $result['errors'][0]['reason']);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+        $this->assertNull($refrend->fresh()->locked_at);
+    }
+
+    /** @test */
+    public function pays_transfers_and_skips_cheques_in_the_same_call(): void
+    {
+        $transfer = $this->makePayableRefrend();
+        $cheque   = $this->makePayableRefrend(withPaymentData: false);
+        ScholarshipPaymentData::factory()->cheque()->create(['user_id' => $cheque->user_id]);
+
+        $result = $this->action->execute([$transfer->id, $cheque->id], $this->admin->id);
+
+        $this->assertSame(1, $result['paid']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(RefrendStatus::PAID, $transfer->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $cheque->fresh()->status);
+    }
+
+    /** @test */
+    public function paid_transfer_rows_get_the_transfer_method_snapshot(): void
+    {
+        $refrend = $this->makePayableRefrend();
+
+        $this->action->execute([$refrend->id], $this->admin->id);
+
+        $this->assertSame(PaymentMethod::TRANSFER, $refrend->fresh()->paid_payment_method);
     }
 }
