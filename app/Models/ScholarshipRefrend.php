@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
@@ -108,6 +109,10 @@ class ScholarshipRefrend extends Model
         'pedagogia_resolved_at',
         'pedagogia_resolved_by_id',
         'attendance_penalty_override',
+        'paid_payment_method',
+        'cheque_number',
+        'cheque_delivered_at',
+        'cheque_notes',
     ];
 
     protected $casts = [
@@ -139,6 +144,8 @@ class ScholarshipRefrend extends Model
         'carryover_months_count'       => 'integer',
         'notified_at'                  => 'datetime',
         'locked_at'                    => 'datetime',
+        'paid_payment_method'          => PaymentMethod::class,
+        'cheque_delivered_at'          => 'date',
     ];
 
     protected $appends = ['total_to_pay'];
