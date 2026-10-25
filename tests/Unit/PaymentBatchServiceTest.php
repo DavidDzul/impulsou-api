@@ -766,6 +766,9 @@ class PaymentBatchServiceTest extends TestCase
             // boolean chip, purely informational — same invariant and same
             // paidRows() scope boundary as every other field in this list.
             'snapshot_telmex_coverage_id', 'snapshot_telmex_covered_amount', 'telmex_covered',
+            // sdd/pago-cheque PR2: effective method + cheque data.
+            'payment_method', 'paid_payment_method', 'cheque_beneficiary',
+            'cheque_number', 'cheque_delivered_at', 'cheque_notes',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
