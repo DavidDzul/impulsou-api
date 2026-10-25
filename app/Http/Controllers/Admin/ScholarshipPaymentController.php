@@ -71,15 +71,22 @@ class ScholarshipPaymentController extends Controller
             null,
             $batchType
         );
-        $summary = $service->summary($rows);
+
+        // sdd/pago-cheque D9: split right after rows(). Everything below
+        // (summary, batch block) only ever sees TRANSFER rows, so a cheque
+        // can never block, inflate or mark the transfer batch as paid.
+        [$rows, $chequeRows] = $service->partitionByMethod($rows);
+        $summary             = $service->summary($rows);
 
         return response()->json([
             'res'  => true,
             'data' => [
-                'rows'       => $rows,
-                'summary'    => $summary,
-                'batch'      => $this->batchBlock($rows),
-                'batch_type' => $batchType->value,
+                'rows'           => $rows,
+                'summary'        => $summary,
+                'cheque_rows'    => $chequeRows,
+                'cheque_summary' => $service->chequeSummary($chequeRows),
+                'batch'          => $this->batchBlock($rows),
+                'batch_type'     => $batchType->value,
             ],
         ]);
     }
@@ -238,6 +245,21 @@ class ScholarshipPaymentController extends Controller
             null,
             $batchType
         );
+
+        // sdd/pago-cheque D9: only TRANSFER rows take part in the money gate
+        // (blocking check, stale count/total and the ids handed to
+        // BulkPayAction). Cheque rows are paid one by one elsewhere.
+        [$rows] = $service->partitionByMethod($rows);
+
+        if ($rows === []) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => 'No hay becarios con pago por transferencia en este lote.',
+                'code' => 'EMPTY_BATCH',
+                'data' => [],
+            ], 422);
+        }
+
         $summary = $service->summary($rows);
 
         $blockingRows = array_values(array_filter($rows, fn (array $row) => !$row['is_payable']));
