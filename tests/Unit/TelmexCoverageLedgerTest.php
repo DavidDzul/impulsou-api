@@ -176,4 +176,18 @@ class TelmexCoverageLedgerTest extends TestCase
 
         $this->assertSame('CANCELADA', $result->status);
     }
+
+    /** @test */
+    public function advanced_counts_a_cheque_paid_covered_refrend_without_a_batch(): void
+    {
+        $coverage = $this->makeCoverage();
+        $this->makeCoveredRefrend($coverage, 2026, 1, 1950.0, [
+            'status'              => RefrendStatus::PAID->value,
+            'payment_batch_id'    => null,
+            'paid_payment_method' => 'CHEQUE',
+        ]);
+
+        $this->assertSame(1950.0, $this->ledger->advanced($coverage));
+        $this->assertTrue($this->ledger->hasPaidCoveredMonth($coverage));
+    }
 }

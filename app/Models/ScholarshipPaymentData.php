@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentMethod;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,12 +16,22 @@ class ScholarshipPaymentData extends Model
     // is wrong (design D1 / task 1a.3).
     protected $table = 'scholarship_payment_data';
 
+    protected $attributes = [
+        'payment_method' => 'TRANSFER',
+    ];
+
+    protected $casts = [
+        'payment_method' => PaymentMethod::class,
+    ];
+
     protected $fillable = [
         'user_id',
+        'payment_method',
         'bank_name',
         'account_number',
         'curp',
         'rfc',
+        'cheque_beneficiary',
     ];
 
     public function user(): BelongsTo

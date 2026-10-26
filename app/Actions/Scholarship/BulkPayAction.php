@@ -2,6 +2,7 @@
 
 namespace App\Actions\Scholarship;
 
+use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
@@ -66,12 +67,26 @@ class BulkPayAction
                 $paymentData    = $paymentDataByUserId->get($refrend->user_id);
                 $hasPaymentData = $paymentData !== null;
 
+                // sdd/pago-cheque D11: cheques are registered manually per
+                // refrend, never through a transfer payment run. Checked
+                // here (not in the evaluator) because cheque rows ARE
+                // payable for the mark-cheque-paid flow.
+                if ($paymentData?->payment_method === PaymentMethod::CHEQUE) {
+                    $skipped++;
+                    $errors[] = [
+                        'id'     => $refrend->id,
+                        'reason' => 'Pago por cheque: se registra manualmente',
+                    ];
+                    continue;
+                }
+
                 $evaluation = $this->evaluator->evaluate(
                     $refrend,
                     $hasEnrollment,
                     $hasPaymentData,
                     $paymentData?->account_number,
-                    $paymentData?->rfc
+                    $paymentData?->rfc,
+                    PaymentMethod::TRANSFER
                 );
 
                 if (!$evaluation['is_payable']) {
@@ -91,6 +106,8 @@ class BulkPayAction
                     'locked_at'        => now(),
                     'locked_by_id'     => $userId,
                     'payment_batch_id' => $batch?->id,
+                    // Snapshot of how this refrend was paid (spec R5.1).
+                    'paid_payment_method' => PaymentMethod::TRANSFER->value,
                 ]);
 
                 $this->logging->log(

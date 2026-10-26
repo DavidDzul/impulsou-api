@@ -22,7 +22,7 @@ class ScholarshipPaymentDataController extends Controller
 
     public function store(StoreScholarshipPaymentDataRequest $request)
     {
-        $paymentData = ScholarshipPaymentData::create($request->safe()->toArray());
+        $paymentData = ScholarshipPaymentData::create($request->validatedForPersistence());
 
         return response()->json(['res' => true, 'data' => $paymentData->fresh()], 201);
     }
@@ -31,7 +31,7 @@ class ScholarshipPaymentDataController extends Controller
     {
         $paymentData = ScholarshipPaymentData::where('user_id', $userId)->firstOrFail();
 
-        $paymentData->update($request->safe()->toArray());
+        $paymentData->update($request->validatedForPersistence());
 
         return response()->json(['res' => true, 'data' => $paymentData->fresh()]);
     }

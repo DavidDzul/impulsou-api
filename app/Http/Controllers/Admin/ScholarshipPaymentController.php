@@ -3,8 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\BulkPayAction;
+use App\Actions\Scholarship\MarkChequePaidAction;
+use App\Actions\Scholarship\RevertChequePaymentAction;
 use App\Enums\PaymentBatchType;
+use App\Exceptions\ChequePaymentException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MarkChequePaidRequest;
+use App\Http\Requests\RevertChequePaymentRequest;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
@@ -16,6 +21,7 @@ use App\Services\Scholarship\GenerationPaymentReport;
 use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendAmountBreakdown;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -71,15 +77,22 @@ class ScholarshipPaymentController extends Controller
             null,
             $batchType
         );
-        $summary = $service->summary($rows);
+
+        // sdd/pago-cheque D9: split right after rows(). Everything below
+        // (summary, batch block) only ever sees TRANSFER rows, so a cheque
+        // can never block, inflate or mark the transfer batch as paid.
+        [$rows, $chequeRows] = $service->partitionByMethod($rows);
+        $summary             = $service->summary($rows);
 
         return response()->json([
             'res'  => true,
             'data' => [
-                'rows'       => $rows,
-                'summary'    => $summary,
-                'batch'      => $this->batchBlock($rows),
-                'batch_type' => $batchType->value,
+                'rows'           => $rows,
+                'summary'        => $summary,
+                'cheque_rows'    => $chequeRows,
+                'cheque_summary' => $service->chequeSummary($chequeRows),
+                'batch'          => $this->batchBlock($rows),
+                'batch_type'     => $batchType->value,
             ],
         ]);
     }
@@ -163,6 +176,91 @@ class ScholarshipPaymentController extends Controller
     }
 
     /**
+     * sdd/pago-cheque PR3 (spec R3): marks ONE cheque refrend as paid. All
+     * guards live in MarkChequePaidAction; this method only maps its
+     * ChequePaymentException to the {res, msg, code, data} envelope.
+     */
+    public function markChequePaid(MarkChequePaidRequest $request, int $refrend): JsonResponse
+    {
+        $data = $request->validated();
+
+        try {
+            $paid = app(MarkChequePaidAction::class)->execute(
+                $refrend,
+                (int) auth()->id(),
+                $data['cheque_number'],
+                $data['cheque_delivered_at'] ?? null,
+                $data['cheque_notes'] ?? null
+            );
+        } catch (ModelNotFoundException) {
+            return $this->refrendNotFound();
+        } catch (ChequePaymentException $e) {
+            return $this->chequeError($e);
+        }
+
+        return response()->json(['res' => true, 'data' => $this->chequePayload($paid)]);
+    }
+
+    /**
+     * sdd/pago-cheque PR4 (spec R4): reverts ONE cheque payment. Guards
+     * (NOT_CHEQUE_PAID, CYCLE_CLOSED, CHEQUE_LOG_MISSING) live in
+     * RevertChequePaymentAction.
+     */
+    public function revertChequePayment(RevertChequePaymentRequest $request, int $refrend): JsonResponse
+    {
+        try {
+            $reverted = app(RevertChequePaymentAction::class)->execute(
+                $refrend,
+                $request->validated()['reason']
+            );
+        } catch (ModelNotFoundException) {
+            return $this->refrendNotFound();
+        } catch (ChequePaymentException $e) {
+            return $this->chequeError($e);
+        }
+
+        return response()->json(['res' => true, 'data' => $this->chequePayload($reverted)]);
+    }
+
+    /**
+     * Explicit 404: the global Handler maps ModelNotFoundException to 400,
+     * which would hide an unknown refrend id from the panel.
+     */
+    private function refrendNotFound(): JsonResponse
+    {
+        return response()->json([
+            'res'  => false,
+            'msg'  => 'Refrend no encontrado.',
+            'code' => 'NOT_FOUND',
+            'data' => [],
+        ], 404);
+    }
+
+    private function chequeError(ChequePaymentException $e): JsonResponse
+    {
+        return response()->json([
+            'res'  => false,
+            'msg'  => $e->getMessage(),
+            'code' => $e->code(),
+            'data' => $e->payload(),
+        ], $e->httpStatus());
+    }
+
+    private function chequePayload(ScholarshipRefrend $refrend): array
+    {
+        return [
+            'refrend_id'          => $refrend->id,
+            'status'              => $refrend->status->value,
+            'workflow_status'     => $refrend->workflow_status,
+            'paid_payment_method' => $refrend->paid_payment_method?->value,
+            'cheque_number'       => $refrend->cheque_number,
+            'cheque_delivered_at' => $refrend->cheque_delivered_at?->toDateString(),
+            'cheque_notes'        => $refrend->cheque_notes,
+            'locked_at'           => $refrend->locked_at?->toISOString(),
+        ];
+    }
+
+    /**
      * Single-becario payment document. Assembled from ScholarshipRefrend +
      * its user (matrícula) + its incidents relation — no separate read model
      * exists for this yet (this endpoint is new in this PR), so the shape is
@@ -238,6 +336,21 @@ class ScholarshipPaymentController extends Controller
             null,
             $batchType
         );
+
+        // sdd/pago-cheque D9: only TRANSFER rows take part in the money gate
+        // (blocking check, stale count/total and the ids handed to
+        // BulkPayAction). Cheque rows are paid one by one elsewhere.
+        [$rows] = $service->partitionByMethod($rows);
+
+        if ($rows === []) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => 'No hay becarios con pago por transferencia en este lote.',
+                'code' => 'EMPTY_BATCH',
+                'data' => [],
+            ], 422);
+        }
+
         $summary = $service->summary($rows);
 
         $blockingRows = array_values(array_filter($rows, fn (array $row) => !$row['is_payable']));
@@ -299,6 +412,15 @@ class ScholarshipPaymentController extends Controller
 
         $ids    = array_column($rows, 'refrend_id');
         $result = app(BulkPayAction::class)->execute($ids, auth()->id(), $batch);
+
+        // BulkPayAction re-checks every row under its lock and may skip some
+        // (e.g. a becario switched to CHEQUE after the rows were read), so the
+        // batch must reflect what was really paid, not what was read.
+        $paidRefrends = ScholarshipRefrend::where('payment_batch_id', $batch->id)->get();
+        $batch->update([
+            'refrend_count' => $paidRefrends->count(),
+            'total_amount'  => number_format($paidRefrends->sum(fn ($r) => (float) $r->total_to_pay), 2, '.', ''),
+        ]);
 
         $skippedById = collect($result['errors'])->keyBy('id');
 

@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
+use App\Enums\PaymentMethod;
 use App\Models\ScholarshipPaymentData;
+use App\Models\ScholarshipRefrend;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -24,10 +26,10 @@ class ScholarshipPaymentDataModelTest extends TestCase
     }
 
     /** @test */
-    public function fillable_covers_the_four_data_columns_and_user_id(): void
+    public function fillable_covers_the_data_columns_and_user_id(): void
     {
         $this->assertEqualsCanonicalizing(
-            ['user_id', 'bank_name', 'account_number', 'curp', 'rfc'],
+            ['user_id', 'payment_method', 'bank_name', 'account_number', 'curp', 'rfc', 'cheque_beneficiary'],
             (new ScholarshipPaymentData())->getFillable()
         );
     }
@@ -68,5 +70,37 @@ class ScholarshipPaymentDataModelTest extends TestCase
         $user = User::factory()->create();
 
         $this->assertNull($user->paymentData);
+    }
+
+    /** @test */
+    public function payment_method_defaults_to_transfer_and_casts_to_enum(): void
+    {
+        $paymentData = ScholarshipPaymentData::factory()->create()->fresh();
+
+        $this->assertSame(PaymentMethod::TRANSFER, $paymentData->payment_method);
+        $this->assertSame(PaymentMethod::TRANSFER, (new ScholarshipPaymentData())->payment_method);
+    }
+
+    /** @test */
+    public function cheque_factory_state_has_no_bank_data(): void
+    {
+        $paymentData = ScholarshipPaymentData::factory()->cheque()->create()->fresh();
+
+        $this->assertSame(PaymentMethod::CHEQUE, $paymentData->payment_method);
+        $this->assertNull($paymentData->bank_name);
+        $this->assertNull($paymentData->account_number);
+    }
+
+    /** @test */
+    public function refrend_accepts_cheque_columns_and_casts_them(): void
+    {
+        $fillable = (new ScholarshipRefrend())->getFillable();
+        foreach (['paid_payment_method', 'cheque_number', 'cheque_delivered_at', 'cheque_notes'] as $col) {
+            $this->assertContains($col, $fillable);
+        }
+
+        $casts = (new ScholarshipRefrend())->getCasts();
+        $this->assertSame(PaymentMethod::class, $casts['paid_payment_method']);
+        $this->assertSame('date', $casts['cheque_delivered_at']);
     }
 }

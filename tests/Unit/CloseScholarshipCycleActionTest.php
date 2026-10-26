@@ -237,6 +237,31 @@ class CloseScholarshipCycleActionTest extends TestCase
     }
 
     /** @test */
+    public function rejects_the_cut_when_a_later_refrend_was_paid_by_cheque(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user, ['period_month' => 6]);
+        $this->makeRefrend($user, [
+            'period_month'        => 7,
+            'status'              => RefrendStatus::PAID->value,
+            'workflow_status'     => 'CLOSED',
+            'locked_at'           => now(),
+            'payment_batch_id'    => null,
+            'paid_payment_method' => 'CHEQUE',
+        ]);
+
+        try {
+            $this->action->execute($refrend, 'EGRESADO', $user->id);
+            $this->fail('Expected CycleCutBlockedException.');
+        } catch (CycleCutBlockedException $e) {
+            $this->assertSame(
+                [['year' => 2026, 'month' => 7, 'reason' => 'PAID']],
+                $e->payload()['blocking_months']
+            );
+        }
+    }
+
+    /** @test */
     public function rejects_the_cut_when_a_later_refrend_already_has_abonos_applied(): void
     {
         $user         = $this->makeBecario();

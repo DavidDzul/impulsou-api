@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Enums\PaymentMethod;
 use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\PaymentReadinessEvaluator;
 use Tests\TestCase;
@@ -129,7 +130,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertSame(
-            [['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin cuenta bancaria registrada']],
+            [['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin datos de pago registrados']],
             $result['blocking_reasons']
         );
     }
@@ -456,5 +457,44 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
+    }
+
+    // -- sdd/pago-cheque PR2: payment method -----------------------------
+
+    /** @test */
+    public function cheque_skips_bank_data_checks(): void
+    {
+        $result = $this->evaluator->evaluate(
+            $this->makeRow(),
+            true,
+            true,
+            null,
+            null,
+            PaymentMethod::CHEQUE
+        );
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    /** @test */
+    public function cheque_still_checks_non_bank_rules(): void
+    {
+        $row = $this->makeRow(['workflow_status' => 'IN_REVIEW']);
+
+        $result = $this->evaluator->evaluate($row, false, false, null, null, PaymentMethod::CHEQUE);
+
+        $codes = array_column($result['blocking_reasons'], 'code');
+        $this->assertContains('NOT_APPROVED', $codes);
+        $this->assertContains('MISSING_ENROLLMENT', $codes);
+        $this->assertContains('MISSING_PAYMENT_DATA', $codes);
+    }
+
+    /** @test */
+    public function default_method_is_transfer_and_still_validates_bank_data(): void
+    {
+        $result = $this->evaluator->evaluate($this->makeRow(), true, true, null, null);
+
+        $this->assertFalse($result['is_payable']);
     }
 }
