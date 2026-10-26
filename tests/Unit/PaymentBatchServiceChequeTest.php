@@ -49,7 +49,7 @@ class PaymentBatchServiceChequeTest extends TestCase
             'period_year'                  => self::YEAR,
             'period_month'                 => self::MONTH,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => 'AUTHORIZED',
+            'status'                       => 'DRAFT',
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,

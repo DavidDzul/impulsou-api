@@ -56,7 +56,7 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
             'period_year'                  => self::YEAR,
             'period_month'                 => self::MONTH,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => 'AUTHORIZED',
+            'status'                       => 'DRAFT',
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,
@@ -103,7 +103,7 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('res', true)
             ->assertJsonPath('data.refrend_id', $refrend->id)
-            ->assertJsonPath('data.status', 'AUTHORIZED')
+            ->assertJsonPath('data.status', 'DRAFT')
             ->assertJsonPath('data.workflow_status', 'LISTO_PARA_PAGO')
             ->assertJsonPath('data.paid_payment_method', null)
             ->assertJsonPath('data.cheque_number', null)
@@ -238,7 +238,7 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
         $this->assertSame(0, $index->json('data.cheque_summary.paid'));
         $this->assertSame(1, $index->json('data.cheque_summary.ready'));
         $row = $index->json('data.cheque_rows.0');
-        $this->assertSame('AUTHORIZED', $row['status']);
+        $this->assertSame('DRAFT', $row['status']);
         $this->assertTrue($row['is_payable']);
         $this->assertNull($row['cheque_number']);
     }
@@ -261,7 +261,7 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
         ])->assertOk();
 
         $fresh = $cheque->fresh();
-        $this->assertSame(RefrendStatus::AUTHORIZED, $fresh->status);
+        $this->assertSame(RefrendStatus::DRAFT, $fresh->status);
         $this->assertNull($fresh->payment_batch_id);
     }
 }
