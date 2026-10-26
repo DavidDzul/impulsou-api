@@ -40,10 +40,10 @@ class UserController extends Controller
 
         // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
         if ($user->isRoot()) {
-            $data = User::withExists(['scholarshipProfile as has_scholarship_profile', 'scholarshipProfile as amounts_configured' => fn ($q) => $q->whereNotNull('config_set_at'), 'scholarshipProfile as curriculum_uploaded' => fn ($q) => $q->whereNotNull('reticula_file_path')])->where('user_type', 'BEC_ACTIVE')->get();
+            $data = User::withListFlags()->where('user_type', 'BEC_ACTIVE')->get();
         } else {
             // Si no, solo obtiene los registros de su campus
-            $data = User::withExists(['scholarshipProfile as has_scholarship_profile', 'scholarshipProfile as amounts_configured' => fn ($q) => $q->whereNotNull('config_set_at'), 'scholarshipProfile as curriculum_uploaded' => fn ($q) => $q->whereNotNull('reticula_file_path')])->where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
+            $data = User::withListFlags()->where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
         }
 
 
@@ -93,7 +93,7 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::withExists('scholarshipProfile as has_scholarship_profile')->findOrFail($id);
+        $user = User::withListFlags()->findOrFail($id);
 
         return response()->json([
             'user' => $user
@@ -123,7 +123,8 @@ class UserController extends Controller
         }
 
         $user->fill($data)->save();
-        $user->setAttribute('has_scholarship_profile', $user->scholarshipProfile()->exists());
+        // Re-fetch with the list flags so the row the panel swaps in keeps them.
+        $user = User::withListFlags()->findOrFail($user->id);
 
         return response()->json([
             'res' => true,

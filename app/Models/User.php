@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -181,6 +182,19 @@ class User extends Authenticatable
     }
 
     // Scholarship relationships
+
+    /**
+     * Computed flags shown on the becarios / egresados list rows. Single source
+     * so index, show and update expose identical keys.
+     */
+    public function scopeWithListFlags(Builder $query): Builder
+    {
+        return $query->withExists([
+            'scholarshipProfile as has_scholarship_profile',
+            'scholarshipProfile as amounts_configured' => fn ($q) => $q->whereNotNull('config_set_at'),
+            'scholarshipProfile as curriculum_uploaded' => fn ($q) => $q->whereNotNull('reticula_file_path'),
+        ]);
+    }
 
     public function scholarshipProfile()
     {
