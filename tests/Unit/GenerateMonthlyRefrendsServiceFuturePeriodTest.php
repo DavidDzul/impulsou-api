@@ -242,6 +242,33 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
     }
 
     /** @test */
+    public function month_plus_two_auto_egreso_refrend_is_cancelled_and_locked(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 10, 15));
+        $profile = $this->makeProfile(['reticula_end_date' => '2026-07-31']);
+
+        $refrend = $this->service->generateForUser($profile, 2026, 9);
+
+        $this->assertSame('CANCELLED', $refrend->status->value);
+        $this->assertSame('CLOSED', $refrend->workflow_status);
+        $this->assertNotNull($refrend->locked_at);
+        $this->assertSame(\App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA, $refrend->resolution_type);
+        $this->assertTrue($refrend->isLocked());
+        $this->assertSame('0.00', $refrend->total_to_pay);
+    }
+
+    /** @test */
+    public function month_plus_one_normal_refrend_keeps_draft_status(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 10, 15));
+        $profile = $this->makeProfile(['reticula_end_date' => '2026-07-31']);
+
+        $refrend = $this->service->generateForUser($profile, 2026, 8);
+
+        $this->assertSame('DRAFT', $refrend->status->value);
+    }
+
+    /** @test */
     public function month_plus_two_flips_user_type_and_writes_a_graduated_log_with_null_performed_by_id(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 15));

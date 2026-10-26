@@ -1557,6 +1557,26 @@ class PaymentBatchServiceTest extends TestCase
     }
 
     /** @test */
+    public function a_cancelled_auto_egreso_row_is_absent_from_candidates_and_not_counted_as_paid(): void
+    {
+        $egreso = $this->makeReadyRefrend([
+            'snapshot_name'    => 'Becario Egresado',
+            'status'           => RefrendStatus::CANCELLED->value,
+            'final_amount'     => 0.00,
+            'resolution_type'  => \App\Models\ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'workflow_status'  => 'CLOSED',
+            'locked_at'        => now(),
+        ]);
+        $this->makeReadyRefrend(['snapshot_name' => 'Becario Normal']);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Becario Normal', $rows[0]['snapshot_name']);
+        $this->assertNotSame(RefrendStatus::PAID->value, $egreso->fresh()->status->value);
+    }
+
+    /** @test */
     public function other_resolution_types_are_never_excluded_by_filter_c(): void
     {
         $this->makeReadyRefrend(['resolution_type' => 'BECA_MES']);

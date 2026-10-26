@@ -424,6 +424,7 @@ class GenerateMonthlyRefrendsService
                 $notes = "Egreso automático por vencimiento de retícula al {$profile->egreso_administrativo}.";
 
                 $refrend->update([
+                    'status'                       => RefrendStatus::CANCELLED->value,
                     'final_amount'                 => 0,
                     'amount_pending_from_previous' => 0,
                     'advance_payment_amount'       => 0,

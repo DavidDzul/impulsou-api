@@ -87,6 +87,21 @@ class TelmexCoverageLedgerTest extends TestCase
     }
 
     /** @test */
+    public function cancelled_auto_egreso_row_leaves_advanced_and_balance_unchanged(): void
+    {
+        $coverage = $this->makeCoverage();
+        $this->makeCoveredRefrend($coverage, 2026, 1, 1950.0, ['status' => RefrendStatus::PAID->value]);
+        $this->makeCoveredRefrend($coverage, 2026, 2, 0.0, [
+            'status'          => RefrendStatus::CANCELLED->value,
+            'resolution_type' => ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'workflow_status' => 'CLOSED',
+        ]);
+
+        $this->assertSame(1950.0, $this->ledger->advanced($coverage));
+        $this->assertSame(1950.0, $this->ledger->balance($coverage));
+    }
+
+    /** @test */
     public function repaid_sums_only_non_voided_payments(): void
     {
         $coverage = $this->makeCoverage();
