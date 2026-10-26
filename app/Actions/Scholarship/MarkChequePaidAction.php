@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Guards run under the row lock, in order: already paid (409), becario method
  * is CHEQUE (422), then payability (422): resolution never a batch candidate,
- * status AUTHORIZED/WITHHELD only (INVALID_STATUS), then
+ * status DRAFT/AUTHORIZED/WITHHELD only (INVALID_STATUS; CANCELLED and PAID are
+ * blocked), then
  * PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also enforces
  * Filter A / Telmex candidacy); finally the cheque number must not belong to
  * another cheque-paid refrend (422 CHEQUE_NUMBER_TAKEN).
@@ -29,8 +30,13 @@ class MarkChequePaidAction
     /**
      * Statuses a cheque can be registered from — exactly the set
      * RevertChequePaymentAction can restore, so mark/revert round-trip.
+     *
+     * An approved refrend is NOT status AUTHORIZED: approval only moves
+     * workflow_status to LISTO_PARA_PAGO and leaves status DRAFT (WITHHELD for
+     * RETENIDA). AUTHORIZED is kept as a legacy value. Approval readiness is
+     * enforced by PaymentReadinessEvaluator (workflow LISTO_PARA_PAGO).
      */
-    public const PAYABLE_STATUSES = [RefrendStatus::AUTHORIZED, RefrendStatus::WITHHELD];
+    public const PAYABLE_STATUSES = [RefrendStatus::DRAFT, RefrendStatus::AUTHORIZED, RefrendStatus::WITHHELD];
 
     public function __construct(
         private PaymentReadinessEvaluator $evaluator,

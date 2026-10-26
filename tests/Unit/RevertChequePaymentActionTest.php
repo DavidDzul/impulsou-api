@@ -60,7 +60,7 @@ class RevertChequePaymentActionTest extends TestCase
             'period_year'                  => 2026,
             'period_month'                 => 5,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => RefrendStatus::AUTHORIZED->value,
+            'status'                       => RefrendStatus::DRAFT->value,
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,
@@ -178,7 +178,7 @@ class RevertChequePaymentActionTest extends TestCase
 
         $reverted = $this->revert($refrend);
 
-        $this->assertSame(RefrendStatus::AUTHORIZED, $reverted->status);
+        $this->assertSame(RefrendStatus::DRAFT, $reverted->status);
         $this->assertSame('LISTO_PARA_PAGO', $reverted->workflow_status);
         $this->assertNull($reverted->locked_at);
         $this->assertNull($reverted->locked_by_id);
@@ -279,7 +279,7 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertSame(self::REASON, $log->notes);
         $this->assertSame('PAID', $log->old_values['status']);
         $this->assertSame('A123', $log->old_values['cheque_number']);
-        $this->assertSame('AUTHORIZED', $log->new_values['status']);
+        $this->assertSame('DRAFT', $log->new_values['status']);
         $this->assertNull($log->new_values['cheque_number']);
     }
 
@@ -323,7 +323,7 @@ class RevertChequePaymentActionTest extends TestCase
         $refrend = $this->markPaid($this->makeRefrend());
         $this->makeProfile($refrend, ['cycle_closed_period' => null]);
 
-        $this->assertSame(RefrendStatus::AUTHORIZED, $this->revert($refrend)->status);
+        $this->assertSame(RefrendStatus::DRAFT, $this->revert($refrend)->status);
     }
 
     /** @test */
@@ -332,7 +332,7 @@ class RevertChequePaymentActionTest extends TestCase
         $refrend = $this->markPaid($this->makeRefrend());
         $this->assertNull(ScholarshipProfile::where('user_id', $refrend->user_id)->first());
 
-        $this->assertSame(RefrendStatus::AUTHORIZED, $this->revert($refrend)->status);
+        $this->assertSame(RefrendStatus::DRAFT, $this->revert($refrend)->status);
     }
 
     /** @test */
@@ -397,7 +397,7 @@ class RevertChequePaymentActionTest extends TestCase
         $refrend = $this->markPaid($refrend);
         $this->makeRepayment($coverage, true);
 
-        $this->assertSame(RefrendStatus::AUTHORIZED, $this->revert($refrend)->status);
+        $this->assertSame(RefrendStatus::DRAFT, $this->revert($refrend)->status);
         // closed window (end_period set) + nothing advanced anymore -> EN_COBRO, not the stale ACTIVA
         $this->assertSame('EN_COBRO', $coverage->fresh()->status);
     }
@@ -411,7 +411,7 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertSame(RefrendStatus::PAID, $paid->status);
 
         $reverted = $this->revert($paid);
-        $this->assertSame(RefrendStatus::AUTHORIZED, $reverted->status);
+        $this->assertSame(RefrendStatus::DRAFT, $reverted->status);
         $this->assertNull($reverted->cheque_number);
         $this->assertSame($coverage->id, $reverted->snapshot_telmex_coverage_id);
     }

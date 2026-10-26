@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Scholarship\ApproveRefrendAction;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -55,7 +56,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
             'period_year'                  => self::YEAR,
             'period_month'                 => self::MONTH,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => 'AUTHORIZED',
+            'status'                       => 'DRAFT',
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,
@@ -131,7 +132,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
         $this->markPaid($refrend, ['cheque_number' => 'A1', 'cheque_delivered_at' => now()->addDay()->toDateString()])
             ->assertStatus(422)
             ->assertJsonValidationErrors('cheque_delivered_at');
-        $this->assertSame(RefrendStatus::AUTHORIZED, $refrend->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
     }
 
     /** @test */
@@ -159,7 +160,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
         $noPerm  = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
 
         $this->markPaid($refrend, ['cheque_number' => 'A1'], $noPerm)->assertStatus(403);
-        $this->assertSame(RefrendStatus::AUTHORIZED, $refrend->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
     }
 
     /** @test */
@@ -259,5 +260,78 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
 
         $this->assertSame(PaymentMethod::CHEQUE, $cheque->fresh()->paid_payment_method);
         $this->assertNull($cheque->fresh()->payment_batch_id);
+    }
+
+    private function revertCheque(ScholarshipRefrend $refrend)
+    {
+        return $this->actingAs($this->admin)
+            ->postJson("/api/admin/scholarship-payments/{$refrend->id}/cheque-payment/revert", ['reason' => 'Cheque extraviado, se reexpide']);
+    }
+
+    /** @test */
+    public function regression_approved_draft_refrend_can_be_marked_reverted_and_marked_again(): void
+    {
+        // Real flow: the generator creates DRAFT/DRAFT rows and the approval
+        // only moves workflow_status to LISTO_PARA_PAGO (status stays DRAFT).
+        $refrend = $this->makeRefrend(true, ['status' => 'DRAFT', 'workflow_status' => 'DRAFT']);
+        $this->markPaid($refrend)->assertStatus(422)->assertJsonPath('code', 'NOT_PAYABLE');
+
+        $this->app->make(ApproveRefrendAction::class)->execute($refrend, $this->admin->id);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+        $this->assertSame('LISTO_PARA_PAGO', $refrend->fresh()->workflow_status);
+
+        $this->markPaid($refrend)->assertOk()->assertJsonPath('data.status', 'PAID');
+
+        $this->revertCheque($refrend)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'DRAFT')
+            ->assertJsonPath('data.workflow_status', 'LISTO_PARA_PAGO');
+
+        $this->markPaid($refrend, ['cheque_number' => 'B456'])->assertOk()->assertJsonPath('data.status', 'PAID');
+    }
+
+    /**
+     * @test
+     * @dataProvider notReadyWorkflows
+     */
+    public function rejects_draft_status_refrends_whose_workflow_is_not_ready(string $workflow): void
+    {
+        $refrend = $this->makeRefrend(true, ['status' => 'DRAFT', 'workflow_status' => $workflow]);
+
+        $response = $this->markPaid($refrend)->assertStatus(422)->assertJsonPath('code', 'NOT_PAYABLE');
+        $this->assertContains('NOT_APPROVED', array_column($response->json('data.reasons'), 'code'));
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+    }
+
+    public static function notReadyWorkflows(): array
+    {
+        return [['DRAFT'], ['CON_INCIDENCIA'], ['CLOSED']];
+    }
+
+    /** @test */
+    public function rejects_cancelled_refrends(): void
+    {
+        $refrend = $this->makeRefrend(true, ['status' => 'CANCELLED']);
+
+        $this->markPaid($refrend)->assertStatus(422)->assertJsonPath('code', 'NOT_PAYABLE');
+        $this->assertSame(RefrendStatus::CANCELLED, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function legacy_authorized_status_is_still_accepted(): void
+    {
+        $refrend = $this->makeRefrend(true, ['status' => 'AUTHORIZED']);
+
+        $this->markPaid($refrend)->assertOk();
+        $this->revertCheque($refrend)->assertOk()->assertJsonPath('data.status', 'AUTHORIZED');
+    }
+
+    /** @test */
+    public function withheld_refrend_with_balance_can_be_marked_and_reverted(): void
+    {
+        $refrend = $this->makeRefrend(true, ['status' => 'WITHHELD', 'final_amount' => 400.00]);
+
+        $this->markPaid($refrend)->assertOk();
+        $this->revertCheque($refrend)->assertOk()->assertJsonPath('data.status', 'WITHHELD');
     }
 }

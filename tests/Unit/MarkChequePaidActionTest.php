@@ -56,7 +56,7 @@ class MarkChequePaidActionTest extends TestCase
             'period_year'                  => 2026,
             'period_month'                 => 5,
             'refrend_type'                 => RefrendType::NORMAL->value,
-            'status'                       => RefrendStatus::AUTHORIZED->value,
+            'status'                       => RefrendStatus::DRAFT->value,
             'workflow_status'              => 'LISTO_PARA_PAGO',
             'base_amount'                  => 1000.00,
             'discount_percentage'          => 0,
@@ -117,7 +117,7 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('CHEQUE_NUMBER_TAKEN', $e->code());
         $this->assertSame(422, $e->httpStatus());
         $this->assertSame('Ese número de cheque ya fue registrado.', $e->getMessage());
-        $this->assertSame(RefrendStatus::AUTHORIZED, $second->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $second->fresh()->status);
         $this->assertNull($second->fresh()->cheque_number);
     }
 
@@ -223,7 +223,7 @@ class MarkChequePaidActionTest extends TestCase
         $e = $this->failure(fn () => $this->mark($refrend));
 
         $this->assertSame('NOT_CHEQUE_METHOD', $e->code());
-        $this->assertSame(RefrendStatus::AUTHORIZED, $refrend->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
     }
 
     /** @test */
@@ -265,7 +265,7 @@ class MarkChequePaidActionTest extends TestCase
 
     public static function nonRestorableStatuses(): array
     {
-        return [['DRAFT'], ['ATENCION_REVIEW'], ['PEDAGOGIA_REVIEW'], ['CANCELLED']];
+        return [['ATENCION_REVIEW'], ['PEDAGOGIA_REVIEW'], ['CANCELLED']];
     }
 
     /** @test */
@@ -290,7 +290,7 @@ class MarkChequePaidActionTest extends TestCase
         $e = $this->failure(fn () => $this->mark($refrend));
 
         $this->assertSame('NOT_PAYABLE', $e->code());
-        $this->assertSame(RefrendStatus::AUTHORIZED, $refrend->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
     }
 
     public static function nonCandidateResolutions(): array
