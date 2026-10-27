@@ -89,7 +89,6 @@ class ScholarshipRefrend extends Model
         'snapshot_campus',
         'snapshot_scholarship_type',
         'average_grade_snapshot',
-        'missing_subjects_snapshot',
         'attendance_summary_snapshot',
         'atencion_observations',
         'atencion_labels',
@@ -98,7 +97,6 @@ class ScholarshipRefrend extends Model
         'pedagogia_observations',
         'pedagogia_reviewed_by_id',
         'pedagogia_reviewed_at',
-        'notified_by_id',
         'notified_at',
         'notification_method',
         'locked_at',
@@ -106,8 +104,6 @@ class ScholarshipRefrend extends Model
         'payment_batch_id',
         'carryover_months_count',
         'carryover_months_detail',
-        'pedagogia_resolved_at',
-        'pedagogia_resolved_by_id',
         'attendance_penalty_override',
         'paid_payment_method',
         'cheque_number',
@@ -133,14 +129,12 @@ class ScholarshipRefrend extends Model
         'advance_payment_amount'       => 'decimal:2',
         'withholding_value'             => 'decimal:2',
         'average_grade_snapshot'       => 'decimal:2',
-        'missing_subjects_snapshot'    => 'integer',
         'attendance_summary_snapshot'   => 'array',
         'attendance_penalty_override'   => 'boolean',
         'snapshot_generation_id'       => 'integer',
         'atencion_labels'              => 'array',
         'atencion_reviewed_at'         => 'datetime',
         'pedagogia_reviewed_at'        => 'datetime',
-        'pedagogia_resolved_at'        => 'datetime',
         'carryover_months_count'       => 'integer',
         'notified_at'                  => 'datetime',
         'locked_at'                    => 'datetime',
@@ -248,21 +242,6 @@ class ScholarshipRefrend extends Model
     public function withholdingPayments(): HasMany
     {
         return $this->hasMany(ScholarshipWithholdingPayment::class, 'applied_refrend_id');
-    }
-
-    public function notifiedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'notified_by_id');
-    }
-
-    public function transitions(): HasMany
-    {
-        return $this->hasMany(ScholarshipRefrendTransition::class, 'scholarship_refrend_id');
-    }
-
-    public function pedagogiaResolvedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'pedagogia_resolved_by_id');
     }
 
     // Scopes

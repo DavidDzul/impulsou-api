@@ -31,7 +31,7 @@ class ScholarshipCalculationService
      */
     public function calculateFinalAmount(ScholarshipRefrend $refrend): array
     {
-        $gross       = (float) $refrend->snapshot_gross_amount;
+        $gross       = (float) ($refrend->snapshot_gross_amount ?? $refrend->base_amount);
         $academicPct = (float) ($refrend->snapshot_discount_percentage ?? 0);
         $base        = round($gross * (1 - $academicPct / 100), 2);
 

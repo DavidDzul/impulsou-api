@@ -133,9 +133,22 @@ class GenerateMonthlyRefrendsServiceSnapshotInvarianceTest extends TestCase
         $this->makeAttendance($user->id, $classOne->id, 'LATE');
         $this->makeAttendance($user->id, $classTwo->id, 'LATE');
 
+        $insertSql = [];
+        DB::listen(function ($query) use (&$insertSql) {
+            if (stripos($query->sql, 'insert into "scholarship_refrends"') !== false) {
+                $insertSql[] = $query->sql;
+            }
+        });
+
         $refrend = $this->service->generateForUser($profile, 2026, 10);
 
         $this->assertNotNull($refrend);
+
+        // sdd/limpieza-refrendos A3: the dead column is no longer written.
+        $this->assertNotEmpty($insertSql);
+        foreach ($insertSql as $sql) {
+            $this->assertStringNotContainsString('missing_subjects_snapshot', $sql);
+        }
 
         // ── snapshot_* fields (golden values) ────────────────────────────
         $this->assertSame('Ana Pérez', $refrend->snapshot_name);
@@ -155,7 +168,6 @@ class GenerateMonthlyRefrendsServiceSnapshotInvarianceTest extends TestCase
         $this->assertSame('500.00', (string) $refrend->snapshot_temporary_increase_amount);
         $this->assertSame('Apoyo transporte', $refrend->snapshot_temporary_increase_reason);
         $this->assertSame(8.5, (float) $refrend->average_grade_snapshot);
-        $this->assertSame(0, $refrend->missing_subjects_snapshot);
 
         // ── attendance_summary_snapshot (golden values) ──────────────────
         $attendanceSummary = is_array($refrend->attendance_summary_snapshot)

@@ -681,4 +681,19 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertSame($coverage->id, $result['rows'][0]['refrend']['snapshot_telmex_coverage_id']);
         $this->assertEquals(3500.00, (float) $result['rows'][0]['refrend']['snapshot_telmex_covered_amount']);
     }
+
+    /** @test */
+    public function response_rows_do_not_expose_dead_notified_by_id_but_keep_notified_at(): void
+    {
+        $this->makeRefrend();
+
+        $result = $this->buildTable();
+
+        $this->assertCount(1, $result['rows']);
+        $this->assertArrayNotHasKey('notified_by_id', $result['rows'][0]['refrend']);
+        $this->assertArrayNotHasKey('pedagogia_resolved_by_id', $result['rows'][0]['refrend']);
+        $this->assertArrayNotHasKey('pedagogia_resolved_at', $result['rows'][0]['refrend']);
+        $this->assertArrayNotHasKey('missing_subjects_snapshot', $result['rows'][0]['refrend']);
+        $this->assertArrayHasKey('notified_at', $result['rows'][0]['refrend']);
+    }
 }

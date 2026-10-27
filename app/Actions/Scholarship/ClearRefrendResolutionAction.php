@@ -86,7 +86,6 @@ class ClearRefrendResolutionAction
                 'withholding_mode'            => null,
                 'withholding_value'           => null,
                 'notified_at'                 => null,
-                'notified_by_id'              => null,
                 'notification_method'         => null,
                 'atencion_reviewed_by_id'     => $userId,
                 'atencion_reviewed_at'        => now(),

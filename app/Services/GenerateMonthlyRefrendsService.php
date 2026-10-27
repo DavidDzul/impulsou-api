@@ -203,10 +203,9 @@ class GenerateMonthlyRefrendsService
      * que ya realiza esos checks dentro de su propia transacción.
      *
      * @param string $createdVia Provenance marker for the created refrend.
-     *   Not yet persisted — `scholarship_refrends.created_via` does not exist
-     *   until PR2's migration lands. Accepted now so this call site's
-     *   contract is stable and PR2 only needs to wire the column write,
-     *   not change this signature.
+     *   Persisted to `scholarship_refrends.created_via` (GENERATION |
+     *   ADVANCE_PAYMENT); it gates the graduation (egreso) check in
+     *   createRefrendForPeriod().
      */
     public function generateFutureForAdvance(
         ScholarshipProfile $profile,
@@ -392,7 +391,6 @@ class GenerateMonthlyRefrendsService
                 'snapshot_campus'              => $snapshot['snapshot_campus'],
                 'snapshot_scholarship_type'    => $snapshot['snapshot_scholarship_type'],
                 'average_grade_snapshot'       => $lastGrade,
-                'missing_subjects_snapshot'    => 0,
                 'attendance_summary_snapshot'  => $attendanceSummary,
             ]);
 

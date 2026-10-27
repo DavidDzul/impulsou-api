@@ -91,7 +91,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             'snapshot_campus'              => 'MERIDA',
             'snapshot_scholarship_type'    => ScholarshipType::IU->value,
             'notified_at'                  => null,
-            'notified_by_id'               => null,
             'notification_method'          => null,
             'atencion_reviewed_by_id'      => null,
             'atencion_reviewed_at'         => null,
@@ -377,7 +376,6 @@ class ClearRefrendResolutionActionTest extends TestCase
             'resolution_cause'            => 'BAJO_PROMEDIO',
             'resolution_notes'            => 'Notas.',
             'notified_at'                 => now(),
-            'notified_by_id'              => $this->admin->id,
             'notification_method'         => 'EMAIL',
         ]);
 
@@ -390,7 +388,6 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->assertNull($result->withholding_mode);
         $this->assertNull($result->withholding_value);
         $this->assertNull($result->notified_at);
-        $this->assertNull($result->notified_by_id);
         $this->assertNull($result->notification_method);
         $this->assertSame($this->admin->id, $result->atencion_reviewed_by_id);
         $this->assertNotNull($result->atencion_reviewed_at);

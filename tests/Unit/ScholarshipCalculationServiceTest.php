@@ -779,4 +779,28 @@ class ScholarshipCalculationServiceTest extends TestCase
 
         $this->assertSame(300.0, $result['final_amount']);
     }
+
+    /** @test */
+    public function final_amount_falls_back_to_base_amount_when_snapshot_gross_is_null(): void
+    {
+        $profile = $this->makeProfile();
+        $refrend = $this->makeRefrend($profile->user_id);
+        $refrend->update(['snapshot_gross_amount' => null, 'base_amount' => 1000.00]);
+
+        $result = $this->service->calculateFinalAmount($refrend->fresh());
+
+        $this->assertSame(1000.0, $result['final_amount']);
+    }
+
+    /** @test */
+    public function final_amount_prefers_snapshot_gross_over_base_amount(): void
+    {
+        $profile = $this->makeProfile();
+        $refrend = $this->makeRefrend($profile->user_id);
+        $refrend->update(['snapshot_gross_amount' => 1200.00, 'base_amount' => 1000.00]);
+
+        $result = $this->service->calculateFinalAmount($refrend->fresh());
+
+        $this->assertSame(1200.0, $result['final_amount']);
+    }
 }
