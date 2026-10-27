@@ -239,6 +239,22 @@ class RevertChequePaymentActionTest extends TestCase
     }
 
     /** @test */
+    public function log_with_a_removed_legacy_prior_status_yields_cheque_log_missing(): void
+    {
+        $refrend = $this->markPaid($this->makeRefrend());
+        $log     = ScholarshipRefrendLog::where('action', 'CHEQUE_PAID')->firstOrFail();
+        $old     = $log->old_values;
+        $old['status'] = 'AUTHORIZED';
+        $log->update(['old_values' => $old]);
+
+        $e = $this->failure(fn () => $this->revert($refrend));
+
+        $this->assertSame('CHEQUE_LOG_MISSING', $e->code());
+        $this->assertSame(422, $e->httpStatus());
+        $this->assertSame(RefrendStatus::PAID, $refrend->fresh()->status);
+    }
+
+    /** @test */
     public function log_with_invalid_prior_workflow_is_rejected(): void
     {
         $refrend = $this->markPaid($this->makeRefrend());

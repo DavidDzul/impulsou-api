@@ -313,36 +313,13 @@ class ScholarshipRefrend extends Model
     }
 
     /**
-     * A refrend is locked when:
-     *  - workflow_status is PAID or CANCELLED (new workflow), OR
-     *  - locked_at is set (legacy lock mechanism), OR
-     *  - the legacy status enum reports locked (AUTHORIZED or PAID)
-     *
-     * All three conditions are checked for full backwards compatibility.
+     * A refrend is locked exactly when its workflow is CLOSED (paid, cancelled
+     * or graduated). Every reachable row carries one of DRAFT, CON_INCIDENCIA,
+     * LISTO_PARA_PAGO or CLOSED in workflow_status, and `status` / `locked_at`
+     * never lock an open workflow.
      */
     public function isLocked(): bool
     {
-        // New workflow terminal states
-        if (in_array($this->workflow_status, ['CLOSED', 'CANCELLED'])) {
-            return true;
-        }
-
-        // New workflow active states — explicitly unlocked regardless of status enum
-        if (in_array($this->workflow_status, ['DRAFT', 'CON_INCIDENCIA', 'LISTO_PARA_PAGO'])) {
-            return false;
-        }
-
-        // Legacy: PAID was previously used as terminal
-        if ($this->workflow_status === 'PAID') {
-            return true;
-        }
-
-        // Legacy: locked_at column
-        if ($this->locked_at !== null) {
-            return true;
-        }
-
-        // Legacy enum fallback for old records without explicit workflow_status
-        return $this->status->isLocked();
+        return $this->workflow_status === 'CLOSED';
     }
 }

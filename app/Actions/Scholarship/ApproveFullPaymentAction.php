@@ -41,9 +41,9 @@ class ApproveFullPaymentAction
      */
     public function execute(ScholarshipRefrend $refrend, int $userId, ?string $advanceDivergenceReason = null): ScholarshipRefrend
     {
-        // GUARD — lock. Mirrors ClearRefrendResolutionAction:27: isLocked()
-        // alone is insufficient (short-circuits to false for LISTO_PARA_PAGO
-        // before reaching its locked_at and legacy-enum branches).
+        // GUARD — lock. Mirrors ClearRefrendResolutionAction: isLocked() is
+        // false for LISTO_PARA_PAGO, so the locked_at and status (PAID) checks
+        // are re-applied here.
         if ($refrend->isLocked() || $refrend->locked_at !== null || $refrend->status->isLocked()) {
             throw new \DomainException('El refrendo está bloqueado y no admite cambios.');
         }

@@ -259,4 +259,31 @@ class BackfillWithholdingLedgerServiceTest extends TestCase
         $this->assertNotNull($ledger);
         $this->assertSame('200.00', $ledger->withheld_amount);
     }
+
+    /** @test */
+    public function the_historical_migration_still_runs_up_against_seeded_withheld_and_paid_data(): void
+    {
+        // Regression (limpieza-refrendos, REQ-S7): the migration must not depend
+        // on removed RefrendStatus cases when it finds data (migrate:fresh).
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+
+        $withheld = $this->makeRefrend($user->id, [
+            'period_month' => 1, 'resolution_type' => 'RETENIDA',
+            'status' => RefrendStatus::WITHHELD->value, 'discount_amount' => 300.00, 'final_amount' => 700.00,
+        ]);
+        $paid = $this->makeRefrend($user->id, [
+            'period_month' => 2, 'status' => RefrendStatus::PAID->value,
+            'workflow_status' => 'CLOSED', 'amount_pending_from_previous' => 300.00,
+        ]);
+
+        $migration = require_once database_path('migrations/2026_07_31_000004_backfill_scholarship_withholdings.php');
+        $migration = is_object($migration) ? $migration : new \BackfillScholarshipWithholdings();
+        $migration->up();
+
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $withheld->id)->firstOrFail();
+        $this->assertSame('300.00', $ledger->paid_amount);
+        $this->assertSame('PAID', $ledger->status);
+        $this->assertSame(1, ScholarshipWithholdingPayment::where('withholding_id', $ledger->id)->count());
+        $this->assertNotNull($paid->fresh());
+    }
 }

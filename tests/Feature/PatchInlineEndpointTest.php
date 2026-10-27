@@ -63,25 +63,6 @@ class PatchInlineEndpointTest extends TestCase
     // ── TASK-11-2 Tests ───────────────────────────────────────────────────────
 
     /** @test */
-    public function it_returns_422_when_refrend_is_locked_authorized(): void
-    {
-        $refrend = $this->makeRefrend([
-            'status'          => RefrendStatus::AUTHORIZED->value,
-            'workflow_status' => 'CLOSED',
-            'locked_at'       => now(),
-        ]);
-
-        $response = $this->actingAs($this->admin)
-            ->patchJson($this->patchUrl($refrend->id), [
-                'atencion_observations' => 'Some observation',
-            ]);
-
-        $response->assertStatus(422);
-        $response->assertJson(['res' => false]);
-        $this->assertStringContainsString('bloqueado', $response->json('msg'));
-    }
-
-    /** @test */
     public function it_returns_422_when_refrend_is_locked_paid(): void
     {
         $refrend = $this->makeRefrend([
@@ -176,7 +157,7 @@ class PatchInlineEndpointTest extends TestCase
     /** @test */
     public function it_does_not_change_status_after_valid_patch(): void
     {
-        $refrend = $this->makeRefrend(['status' => RefrendStatus::ATENCION_REVIEW->value]);
+        $refrend = $this->makeRefrend(['status' => RefrendStatus::WITHHELD->value]);
 
         $this->actingAs($this->admin)
             ->patchJson($this->patchUrl($refrend->id), [
@@ -186,7 +167,7 @@ class PatchInlineEndpointTest extends TestCase
         $refrend->refresh();
 
         $this->assertSame(
-            RefrendStatus::ATENCION_REVIEW,
+            RefrendStatus::WITHHELD,
             $refrend->status,
             'Status must not change after an inline patch.'
         );

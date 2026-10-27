@@ -91,7 +91,7 @@ class BackfillWithholdingLedgerService
     /**
      * Reproduces, per user, the net pending debt the old
      * calculatePendingCarryover() computed: sums amount_pending_from_previous
-     * of PAID/AUTHORIZED refrends (the "already covered" pool) and applies it
+     * of PAID refrends (the "already covered" pool) and applies it
      * FIFO — oldest ledger row first — inserting a synthetic child payment
      * for each portion consumed, attributed to the closed refrend that
      * carried that amount.
@@ -116,7 +116,7 @@ class BackfillWithholdingLedgerService
             }
 
             $closedRefrends = ScholarshipRefrend::where('user_id', $userId)
-                ->whereIn('status', [RefrendStatus::PAID->value, RefrendStatus::AUTHORIZED->value])
+                ->where('status', 'PAID')
                 ->where('amount_pending_from_previous', '>', 0)
                 ->orderBy('period_year')
                 ->orderBy('period_month')

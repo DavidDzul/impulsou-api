@@ -318,15 +318,6 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     }
 
     /** @test */
-    public function legacy_authorized_status_is_still_accepted(): void
-    {
-        $refrend = $this->makeRefrend(true, ['status' => 'AUTHORIZED']);
-
-        $this->markPaid($refrend)->assertOk();
-        $this->revertCheque($refrend)->assertOk()->assertJsonPath('data.status', 'AUTHORIZED');
-    }
-
-    /** @test */
     public function withheld_refrend_with_balance_can_be_marked_and_reverted(): void
     {
         $refrend = $this->makeRefrend(true, ['status' => 'WITHHELD', 'final_amount' => 400.00]);

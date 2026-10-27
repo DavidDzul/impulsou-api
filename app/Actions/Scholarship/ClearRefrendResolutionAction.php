@@ -20,10 +20,9 @@ class ClearRefrendResolutionAction
     public function execute(ScholarshipRefrend $refrend, int $userId): ScholarshipRefrend
     {
         // GUARD 1 — lock. isLocked() alone is INSUFFICIENT here: it returns false
-        // for LISTO_PARA_PAGO (ScholarshipRefrend::isLocked() short-circuits before
-        // reaching its locked_at and legacy-enum branches). Re-apply precisely
-        // those two skipped branches so a legacy lock or CLOSED/CANCELLED/PAID
-        // still rejects with the *lock* message, not "nothing to undo".
+        // for LISTO_PARA_PAGO (it is true only for workflow CLOSED). Re-apply the
+        // locked_at and status (PAID) checks so a locked row still rejects with
+        // the *lock* message, not "nothing to undo".
         if ($refrend->isLocked() || $refrend->locked_at !== null || $refrend->status->isLocked()) {
             throw new \DomainException('El refrendo está bloqueado y no admite cambios.');
         }

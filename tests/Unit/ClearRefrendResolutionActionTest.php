@@ -143,12 +143,12 @@ class ClearRefrendResolutionActionTest extends TestCase
     }
 
     /** @test */
-    public function rejects_undo_when_legacy_status_is_authorized_while_listo_para_pago(): void
+    public function rejects_undo_when_status_is_paid_while_listo_para_pago(): void
     {
-        // isLocked() short-circuits to false for LISTO_PARA_PAGO before ever
-        // reaching its legacy-enum branch — this is the exact branch D1 re-applies.
+        // ScholarshipRefrend::isLocked() is false for LISTO_PARA_PAGO, so the
+        // action's own RefrendStatus::isLocked() re-check (PAID) is what blocks.
         $user    = $this->makeBecario();
-        $refrend = $this->makeResolvedRefrend($user, ['status' => RefrendStatus::AUTHORIZED->value]);
+        $refrend = $this->makeResolvedRefrend($user, ['status' => RefrendStatus::PAID->value]);
 
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('El refrendo está bloqueado y no admite cambios.');

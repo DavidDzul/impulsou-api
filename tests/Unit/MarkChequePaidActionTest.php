@@ -265,7 +265,16 @@ class MarkChequePaidActionTest extends TestCase
 
     public static function nonRestorableStatuses(): array
     {
-        return [['ATENCION_REVIEW'], ['PEDAGOGIA_REVIEW'], ['CANCELLED']];
+        return [['CANCELLED']];
+    }
+
+    /** @test */
+    public function payable_statuses_are_exactly_draft_and_withheld(): void
+    {
+        $this->assertSame(
+            [RefrendStatus::DRAFT, RefrendStatus::WITHHELD],
+            MarkChequePaidAction::PAYABLE_STATUSES
+        );
     }
 
     /** @test */

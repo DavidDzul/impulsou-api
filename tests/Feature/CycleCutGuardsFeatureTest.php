@@ -95,7 +95,9 @@ class CycleCutGuardsFeatureTest extends TestCase
         $refrend      = $this->makeRefrend($user->id, ['period_month' => 6]);
         $laterRefrend = $this->makeRefrend($user->id, [
             'period_month'    => 7,
-            'workflow_status' => 'PAID',
+            'status'          => RefrendStatus::PAID->value,
+            'workflow_status' => 'CLOSED',
+            'locked_at'       => now(),
         ]);
 
         $response = $this->actingAs($this->admin)
@@ -113,7 +115,7 @@ class CycleCutGuardsFeatureTest extends TestCase
                 ],
             ],
         ]);
-        $this->assertSame('PAID', $laterRefrend->fresh()->workflow_status);
+        $this->assertSame(RefrendStatus::PAID, $laterRefrend->fresh()->status);
     }
 
     /** @test */
