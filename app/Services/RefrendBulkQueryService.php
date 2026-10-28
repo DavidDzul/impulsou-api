@@ -95,7 +95,6 @@ class RefrendBulkQueryService
                 'r.locked_by_id',
                 'r.notified_at',
                 'r.notification_method',
-                'r.attendance_penalty_override',
                 'r.attendance_summary_snapshot',
                 'r.created_at',
                 'r.updated_at',
