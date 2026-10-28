@@ -21,7 +21,7 @@ class TelmexPaymentPolicyParityTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @return array<int, array{type: string, increase: ?float, coverage: bool, pending: float, advance: float}> */
+    /** @return array<int, array{type: string, increase: ?float, coverage: bool, pending: float|string, advance: float|string}> */
     private function matrix(): array
     {
         $cases = [];
@@ -35,6 +35,13 @@ class TelmexPaymentPolicyParityTest extends TestCase
                     }
                 }
             }
+        }
+
+        // Pure TELMEX edge cases: a negative term cancelling a positive one
+        // (owed exactly 0 → excluded; owed still > 0 → candidate), and the
+        // decimal-string shape MySQL returns for DECIMAL columns.
+        foreach ([[-50.0, 50.0], [-10.0, 50.0], ['0.00', '0.00'], ['25.50', '0.00'], ['0.00', '0.01']] as [$pending, $advance]) {
+            $cases[] = ['type' => ScholarshipType::TELMEX->value, 'increase' => null, 'coverage' => false] + compact('pending', 'advance');
         }
 
         return $cases;
@@ -123,5 +130,17 @@ class TelmexPaymentPolicyParityTest extends TestCase
             'union is every row'
         );
         $this->assertNotEmpty($nonIds, 'the matrix contains pure TELMEX rows owing nothing');
+    }
+
+    /** @test */
+    public function per_object_filter_treats_missing_owed_amounts_as_zero(): void
+    {
+        // The columns are NOT NULL in the schema, but evaluator rows built
+        // without them pass null: owed money must count as 0, not throw.
+        $telmex = ScholarshipType::TELMEX->value;
+
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate($telmex, null, null, null, null));
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate($telmex, null, null, null, '50.00'));
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate($telmex, null, null, '50.00', null));
     }
 }
