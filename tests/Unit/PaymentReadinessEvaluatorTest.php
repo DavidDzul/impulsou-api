@@ -366,7 +366,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
         $this->assertFalse($result['is_payable']);
         $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
         $this->assertSame(
-            'Beca Telmex sin aumento temporal, cobertura IU ni saldo pendiente',
+            'Beca Telmex sin aumento temporal, cobertura IU, saldo pendiente ni adelanto',
             $result['blocking_reasons'][array_search('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'), true)]['message']
         );
     }
@@ -506,7 +506,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
         $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
 
         $this->assertSame(
-            [['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal, cobertura IU ni saldo pendiente']],
+            [['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal, cobertura IU, saldo pendiente ni adelanto']],
             $result['blocking_reasons']
         );
     }

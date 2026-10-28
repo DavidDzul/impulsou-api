@@ -107,7 +107,7 @@ class PaymentReadinessEvaluator
             $refrendRow->amount_pending_from_previous ?? null,
             $refrendRow->advance_payment_amount ?? null
         )) {
-            $reasons[] = ['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal, cobertura IU ni saldo pendiente'];
+            $reasons[] = ['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal, cobertura IU, saldo pendiente ni adelanto'];
         }
 
         // Bank-data structural checks (account number, RFC) are delegated to
