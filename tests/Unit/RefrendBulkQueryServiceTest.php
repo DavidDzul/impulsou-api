@@ -596,6 +596,103 @@ class RefrendBulkQueryServiceTest extends TestCase
         $this->assertFalse($result['rows'][0]['advance_payment_eligible']);
     }
 
+    // ── cert-unid-historial PR2: effective (frozen) segment ───────────────────
+    // The output key stays `advance_payment_eligible`. For paid rows it
+    // reflects the segment frozen at payment time; otherwise the current flag.
+
+    private function makeChequePaid(?string $stamp, array $overrides = []): ScholarshipRefrend
+    {
+        return $this->makeRefrend(array_merge([
+            'status'              => RefrendStatus::PAID->value,
+            'locked_at'           => now(),
+            'paid_payment_method' => 'CHEQUE',
+            'paid_batch_type'     => $stamp,
+        ], $overrides));
+    }
+
+    private function eligibleFor(ScholarshipRefrend $refrend): bool
+    {
+        $row = collect($this->buildTable()['rows'])->first(fn ($r) => $r['refrend']['id'] === $refrend->id);
+
+        return $row['advance_payment_eligible'];
+    }
+
+    /** @test */
+    public function a_cheque_row_stamped_cert_unid_stays_eligible_after_the_flag_flips_off(): void
+    {
+        $refrend = $this->makeChequePaid('CERT_UNID');
+        $this->seedProfile($refrend->user_id, false);
+
+        $this->assertTrue($this->eligibleFor($refrend));
+    }
+
+    /** @test */
+    public function a_cheque_row_stamped_normal_stays_not_eligible_after_the_flag_flips_on(): void
+    {
+        $refrend = $this->makeChequePaid('NORMAL');
+        $this->seedProfile($refrend->user_id, true);
+
+        $this->assertFalse($this->eligibleFor($refrend));
+    }
+
+    /** @test */
+    public function a_legacy_cheque_row_without_a_stamp_follows_the_current_flag(): void
+    {
+        $refrend = $this->makeChequePaid(null);
+        $this->seedProfile($refrend->user_id, true);
+
+        $this->assertTrue($this->eligibleFor($refrend));
+    }
+
+    /** @test */
+    public function a_stale_stamp_without_a_cheque_payment_method_follows_the_current_flag(): void
+    {
+        $refrend = $this->makeRefrend(['paid_batch_type' => 'CERT_UNID']);
+        $this->seedProfile($refrend->user_id, false);
+
+        $this->assertFalse($this->eligibleFor($refrend));
+    }
+
+    /** @test */
+    public function an_unpaid_row_follows_the_current_flag(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->seedProfile($refrend->user_id, true);
+
+        $this->assertTrue($this->eligibleFor($refrend));
+    }
+
+    /** @test */
+    public function a_batch_paid_row_is_frozen_by_the_batch_type_and_the_pb_join_does_not_duplicate_rows(): void
+    {
+        $batch = \App\Models\ScholarshipPaymentBatch::create([
+            'generation_id'   => 1,
+            'campus'          => 'MERIDA',
+            'period_year'     => 2026,
+            'period_month'    => 5,
+            'refrend_count'   => 2,
+            'total_amount'    => '5000.00',
+            'processed_by_id' => $this->adminUser->id,
+            'processed_at'    => now(),
+            'batch_type'      => 'CERT_UNID',
+        ]);
+        $paid = $this->makeRefrend([
+            'status'           => RefrendStatus::PAID->value,
+            'locked_at'        => now(),
+            'payment_batch_id' => $batch->id,
+        ]);
+        $this->seedProfile($paid->user_id, false);
+        $other = $this->makeRefrend();
+        $this->seedProfile($other->user_id, false);
+        $this->makeChequePaid('NORMAL');
+
+        $result = $this->buildTable();
+
+        $this->assertSame(3, $result['meta']['total']);
+        $this->assertCount(3, $result['rows']);
+        $this->assertTrue($this->eligibleFor($paid), 'Frozen by pb.batch_type = CERT_UNID despite the flag being false.');
+    }
+
     // ── Temporary increase snapshot fields (columnas-dinamicas-monto-becario) ──
     //
     // Raw passthrough, same convention as snapshot_monto_apoyo: both columns

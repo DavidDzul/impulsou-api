@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentBatchType;
 use App\Services\Scholarship\PayableWithholdingWindow;
+use App\Support\Scholarship\PaymentBatchSegmentPolicy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +28,8 @@ class RefrendBulkQueryService
         // ── Base query: fetch refrends for the period ──────────────────────
         $query = DB::table('scholarship_refrends as r')
             ->leftJoin('scholarship_profiles as sp', 'sp.user_id', '=', 'r.user_id')
+            // PK join (pb.id): cannot duplicate rows, so count() stays exact.
+            ->leftJoin('scholarship_payment_batches as pb', 'pb.id', '=', 'r.payment_batch_id')
             ->where('r.period_year', $year)
             ->where('r.period_month', $month);
 
@@ -40,11 +44,23 @@ class RefrendBulkQueryService
         $total   = $query->count();
         $offset  = ($page - 1) * $perPage;
 
+        // Effective segment (sdd/cert-unid-historial, spec R5): a paid row
+        // reports the segment it was frozen to (batch type / cheque stamp);
+        // anything else follows the live profile flag. Same expression the
+        // batch partition uses, so the two readers cannot disagree.
+        // COALESCE to 0: a becario with no profile row (LEFT JOIN NULL) reads as
+        // "not eligible", a boolean, never null.
+        [$frozen, $frozenBindings] = PaymentBatchSegmentPolicy::frozenTypeSql('r');
+        $effectiveEligibleSql = "CASE WHEN {$frozen} IS NOT NULL"
+            . " THEN (CASE WHEN {$frozen} = ? THEN 1 ELSE 0 END)"
+            . ' ELSE COALESCE(sp.advance_payment_eligible, 0) END as advance_payment_eligible';
+
         $refrends = $query
             ->orderBy('r.snapshot_name')
             ->offset($offset)
             ->limit($perPage)
-            ->get([
+            ->selectRaw($effectiveEligibleSql, array_merge($frozenBindings, $frozenBindings, [PaymentBatchType::CERT_UNID->value]))
+            ->addSelect([
                 'r.id',
                 'r.user_id',
                 'r.period_year',
@@ -101,15 +117,8 @@ class RefrendBulkQueryService
                 'sp.active_discount_percentage as profile_discount_pct',
                 'sp.discount_valid_until as profile_discount_valid_until',
                 'sp.discount_reason as profile_discount_reason',
-                // COALESCE to 0 (not NULL passthrough like the profile_discount_*
-                // fields above): those are genuinely-nullable business data, but
-                // advance_payment_eligible is a NOT NULL boolean on the profile
-                // table — a becario with no scholarship_profiles row (LEFT JOIN
-                // NULL) must read as "not eligible", matching incidents_count/
-                // pending_withholding_count defaulting-to-zero convention below,
-                // not the raw-nullable profile_discount_* convention.
-                DB::raw('COALESCE(sp.advance_payment_eligible, 0) as advance_payment_eligible'),
-            ]);
+            ])
+            ->get();
 
         if ($refrends->isEmpty()) {
             return [
