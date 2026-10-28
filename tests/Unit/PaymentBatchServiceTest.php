@@ -2541,4 +2541,170 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertCount(1, $certUnidRows);
         $this->assertSame('Becario Cert Unid Pagado', $certUnidRows[0]['snapshot_name']);
     }
+
+    // ── cert-unid-historial PR2: cheque rows are frozen by paid_batch_type ──
+    //
+    // The CERT_UNID batch pays ONLY the flagged ("pago adelantado") becarios,
+    // so the partition of UNPAID rows must stay exactly as before; only a
+    // cheque-paid row (never payable again) is frozen to its stamped tab.
+
+    /**
+     * A cheque-paid row: PAID + locked, no batch, paid_payment_method CHEQUE.
+     */
+    private function makeChequePaidRefrend(?string $stamp, array $overrides = []): ScholarshipRefrend
+    {
+        $refrend = $this->makeReadyRefrend($overrides);
+        $refrend->update([
+            'status'              => RefrendStatus::PAID->value,
+            'workflow_status'     => 'CLOSED',
+            'locked_at'           => now(),
+            'paid_payment_method' => 'CHEQUE',
+            'paid_batch_type'     => $stamp,
+        ]);
+
+        return $refrend->fresh();
+    }
+
+    private function namesOf(array $rows): array
+    {
+        $names = array_column($rows, 'snapshot_name');
+        sort($names);
+
+        return $names;
+    }
+
+    /** @test */
+    public function cert_unid_batch_gets_only_unpaid_flagged_rows_and_normal_gets_the_rest(): void
+    {
+        $a = $this->makeReadyRefrend(['snapshot_name' => 'A flag true']);
+        $this->makeProfile($a->user_id, true);
+        $b = $this->makeReadyRefrend(['snapshot_name' => 'B flag false']);
+        $this->makeProfile($b->user_id, false);
+        $this->makeReadyRefrend(['snapshot_name' => 'C no profile']);
+
+        $cert   = $this->rowsFor(PaymentBatchType::CERT_UNID);
+        $normal = $this->rowsFor(PaymentBatchType::NORMAL);
+
+        $this->assertSame(['A flag true'], $this->namesOf($cert));
+        $this->assertSame(['B flag false', 'C no profile'], $this->namesOf($normal));
+        $this->assertTrue($cert[0]['is_payable']);
+    }
+
+    /** @test */
+    public function an_unpaid_row_follows_a_mid_month_flag_correction(): void
+    {
+        $x = $this->makeReadyRefrend(['snapshot_name' => 'X']);
+        $this->makeProfile($x->user_id, false);
+        $this->assertSame(['X'], $this->namesOf($this->rowsFor(PaymentBatchType::NORMAL)));
+
+        ScholarshipProfile::where('user_id', $x->user_id)->update(['advance_payment_eligible' => true]);
+
+        $this->assertSame(['X'], $this->namesOf($this->rowsFor(PaymentBatchType::CERT_UNID)));
+        $this->assertSame([], $this->rowsFor(PaymentBatchType::NORMAL));
+    }
+
+    /** @test */
+    public function a_batch_paid_row_stays_frozen_by_the_batch_type_and_the_stamp_stays_null(): void
+    {
+        $certBatch = $this->makeBatch(['batch_type' => PaymentBatchType::CERT_UNID->value]);
+        $paid      = $this->makePaidRefrendForBatch($certBatch);
+        $this->makeProfile($paid->user_id, true);
+
+        ScholarshipProfile::where('user_id', $paid->user_id)->update(['advance_payment_eligible' => false]);
+
+        $this->assertCount(1, $this->rowsFor(PaymentBatchType::CERT_UNID));
+        $this->assertCount(0, $this->rowsFor(PaymentBatchType::NORMAL));
+        $this->assertNull($paid->fresh()->paid_batch_type);
+    }
+
+    /** @test */
+    public function a_stamped_cheque_row_stays_in_its_tab_after_the_flag_flips_and_is_never_payable(): void
+    {
+        $cheque = $this->makeChequePaidRefrend('CERT_UNID', ['snapshot_name' => 'Cheque cert']);
+        $this->makeProfile($cheque->user_id, true);
+        $unpaid = $this->makeReadyRefrend(['snapshot_name' => 'Unpaid flagged']);
+        $this->makeProfile($unpaid->user_id, true);
+
+        $before = $this->service->chequeSummary(
+            $this->service->partitionByMethod($this->rowsFor(PaymentBatchType::CERT_UNID))[1]
+        );
+
+        ScholarshipProfile::where('user_id', $cheque->user_id)->update(['advance_payment_eligible' => false]);
+
+        $certRows   = $this->rowsFor(PaymentBatchType::CERT_UNID);
+        $normalRows = $this->rowsFor(PaymentBatchType::NORMAL);
+        $after      = $this->service->chequeSummary($this->service->partitionByMethod($certRows)[1]);
+
+        $this->assertSame(['Cheque cert', 'Unpaid flagged'], $this->namesOf($certRows));
+        $this->assertSame([], $this->namesOf($normalRows), 'The frozen cheque row must not resurface in NORMAL.');
+        $this->assertSame($before, $after, 'Per-tab cheque totals must not move after the flip.');
+        $this->assertSame(1, $after['paid']);
+
+        $chequeRow = collect($certRows)->firstWhere('snapshot_name', 'Cheque cert');
+        $this->assertFalse($chequeRow['is_payable']);
+        $this->assertContains('ALREADY_PAID', array_column($chequeRow['blocking_reasons'], 'code'));
+    }
+
+    /** @test */
+    public function a_cheque_row_stamped_normal_stays_normal_after_the_flag_flips_to_true(): void
+    {
+        $cheque = $this->makeChequePaidRefrend('NORMAL', ['snapshot_name' => 'Cheque normal']);
+        $this->makeProfile($cheque->user_id, false);
+
+        $before = $this->service->chequeSummary(
+            $this->service->partitionByMethod($this->rowsFor(PaymentBatchType::NORMAL))[1]
+        );
+
+        ScholarshipProfile::where('user_id', $cheque->user_id)->update(['advance_payment_eligible' => true]);
+
+        $normalRows = $this->rowsFor(PaymentBatchType::NORMAL);
+        $after      = $this->service->chequeSummary($this->service->partitionByMethod($normalRows)[1]);
+
+        $this->assertSame(['Cheque normal'], $this->namesOf($normalRows));
+        $this->assertSame([], $this->rowsFor(PaymentBatchType::CERT_UNID));
+        $this->assertSame($before, $after);
+    }
+
+    /** @test */
+    public function a_legacy_cheque_row_without_a_stamp_falls_back_to_the_current_flag(): void
+    {
+        $legacy = $this->makeChequePaidRefrend(null, ['snapshot_name' => 'Legacy']);
+        $this->makeProfile($legacy->user_id, true);
+
+        $this->assertSame(['Legacy'], $this->namesOf($this->rowsFor(PaymentBatchType::CERT_UNID)));
+        $this->assertSame([], $this->rowsFor(PaymentBatchType::NORMAL));
+
+        ScholarshipProfile::where('user_id', $legacy->user_id)->update(['advance_payment_eligible' => false]);
+
+        $this->assertSame(['Legacy'], $this->namesOf($this->rowsFor(PaymentBatchType::NORMAL)));
+        $this->assertSame([], $this->rowsFor(PaymentBatchType::CERT_UNID));
+    }
+
+    /** @test */
+    public function a_stale_stamp_without_a_cheque_payment_method_is_ignored_and_the_row_stays_payable(): void
+    {
+        // Old-code window: a revert cleared paid_payment_method but a stamp
+        // survived. The stamp must not drag the row into the wrong tab.
+        $stale = $this->makeReadyRefrend(['snapshot_name' => 'Stale', 'paid_batch_type' => 'CERT_UNID']);
+        $this->makeProfile($stale->user_id, false);
+
+        $normal = $this->rowsFor(PaymentBatchType::NORMAL);
+
+        $this->assertSame(['Stale'], $this->namesOf($normal));
+        $this->assertSame([], $this->rowsFor(PaymentBatchType::CERT_UNID));
+        $this->assertTrue($normal[0]['is_payable']);
+    }
+
+    /** @test */
+    public function the_segment_join_never_duplicates_rows(): void
+    {
+        $batch = $this->makeBatch(['batch_type' => PaymentBatchType::NORMAL->value]);
+        $paid  = $this->makePaidRefrendForBatch($batch);
+        $this->makeProfile($paid->user_id, false);
+        $unpaid = $this->makeReadyRefrend();
+        $this->makeProfile($unpaid->user_id, false);
+        $this->makeChequePaidRefrend('NORMAL');
+
+        $this->assertCount(3, $this->rowsFor(PaymentBatchType::NORMAL));
+    }
 }

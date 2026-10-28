@@ -3,6 +3,7 @@
 namespace App\Support\Scholarship;
 
 use App\Enums\PaymentBatchType;
+use App\Enums\PaymentMethod;
 use Illuminate\Database\Query\Builder;
 
 /**
@@ -15,18 +16,23 @@ use Illuminate\Database\Query\Builder;
  * unit-tested independently — in practice it is exercised end-to-end
  * through `PaymentBatchServiceTest`, the same convention Filter A/C use.
  *
- * Partition rule (design "Architecture Decisions" > Partition rule):
- *   (r.payment_batch_id IS NULL AND COALESCE(sp.advance_payment_eligible,0) = :eligible)
- *   OR pb.batch_type = :type
+ * Partition rule (sdd/cert-unid-historial, spec R4; supersedes the original
+ * batch-only freeze):
+ *   (frozen IS NULL AND COALESCE(sp.advance_payment_eligible,0) = :eligible)
+ *   OR frozen = :type
+ * where `frozen` is `frozenTypeSql()`: the segment a PAID row is frozen to
+ * (batch-paid -> pb.batch_type; cheque-paid -> paid_batch_type stamped at
+ * payment time), NULL for everything still following the live flag.
  *
- * An UNPAID row (`payment_batch_id IS NULL`) is a candidate for `$type`
- * only when its eligibility flag matches that type's expected eligibility
- * (CERT_UNID expects eligible=true; NORMAL expects eligible=false/missing).
- * A row ALREADY paid is instead a candidate for `$type` only when the batch
- * that paid it has that same `batch_type` — regardless of what
- * `advance_payment_eligible` says NOW. This is what keeps a paid row from
- * flipping to the other type's candidacy (and resurfacing there as a
- * surprise ALREADY_PAID) after a later eligibility flag change.
+ * An UNPAID row (frozen NULL) is a candidate for `$type` only when its
+ * eligibility flag matches that type's expected eligibility (CERT_UNID
+ * expects eligible=true; NORMAL expects eligible=false/missing), so the
+ * CERT_UNID batch keeps paying ONLY the flagged ("pago adelantado")
+ * becarios and a mid-month flag correction is followed until payment. A PAID
+ * row is a candidate for `$type` only when its frozen type matches,
+ * regardless of what the flag says NOW. A legacy cheque row with no stamp,
+ * or a stale stamp whose paid_payment_method is not CHEQUE, yields NULL and
+ * falls back to the current flag.
  *
  * Joins added here (not `whereExists` subqueries): `scholarship_profiles
  * .user_id` is UNIQUE (2026_05_13 migration) and `scholarship_payment_batches
@@ -45,11 +51,27 @@ final class PaymentBatchSegmentPolicy
 
         $eligible = $type === PaymentBatchType::CERT_UNID ? 1 : 0;
 
-        $query->where(function (Builder $outer) use ($alias, $eligible, $type) {
-            $outer->where(function (Builder $unpaid) use ($alias, $eligible) {
-                $unpaid->whereNull("{$alias}.payment_batch_id")
-                    ->whereRaw('COALESCE(sp.advance_payment_eligible, 0) = ?', [$eligible]);
-            })->orWhere('pb.batch_type', $type->value);
-        });
+        [$frozen, $frozenBindings] = self::frozenTypeSql($alias);
+
+        $query->whereRaw(
+            "(({$frozen} IS NULL AND COALESCE(sp.advance_payment_eligible, 0) = ?) OR {$frozen} = ?)",
+            array_merge($frozenBindings, [$eligible], $frozenBindings, [$type->value])
+        );
+    }
+
+    /**
+     * The single SQL definition of "the segment this row is frozen to".
+     * Requires the `pb` join (scholarship_payment_batches on payment_batch_id).
+     * Shared with RefrendBulkQueryService so both readers cannot drift.
+     *
+     * @return array{0: string, 1: array<int, string>} SQL expression and its bindings
+     */
+    public static function frozenTypeSql(string $alias): array
+    {
+        return [
+            "(CASE WHEN {$alias}.payment_batch_id IS NOT NULL THEN pb.batch_type"
+            . " WHEN {$alias}.paid_payment_method = ? THEN {$alias}.paid_batch_type END)",
+            [PaymentMethod::CHEQUE->value],
+        ];
     }
 }
