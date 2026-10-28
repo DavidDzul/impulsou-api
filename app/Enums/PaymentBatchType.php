@@ -13,6 +13,15 @@ enum PaymentBatchType: string
     case NORMAL    = 'NORMAL';
     case CERT_UNID = 'CERT_UNID';
 
+    /**
+     * Segment a refrend belongs to for a given scholarship_profiles flag
+     * (true = pago adelantado / CERT_UNID). A missing profile is NORMAL.
+     */
+    public static function forCertUnidFlag(bool $isCertUnid): self
+    {
+        return $isCertUnid ? self::CERT_UNID : self::NORMAL;
+    }
+
     public static function values(): array
     {
         return array_column(self::cases(), 'value');

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -102,6 +103,7 @@ class ScholarshipRefrend extends Model
         'locked_at',
         'locked_by_id',
         'payment_batch_id',
+        'paid_batch_type',
         'carryover_months_count',
         'carryover_months_detail',
         'paid_payment_method',
@@ -137,6 +139,7 @@ class ScholarshipRefrend extends Model
         'notified_at'                  => 'datetime',
         'locked_at'                    => 'datetime',
         'paid_payment_method'          => PaymentMethod::class,
+        'paid_batch_type'              => PaymentBatchType::class,
         'cheque_delivered_at'          => 'date',
     ];
 
