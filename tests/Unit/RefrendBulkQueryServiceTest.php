@@ -103,13 +103,13 @@ class RefrendBulkQueryServiceTest extends TestCase
 
     /**
      * Creates (or updates) a ScholarshipProfile for the given user with an
-     * explicit advance_payment_eligible flag.
+     * explicit is_cert_unid flag.
      */
     private function seedProfile(int $userId, bool $eligible = true): void
     {
         ScholarshipProfile::factory()->create([
             'user_id'                  => $userId,
-            'advance_payment_eligible' => $eligible,
+            'is_cert_unid' => $eligible,
         ]);
     }
 
@@ -549,7 +549,7 @@ class RefrendBulkQueryServiceTest extends TestCase
         );
     }
 
-    // ── advance_payment_eligible row data (beca-pago-adelantado-cert) ─────────
+    // ── is_cert_unid row data (beca-pago-adelantado-cert) ─────────
     //
     // PIVOT: this is no longer a server-side WHERE-clause filter — the row
     // simply carries the flag (like incidents_count/pending_withholding_count)
@@ -566,7 +566,7 @@ class RefrendBulkQueryServiceTest extends TestCase
         $result = $this->buildTable();
 
         $this->assertCount(1, $result['rows']);
-        $this->assertTrue($result['rows'][0]['advance_payment_eligible']);
+        $this->assertTrue($result['rows'][0]['is_cert_unid']);
     }
 
     /** @test */
@@ -578,7 +578,7 @@ class RefrendBulkQueryServiceTest extends TestCase
         $result = $this->buildTable();
 
         $this->assertCount(1, $result['rows']);
-        $this->assertFalse($result['rows'][0]['advance_payment_eligible']);
+        $this->assertFalse($result['rows'][0]['is_cert_unid']);
     }
 
     /** @test */
@@ -586,18 +586,18 @@ class RefrendBulkQueryServiceTest extends TestCase
     {
         // No seedProfile() call — the LEFT JOIN yields NULL for every sp.*
         // column. Unlike the genuinely-nullable profile_discount_* fields,
-        // advance_payment_eligible must be normalized to false (boolean, not
+        // is_cert_unid must be normalized to false (boolean, not
         // null) so the frontend never receives a null in a boolean field.
         $this->makeRefrend();
 
         $result = $this->buildTable();
 
         $this->assertCount(1, $result['rows']);
-        $this->assertFalse($result['rows'][0]['advance_payment_eligible']);
+        $this->assertFalse($result['rows'][0]['is_cert_unid']);
     }
 
     // ── cert-unid-historial PR2: effective (frozen) segment ───────────────────
-    // The output key stays `advance_payment_eligible`. For paid rows it
+    // The output key stays `is_cert_unid`. For paid rows it
     // reflects the segment frozen at payment time; otherwise the current flag.
 
     private function makeChequePaid(?string $stamp, array $overrides = []): ScholarshipRefrend
@@ -614,7 +614,7 @@ class RefrendBulkQueryServiceTest extends TestCase
     {
         $row = collect($this->buildTable()['rows'])->first(fn ($r) => $r['refrend']['id'] === $refrend->id);
 
-        return $row['advance_payment_eligible'];
+        return $row['is_cert_unid'];
     }
 
     /** @test */

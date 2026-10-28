@@ -53,7 +53,7 @@ class RefrendBulkQueryService
         [$frozen, $frozenBindings] = PaymentBatchSegmentPolicy::frozenTypeSql('r');
         $effectiveEligibleSql = "CASE WHEN {$frozen} IS NOT NULL"
             . " THEN (CASE WHEN {$frozen} = ? THEN 1 ELSE 0 END)"
-            . ' ELSE COALESCE(sp.advance_payment_eligible, 0) END as advance_payment_eligible';
+            . ' ELSE COALESCE(sp.is_cert_unid, 0) END as is_cert_unid';
 
         $refrends = $query
             ->orderBy('r.snapshot_name')
@@ -330,7 +330,7 @@ class RefrendBulkQueryService
                 'profile_discount_pct'          => $r->profile_discount_pct,
                 'profile_discount_valid_until'  => $r->profile_discount_valid_until,
                 'profile_discount_reason'       => $r->profile_discount_reason,
-                'advance_payment_eligible'      => (bool) $r->advance_payment_eligible,
+                'is_cert_unid'      => (bool) $r->is_cert_unid,
                 'pending_withholding_count'     => $pendingCount,
                 'pending_withholding_amount'    => $pendingAmount,
                 'advance_paid'                  => $advance !== null,

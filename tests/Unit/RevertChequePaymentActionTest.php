@@ -194,7 +194,7 @@ class RevertChequePaymentActionTest extends TestCase
     public function revert_clears_the_paid_batch_type_stamp_and_logs_old_and_new_values(): void
     {
         $refrend = $this->makeRefrend();
-        $this->makeProfile($refrend, ['advance_payment_eligible' => true]);
+        $this->makeProfile($refrend, ['is_cert_unid' => true]);
         $paid = $this->markPaid($refrend);
         $this->assertSame(PaymentBatchType::CERT_UNID, $paid->paid_batch_type);
 
@@ -211,10 +211,10 @@ class RevertChequePaymentActionTest extends TestCase
     public function re_marking_after_a_flag_flip_stamps_the_new_flag(): void
     {
         $refrend = $this->makeRefrend();
-        $profile = $this->makeProfile($refrend, ['advance_payment_eligible' => true]);
+        $profile = $this->makeProfile($refrend, ['is_cert_unid' => true]);
         $this->revert($this->markPaid($refrend));
 
-        $profile->update(['advance_payment_eligible' => false]);
+        $profile->update(['is_cert_unid' => false]);
         $again = $this->markPaid($refrend->fresh());
 
         $this->assertSame(PaymentBatchType::NORMAL, $again->paid_batch_type);

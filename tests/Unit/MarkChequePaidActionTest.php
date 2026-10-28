@@ -112,7 +112,7 @@ class MarkChequePaidActionTest extends TestCase
     {
         ScholarshipProfile::factory()->create([
             'user_id'                  => $r->user_id,
-            'advance_payment_eligible' => $flag,
+            'is_cert_unid' => $flag,
         ]);
     }
 

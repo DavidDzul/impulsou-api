@@ -24,7 +24,7 @@ class UpdateScholarshipProfileConfigRequest extends FormRequest
             'scholarship_type'         => ['required', Rule::in(array_column(ScholarshipType::cases(), 'value'))],
             'monthly_amount'           => 'required|numeric|min:0',
             'monto_apoyo'              => 'required|numeric|min:0|max:99999.99',
-            'advance_payment_eligible' => 'sometimes|boolean',
+            'is_cert_unid' => 'sometimes|boolean',
             // iu_payment_amount (sdd/scholarship-telmex-iu-split, design
             // Interfaces/Contracts): required only for TELMEX_IU.
             // `exclude_unless` — NOT `prohibited_unless` — so switching a

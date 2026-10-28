@@ -116,7 +116,7 @@ class MarkChequePaidAction
             // Freeze the segment at payment time (sdd/cert-unid-historial R2):
             // a later flag flip must not move this paid cheque between tabs.
             $isCertUnid = (bool) ScholarshipProfile::where('user_id', $refrend->user_id)
-                ->value('advance_payment_eligible');
+                ->value('is_cert_unid');
 
             $old = $this->logging->snapshotRefrend($refrend);
 

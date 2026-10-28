@@ -12,7 +12,7 @@ use Tests\TestCase;
  * Covers the admin-only `PUT scholarship-profiles/{userId}/config` endpoint
  * (sdd/scholarship-profile-config-to-admin design D2/D9): the 4 config
  * fields (scholarship_type, monthly_amount, monto_apoyo,
- * advance_payment_eligible) are gated behind ADM_EDIT_SCHOLARSHIP_PROFILE
+ * is_cert_unid) are gated behind ADM_EDIT_SCHOLARSHIP_PROFILE
  * and no longer writable via the shared psicol-panel PUT/POST (see the
  * `prohibited` assertions in ScholarshipProfileEndpointTest.php).
  *
@@ -66,7 +66,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'TELMEX',
                 'monthly_amount'           => 3000,
                 'monto_apoyo'              => 100,
-                'advance_payment_eligible' => true,
+                'is_cert_unid' => true,
             ]
         );
 
@@ -92,7 +92,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'TELMEX',
                 'monthly_amount'           => 0,
                 'monto_apoyo'              => 250.50,
-                'advance_payment_eligible' => true,
+                'is_cert_unid' => true,
             ]
         );
 
@@ -100,24 +100,24 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
         $this->assertSame('TELMEX', $response->json('data.scholarship_type'));
         $this->assertEquals(0, (float) $response->json('data.monthly_amount'));
         $this->assertEquals(250.50, (float) $response->json('data.monto_apoyo'));
-        $this->assertTrue((bool) $response->json('data.advance_payment_eligible'));
+        $this->assertTrue((bool) $response->json('data.is_cert_unid'));
 
         $this->assertDatabaseHas('scholarship_profiles', [
             'user_id'                  => $becario->id,
             'scholarship_type'         => 'TELMEX',
             'monthly_amount'           => 0,
             'monto_apoyo'              => 250.50,
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ]);
     }
 
     /** @test */
-    public function updating_config_persists_advance_payment_eligible_true(): void
+    public function updating_config_persists_is_cert_unid_true(): void
     {
         $becario = $this->becario();
         ScholarshipProfile::factory()->create([
             'user_id'                  => $becario->id,
-            'advance_payment_eligible' => false,
+            'is_cert_unid' => false,
         ]);
 
         $response = $this->actingAs($this->rootAdmin)->putJson(
@@ -126,26 +126,26 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'IU',
                 'monthly_amount'           => 2500,
                 'monto_apoyo'              => 0,
-                'advance_payment_eligible' => true,
+                'is_cert_unid' => true,
             ]
         );
 
         $response->assertStatus(200);
-        $this->assertTrue((bool) $response->json('data.advance_payment_eligible'));
+        $this->assertTrue((bool) $response->json('data.is_cert_unid'));
 
         $this->assertDatabaseHas('scholarship_profiles', [
             'user_id'                  => $becario->id,
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ]);
     }
 
     /** @test */
-    public function updating_config_persists_advance_payment_eligible_false(): void
+    public function updating_config_persists_is_cert_unid_false(): void
     {
         $becario = $this->becario();
         ScholarshipProfile::factory()->create([
             'user_id'                  => $becario->id,
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ]);
 
         $response = $this->actingAs($this->rootAdmin)->putJson(
@@ -154,16 +154,16 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'IU',
                 'monthly_amount'           => 2500,
                 'monto_apoyo'              => 0,
-                'advance_payment_eligible' => false,
+                'is_cert_unid' => false,
             ]
         );
 
         $response->assertStatus(200);
-        $this->assertFalse((bool) $response->json('data.advance_payment_eligible'));
+        $this->assertFalse((bool) $response->json('data.is_cert_unid'));
 
         $this->assertDatabaseHas('scholarship_profiles', [
             'user_id'                  => $becario->id,
-            'advance_payment_eligible' => false,
+            'is_cert_unid' => false,
         ]);
     }
 
@@ -201,7 +201,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'TELMEX_IU',
                 'monthly_amount'           => 1800,
                 'monto_apoyo'              => 150,
-                'advance_payment_eligible' => false,
+                'is_cert_unid' => false,
             ]
         );
 
@@ -222,7 +222,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'monthly_amount'           => 1800,
                 'monto_apoyo'              => 150,
                 'iu_payment_amount'        => 300,
-                'advance_payment_eligible' => false,
+                'is_cert_unid' => false,
             ]
         );
 
@@ -252,7 +252,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'IU',
                 'monthly_amount'           => 2500,
                 'monto_apoyo'              => 0,
-                'advance_payment_eligible' => false,
+                'is_cert_unid' => false,
             ]
         );
 
@@ -278,7 +278,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
                 'scholarship_type'         => 'TELMEX',
                 'monthly_amount'           => 1800,
                 'monto_apoyo'              => 150,
-                'advance_payment_eligible' => false,
+                'is_cert_unid' => false,
             ]
         );
 
@@ -294,7 +294,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
             'scholarship_type'         => 'TELMEX',
             'monthly_amount'           => 1800,
             'monto_apoyo'              => 150,
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ], $override);
     }
 
@@ -315,7 +315,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
             'scholarship_type'         => 'TELMEX',
             'monthly_amount'           => 1800,
             'monto_apoyo'              => 150,
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ]);
         $this->assertNotNull(ScholarshipProfile::where('user_id', $becario->id)->first()->config_set_at);
     }
@@ -329,7 +329,7 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
             'scholarship_type'           => 'TELMEX',
             'monthly_amount'             => 1800,
             'monto_apoyo'                => 150,
-            'advance_payment_eligible'   => true,
+            'is_cert_unid'   => true,
             'active_discount_percentage' => 10,
             'discount_reason'            => 'Excelencia',
             'config_set_at'              => now()->subDays(5),
@@ -565,6 +565,33 @@ class ScholarshipProfileConfigEndpointTest extends TestCase
             'user_id'        => $becario->id,
             'monthly_amount' => 0,
             'monto_apoyo'    => null,
+        ]);
+    }
+
+    /** @test */
+    public function the_legacy_advance_payment_eligible_key_is_ignored_and_not_returned(): void
+    {
+        $becario = $this->becario();
+        ScholarshipProfile::factory()->create([
+            'user_id'      => $becario->id,
+            'is_cert_unid' => false,
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->putJson(
+            "/api/admin/scholarship-profiles/{$becario->id}/config",
+            [
+                'scholarship_type'         => 'IU',
+                'monthly_amount'           => 2500,
+                'monto_apoyo'              => 0,
+                'advance_payment_eligible' => true,
+            ]
+        );
+
+        $response->assertStatus(200);
+        $this->assertArrayNotHasKey('advance_payment_eligible', $response->json('data'));
+        $this->assertDatabaseHas('scholarship_profiles', [
+            'user_id'      => $becario->id,
+            'is_cert_unid' => false,
         ]);
     }
 }

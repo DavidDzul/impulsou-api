@@ -26,7 +26,7 @@ class UpdateScholarshipProfileRequest extends FormRequest
             'scholarship_type'           => 'prohibited',
             'monthly_amount'             => 'prohibited',
             'monto_apoyo'                => 'prohibited',
-            'advance_payment_eligible'   => 'prohibited',
+            'is_cert_unid'   => 'prohibited',
             // sdd/perfil-beca-montos-admin: config_set_at is written ONLY by
             // the admin-only updateConfig endpoint.
             'config_set_at'              => 'prohibited',

@@ -22,7 +22,7 @@ class ScholarshipProfileFactory extends Factory
             'scholarship_type'           => 'IU',
             'monthly_amount'             => 2500,
             'monto_apoyo'                => null,
-            'advance_payment_eligible'   => false,
+            'is_cert_unid'   => false,
             'active_discount_percentage' => null,
             'discount_reason'            => null,
             'discount_valid_until'       => null,

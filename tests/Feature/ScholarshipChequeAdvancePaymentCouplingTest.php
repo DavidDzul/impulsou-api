@@ -58,7 +58,7 @@ class ScholarshipChequeAdvancePaymentCouplingTest extends TestCase
             'reticula_end_date'        => '2099-12-31',
             'payment_start_date'       => now()->toDateString(),
             'config_set_at'            => now(),
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ]);
 
         $this->origin = ScholarshipRefrend::create([

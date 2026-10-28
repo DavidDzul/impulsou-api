@@ -2435,7 +2435,7 @@ class PaymentBatchServiceTest extends TestCase
     {
         return ScholarshipProfile::create([
             'user_id'                  => $userId,
-            'advance_payment_eligible' => $eligible,
+            'is_cert_unid' => $eligible,
         ]);
     }
 
@@ -2511,7 +2511,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->makeProfile($refrend->user_id, false);
 
         // Flip eligibility to true AFTER payment.
-        ScholarshipProfile::where('user_id', $refrend->user_id)->update(['advance_payment_eligible' => true]);
+        ScholarshipProfile::where('user_id', $refrend->user_id)->update(['is_cert_unid' => true]);
 
         $normalRows   = $this->rowsFor(PaymentBatchType::NORMAL);
         $certUnidRows = $this->rowsFor(PaymentBatchType::CERT_UNID);
@@ -2597,7 +2597,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->makeProfile($x->user_id, false);
         $this->assertSame(['X'], $this->namesOf($this->rowsFor(PaymentBatchType::NORMAL)));
 
-        ScholarshipProfile::where('user_id', $x->user_id)->update(['advance_payment_eligible' => true]);
+        ScholarshipProfile::where('user_id', $x->user_id)->update(['is_cert_unid' => true]);
 
         $this->assertSame(['X'], $this->namesOf($this->rowsFor(PaymentBatchType::CERT_UNID)));
         $this->assertSame([], $this->rowsFor(PaymentBatchType::NORMAL));
@@ -2610,7 +2610,7 @@ class PaymentBatchServiceTest extends TestCase
         $paid      = $this->makePaidRefrendForBatch($certBatch);
         $this->makeProfile($paid->user_id, true);
 
-        ScholarshipProfile::where('user_id', $paid->user_id)->update(['advance_payment_eligible' => false]);
+        ScholarshipProfile::where('user_id', $paid->user_id)->update(['is_cert_unid' => false]);
 
         $this->assertCount(1, $this->rowsFor(PaymentBatchType::CERT_UNID));
         $this->assertCount(0, $this->rowsFor(PaymentBatchType::NORMAL));
@@ -2629,7 +2629,7 @@ class PaymentBatchServiceTest extends TestCase
             $this->service->partitionByMethod($this->rowsFor(PaymentBatchType::CERT_UNID))[1]
         );
 
-        ScholarshipProfile::where('user_id', $cheque->user_id)->update(['advance_payment_eligible' => false]);
+        ScholarshipProfile::where('user_id', $cheque->user_id)->update(['is_cert_unid' => false]);
 
         $certRows   = $this->rowsFor(PaymentBatchType::CERT_UNID);
         $normalRows = $this->rowsFor(PaymentBatchType::NORMAL);
@@ -2655,7 +2655,7 @@ class PaymentBatchServiceTest extends TestCase
             $this->service->partitionByMethod($this->rowsFor(PaymentBatchType::NORMAL))[1]
         );
 
-        ScholarshipProfile::where('user_id', $cheque->user_id)->update(['advance_payment_eligible' => true]);
+        ScholarshipProfile::where('user_id', $cheque->user_id)->update(['is_cert_unid' => true]);
 
         $normalRows = $this->rowsFor(PaymentBatchType::NORMAL);
         $after      = $this->service->chequeSummary($this->service->partitionByMethod($normalRows)[1]);
@@ -2674,7 +2674,7 @@ class PaymentBatchServiceTest extends TestCase
         $this->assertSame(['Legacy'], $this->namesOf($this->rowsFor(PaymentBatchType::CERT_UNID)));
         $this->assertSame([], $this->rowsFor(PaymentBatchType::NORMAL));
 
-        ScholarshipProfile::where('user_id', $legacy->user_id)->update(['advance_payment_eligible' => false]);
+        ScholarshipProfile::where('user_id', $legacy->user_id)->update(['is_cert_unid' => false]);
 
         $this->assertSame(['Legacy'], $this->namesOf($this->rowsFor(PaymentBatchType::NORMAL)));
         $this->assertSame([], $this->rowsFor(PaymentBatchType::CERT_UNID));

@@ -24,7 +24,7 @@ class ScholarshipProfileEndpointTest extends TestCase
         ]);
     }
 
-    // NOTE: the `advance_payment_eligible` via-shared-PUT tests that used to
+    // NOTE: the `is_cert_unid` via-shared-PUT tests that used to
     // live here were relocated to ScholarshipProfileConfigEndpointTest.php
     // (sdd/scholarship-profile-config-to-admin design D3/D9) — that field is
     // now only writable via the admin-gated
@@ -408,7 +408,7 @@ class ScholarshipProfileEndpointTest extends TestCase
 
     // ── Config fields prohibited on the shared endpoint (design D3) ────────
     // scholarship_type, monthly_amount, monto_apoyo, and
-    // advance_payment_eligible moved to the admin-only PUT
+    // is_cert_unid moved to the admin-only PUT
     // scholarship-profiles/{userId}/config endpoint — see
     // ScholarshipProfileConfigEndpointTest.php for the authorized-write
     // coverage of those 4 fields.
@@ -459,18 +459,18 @@ class ScholarshipProfileEndpointTest extends TestCase
     }
 
     /** @test */
-    public function update_rejects_advance_payment_eligible_as_prohibited(): void
+    public function update_rejects_is_cert_unid_as_prohibited(): void
     {
         $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
         ScholarshipProfile::factory()->create(['user_id' => $becario->id]);
 
         $response = $this->actingAs($this->admin)->putJson(
             "/api/admin/scholarship-profiles/{$becario->id}",
-            ['advance_payment_eligible' => true]
+            ['is_cert_unid' => true]
         );
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors('advance_payment_eligible');
+        $response->assertJsonValidationErrors('is_cert_unid');
     }
 
     /** @test */
@@ -516,17 +516,17 @@ class ScholarshipProfileEndpointTest extends TestCase
     }
 
     /** @test */
-    public function store_rejects_advance_payment_eligible_as_prohibited(): void
+    public function store_rejects_is_cert_unid_as_prohibited(): void
     {
         $becario = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
 
         $response = $this->actingAs($this->admin)->postJson('/api/admin/scholarship-profiles', [
             'user_id'                  => $becario->id,
-            'advance_payment_eligible' => true,
+            'is_cert_unid' => true,
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors('advance_payment_eligible');
+        $response->assertJsonValidationErrors('is_cert_unid');
     }
 
     /** @test */

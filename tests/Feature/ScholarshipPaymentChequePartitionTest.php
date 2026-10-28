@@ -164,7 +164,7 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
     public function cert_unid_cheques_split_by_the_same_batch_type_filter(): void
     {
         $cheque = $this->makeRefrend(PaymentMethod::CHEQUE, [], 'C cert');
-        ScholarshipProfile::create(['user_id' => $cheque->user_id, 'advance_payment_eligible' => true]);
+        ScholarshipProfile::create(['user_id' => $cheque->user_id, 'is_cert_unid' => true]);
 
         $this->assertSame([], $this->index('NORMAL')->json('data.cheque_rows'));
         $this->assertSame(['C cert'], array_column($this->index('CERT_UNID')->json('data.cheque_rows'), 'snapshot_name'));

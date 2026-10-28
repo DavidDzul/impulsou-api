@@ -23,11 +23,27 @@ class PaidBatchTypeOnScholarshipRefrendsMigrationTest extends TestCase
 
     private const BACKFILL_PATH = __DIR__ . '/../../../database/migrations/2026_10_28_200001_backfill_paid_batch_type_on_scholarship_refrends.php';
 
+    private const RENAME_PATH = __DIR__ . '/../../../database/migrations/2026_10_28_300000_rename_advance_payment_eligible_to_is_cert_unid_on_scholarship_profiles.php';
+
     private int $sequence = 0;
 
     private function backfill(): Migration
     {
         return require self::BACKFILL_PATH;
+    }
+
+    /**
+     * The backfill was written against the pre-rename column name (it runs
+     * before the rename on a fresh migrate), so run it with the column
+     * temporarily restored to that name.
+     */
+    private function runBackfill(): void
+    {
+        $rename = require self::RENAME_PATH;
+
+        $rename->down();
+        $this->backfill()->up();
+        $rename->up();
     }
 
     private function makeRefrend(?bool $flag, array $attributes = []): int
@@ -37,7 +53,7 @@ class PaidBatchTypeOnScholarshipRefrendsMigrationTest extends TestCase
         if ($flag !== null) {
             ScholarshipProfile::factory()->create([
                 'user_id'                  => $user->id,
-                'advance_payment_eligible' => $flag,
+                'is_cert_unid' => $flag,
             ]);
         }
 
@@ -118,7 +134,7 @@ class PaidBatchTypeOnScholarshipRefrendsMigrationTest extends TestCase
         ]);
         $unpaid = $this->makeRefrend(true);
 
-        $this->backfill()->up();
+        $this->runBackfill();
 
         $this->assertSame('CERT_UNID', $this->stamp($p1));
         $this->assertSame('NORMAL', $this->stamp($p2));
@@ -133,8 +149,8 @@ class PaidBatchTypeOnScholarshipRefrendsMigrationTest extends TestCase
         $stamped = $this->chequePaid(false, ['paid_batch_type' => 'CERT_UNID']);
         $fresh   = $this->chequePaid(true);
 
-        $this->backfill()->up();
-        $this->backfill()->up();
+        $this->runBackfill();
+        $this->runBackfill();
 
         $this->assertSame('CERT_UNID', $this->stamp($stamped));
         $this->assertSame('CERT_UNID', $this->stamp($fresh));

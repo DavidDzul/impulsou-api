@@ -18,7 +18,7 @@ use Illuminate\Database\Query\Builder;
  *
  * Partition rule (sdd/cert-unid-historial, spec R4; supersedes the original
  * batch-only freeze):
- *   (frozen IS NULL AND COALESCE(sp.advance_payment_eligible,0) = :eligible)
+ *   (frozen IS NULL AND COALESCE(sp.is_cert_unid,0) = :eligible)
  *   OR frozen = :type
  * where `frozen` is `frozenTypeSql()`: the segment a PAID row is frozen to
  * (batch-paid -> pb.batch_type; cheque-paid -> paid_batch_type stamped at
@@ -54,7 +54,7 @@ final class PaymentBatchSegmentPolicy
         [$frozen, $frozenBindings] = self::frozenTypeSql($alias);
 
         $query->whereRaw(
-            "(({$frozen} IS NULL AND COALESCE(sp.advance_payment_eligible, 0) = ?) OR {$frozen} = ?)",
+            "(({$frozen} IS NULL AND COALESCE(sp.is_cert_unid, 0) = ?) OR {$frozen} = ?)",
             array_merge($frozenBindings, [$eligible], $frozenBindings, [$type->value])
         );
     }

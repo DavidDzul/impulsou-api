@@ -75,7 +75,7 @@ class ScholarshipProfileController extends Controller
 
     /**
      * Actualiza los 4 campos de configuración de beca (scholarship_type,
-     * monthly_amount, monto_apoyo, advance_payment_eligible). Gateado por
+     * monthly_amount, monto_apoyo, is_cert_unid). Gateado por
      * el middleware `permission:ADM_EDIT_SCHOLARSHIP_PROFILE` en la ruta
      * (design D2/D9, sdd/scholarship-profile-config-to-admin). Distinto de
      * update() (que ahora prohíbe estos 4 campos, design D3).

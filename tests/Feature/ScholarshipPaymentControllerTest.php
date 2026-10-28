@@ -186,7 +186,7 @@ class ScholarshipPaymentControllerTest extends TestCase
     {
         return ScholarshipProfile::create([
             'user_id'                  => $userId,
-            'advance_payment_eligible' => $eligible,
+            'is_cert_unid' => $eligible,
         ]);
     }
 
