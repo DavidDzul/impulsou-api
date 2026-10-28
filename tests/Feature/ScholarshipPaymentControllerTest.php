@@ -1243,7 +1243,7 @@ class ScholarshipPaymentControllerTest extends TestCase
         $service         = app(PaymentBatchService::class);
         $expectedRows    = $service->rows($generation->campus, self::YEAR, self::MONTH, $generation->id);
         $expectedSummary = $service->generationSummary($expectedRows)
-            + ['telmex_without_iu_payment' => 0, 'telmex_without_iu_payment_pending_amount' => '0.00'];
+            + ['telmex_without_iu_payment' => 0];
 
         $this->assertSame($expectedSummary, $data['summary']);
         $this->assertSame(2, $data['summary']['total']);

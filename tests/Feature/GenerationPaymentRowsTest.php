@@ -11,6 +11,7 @@ use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
 use App\Models\TelmexCoverage;
 use App\Models\User;
+use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendAmountBreakdown;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -596,14 +597,11 @@ class GenerationPaymentRowsTest extends TestCase
         $this->assertTrue($this->reconciles($row));
     }
 
-    // ── NO_IU_PAYMENT with money pending from other months ──────────────────
+    // ── Pure TELMEX owing money from other months (sdd/telmex-pendiente-lote) ──
 
     /** @test */
-    public function a_no_iu_payment_row_with_pending_and_advance_shows_that_money_but_stays_out_of_the_summary(): void
+    public function a_pure_telmex_row_with_pending_and_advance_is_a_payment_row_not_no_iu_payment(): void
     {
-        $this->makeIuWithEverything();
-        $before = $this->fetch()['summary'];
-
         $telmex = $this->makePureTelmex('Pendiente Paz', [
             'amount_pending_from_previous' => 200.00,
             'advance_payment_amount'       => 50.00,
@@ -611,35 +609,80 @@ class GenerationPaymentRowsTest extends TestCase
         $data = $this->fetch();
         $row  = $this->rowFor($data, $telmex->id);
 
-        $this->assertSame('NO_IU_PAYMENT', $row['state']);
+        $this->assertSame('PENDING', $row['state']);
         $this->assertSame('250.00', $row['pending_and_advance']);
         $this->assertSame('250.00', $row['total_to_pay']);
         foreach (['beca', 'apoyo', 'pago_iu', 'temporary_increase', 'telmex_coverage', 'discounts'] as $column) {
-            $this->assertSame('0.00', $row[$column]);
+            $this->assertSame('0.00', $row[$column], "{$column} must be 0.00");
         }
         $this->assertTrue($this->reconciles($row));
 
-        $this->assertSame(1, $data['summary']['telmex_without_iu_payment']);
-        $this->assertSame('250.00', $data['summary']['telmex_without_iu_payment_pending_amount']);
-
-        $expected = $before;
-        $expected['telmex_without_iu_payment'] = 1;
-        $expected['telmex_without_iu_payment_pending_amount'] = '250.00';
-        $this->assertSame($expected, $data['summary'], 'no other summary figure may move');
+        $this->assertSame(0, $data['summary']['telmex_without_iu_payment']);
+        $this->assertSame('250.00', $data['summary']['pending_and_advance_amount']);
     }
 
     /** @test */
-    public function the_pending_amount_of_no_iu_payment_rows_sums_only_those_rows(): void
+    public function a_pure_telmex_row_owing_money_without_bank_data_is_blocked_not_no_iu_payment(): void
+    {
+        $telmex = $this->makePureTelmex('Sin Datos', ['amount_pending_from_previous' => 100.00]);
+        ScholarshipPaymentData::where('user_id', $telmex->user_id)->delete();
+
+        $row = $this->rowFor($this->fetch(), $telmex->id);
+
+        $this->assertSame('BLOCKED', $row['state']);
+        $this->assertSame('100.00', $row['total_to_pay']);
+    }
+
+    /** @test */
+    public function a_pure_telmex_row_owing_nothing_is_no_iu_payment_and_not_in_the_batch_rows(): void
+    {
+        $telmex = $this->makePureTelmex('Nada Debe', [
+            'amount_pending_from_previous' => 0,
+            'advance_payment_amount'       => 0,
+        ]);
+        $data = $this->fetch();
+
+        $this->assertSame('NO_IU_PAYMENT', $this->rowFor($data, $telmex->id)['state']);
+        $this->assertSame(1, $data['summary']['telmex_without_iu_payment']);
+        $this->assertSame(
+            [],
+            app(PaymentBatchService::class)->rows(self::CAMPUS, self::YEAR, self::MONTH, $this->generation->id)
+        );
+    }
+
+    /** @test */
+    public function every_telmex_fixture_is_in_exactly_one_of_batch_rows_or_no_iu_payment(): void
     {
         $this->makePureTelmex('Uno', ['amount_pending_from_previous' => 100.00]);
         $this->makePureTelmex('Dos', ['advance_payment_amount' => 30.50]);
         $this->makePureTelmex('Tres');
-        $this->makeRefrend(['amount_pending_from_previous' => 999.00]); // payment row
+        $this->makeTelmexWithIncrease('Cuatro');
+        $this->makeTelmexIuWithCoverage('Cinco');
+        $this->makeRefrend(['snapshot_name' => 'Seis']);
+
+        $data      = $this->fetch();
+        $batchRows = app(PaymentBatchService::class)->rows(self::CAMPUS, self::YEAR, self::MONTH, $this->generation->id);
+        $batchIds  = array_column($batchRows, 'refrend_id');
+        $noIuIds   = array_column(
+            array_filter($data['rows'], fn ($r) => $r['state'] === 'NO_IU_PAYMENT'),
+            'refrend_id'
+        );
+
+        $this->assertSame([], array_intersect($batchIds, $noIuIds));
+        $this->assertCount(6, array_unique(array_merge($batchIds, $noIuIds)));
+        $this->assertCount(1, $noIuIds);
+    }
+
+    /** @test */
+    public function the_summary_no_longer_exposes_the_no_iu_pending_amount(): void
+    {
+        $this->makePureTelmex('Uno', ['amount_pending_from_previous' => 100.00]);
+        $this->makePureTelmex('Tres');
 
         $summary = $this->fetch()['summary'];
 
-        $this->assertSame(3, $summary['telmex_without_iu_payment']);
-        $this->assertSame('130.50', $summary['telmex_without_iu_payment_pending_amount']);
+        $this->assertArrayNotHasKey('telmex_without_iu_payment_pending_amount', $summary);
+        $this->assertArrayHasKey('telmex_without_iu_payment', $summary);
     }
 
     /** @test */
@@ -651,6 +694,6 @@ class GenerationPaymentRowsTest extends TestCase
         $this->assertSame('0.00', $data['summary']['temporary_increase_amount']);
         $this->assertSame('0.00', $data['summary']['pending_and_advance_amount']);
         $this->assertSame(0, $data['summary']['telmex_without_iu_payment']);
-        $this->assertSame('0.00', $data['summary']['telmex_without_iu_payment_pending_amount']);
+        $this->assertArrayNotHasKey('telmex_without_iu_payment_pending_amount', $data['summary']);
     }
 }

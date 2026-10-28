@@ -4,6 +4,7 @@ namespace App\Services\Scholarship;
 
 use App\Enums\ScholarshipType;
 use App\Models\ScholarshipRefrend;
+use App\Support\Scholarship\TelmexPaymentPolicy;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -13,9 +14,11 @@ use Illuminate\Support\Facades\DB;
  *
  * It composes PaymentBatchService instead of changing rows(): the batch flow
  * (Lotes de pago) keeps Filter A untouched, while this report additionally
- * lists the pure TELMEX refrends Filter A drops as NO_IU_PAYMENT rows. Those
- * rows never reach generationSummary(), so they cannot affect any figure; only
- * their count is added to the summary.
+ * lists the pure TELMEX refrends Filter A drops (no increase, no coverage and
+ * nothing owed) as NO_IU_PAYMENT rows. Those rows never reach
+ * generationSummary(), so they cannot affect any figure; only their count is
+ * added to the summary. A pure TELMEX refrend that owes pending/advance money
+ * is a batch candidate and comes through rows() like any other refrend.
  */
 class GenerationPaymentReport
 {
@@ -44,12 +47,6 @@ class GenerationPaymentReport
 
         $summary = $this->batches->generationSummary($batchRows);
         $summary['telmex_without_iu_payment'] = count($noIuRows);
-        // Money still pending/advanced on those rows. It is NOT part of any
-        // other figure, but it is real: Filter A keeps these refrends out of
-        // the payment batch, so surfacing it avoids hiding an unpaid balance.
-        $summary['telmex_without_iu_payment_pending_amount'] = self::money(
-            array_sum(array_map(fn (array $row) => self::cents($row['total_to_pay']), $noIuRows))
-        );
 
         $rows = array_merge(
             array_map(fn (array $row) => $this->paymentRow($row), $batchRows),
@@ -119,14 +116,13 @@ class GenerationPaymentReport
 
     /**
      * Pure TELMEX refrends dropped by Filter A (no active increase, no
-     * coverage) for the same campus/period/generation, minus Filter C's
-     * excluded resolutions. The conditions are the exact negation of
-     * TelmexPaymentPolicy::applyBatchCandidacy().
+     * coverage, nothing owed) for the same campus/period/generation, minus
+     * Filter C's excluded resolutions. The Filter A negation comes from
+     * TelmexPaymentPolicy::applyNonCandidacy(), so the two can never drift.
      *
-     * Every money column is 0.00 (nothing is paid for the month itself)
-     * EXCEPT pending_and_advance/total_to_pay: such a refrend can still carry
-     * amount_pending_from_previous or advance_payment_amount, and hiding it
-     * would misreport what the becario is owed.
+     * Every money column is 0.00: by definition these refrends owe nothing
+     * (pending + advance <= 0), so pending_and_advance/total_to_pay are kept
+     * only for row-shape compatibility.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -138,21 +134,11 @@ class GenerationPaymentReport
             ->where('r.period_year', $year)
             ->where('r.period_month', $month)
             ->where('r.snapshot_generation_id', $generationId)
-            ->where('r.snapshot_scholarship_type', ScholarshipType::TELMEX->value)
-            ->whereNull('r.snapshot_telmex_coverage_id')
-            ->where(fn ($q) => $q->whereNull('r.snapshot_temporary_increase_amount')
-                ->orWhere('r.snapshot_temporary_increase_amount', '<=', 0))
+            ->tap(fn ($q) => TelmexPaymentPolicy::applyNonCandidacy($q, 'r'))
             ->where(fn ($q) => $q->whereNull('r.resolution_type')
                 ->orWhereNotIn('r.resolution_type', ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS))
-            ->get([
-                'r.id as refrend_id', 'r.user_id', 'r.snapshot_name', 'u.enrollment',
-                'r.amount_pending_from_previous', 'r.advance_payment_amount',
-            ])
+            ->get(['r.id as refrend_id', 'r.user_id', 'r.snapshot_name', 'u.enrollment'])
             ->map(function ($r) {
-                $pendingAndAdvance = self::money(
-                    self::cents($r->amount_pending_from_previous) + self::cents($r->advance_payment_amount)
-                );
-
                 return [
                     'refrend_id'          => $r->refrend_id,
                     'user_id'             => $r->user_id,
@@ -165,8 +151,8 @@ class GenerationPaymentReport
                     'temporary_increase'  => '0.00',
                     'telmex_coverage'     => '0.00',
                     'discounts'           => '0.00',
-                    'pending_and_advance' => $pendingAndAdvance,
-                    'total_to_pay'        => $pendingAndAdvance,
+                    'pending_and_advance' => '0.00',
+                    'total_to_pay'        => '0.00',
                     'state'               => self::STATE_NO_IU_PAYMENT,
                 ];
             })
