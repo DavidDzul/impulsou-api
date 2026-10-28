@@ -34,10 +34,12 @@ final class TelmexPaymentPolicy
     /**
      * Filter A, per-object shape — consumed by
      * `PaymentReadinessEvaluator::evaluate()`'s `TELMEX_NOT_PAYABLE` guard.
-     * A pure TELMEX row without a currently active temporary increase AND
-     * without an active Telmex coverage (sdd/telmex-cobertura-iu, design D1)
-     * is never a payment-batch candidate (it has nothing payable). Every
-     * other type/increase/coverage combination is a candidate.
+     * A pure TELMEX row is a candidate only when it has something payable:
+     * a currently active temporary increase, an active Telmex coverage
+     * (sdd/telmex-cobertura-iu, design D1), OR owed money — pending from
+     * previous periods plus advance > 0 (sdd/telmex-pendiente-lote). A pure
+     * TELMEX row with none of the four has nothing payable and is never a
+     * candidate. Every non-TELMEX type is always a candidate.
      *
      * $coverageId mirrors `ScholarshipRefrend::snapshot_telmex_coverage_id`:
      * any non-null value (int or numeric string — both shapes occur across
@@ -45,12 +47,22 @@ final class TelmexPaymentPolicy
      * fell inside an active coverage window at generation time, so the
      * covered amount already embedded in `final_amount` (PR1, design D3) is
      * real money IU owes — candidacy must follow.
+     *
+     * $pending / $advance mirror `amount_pending_from_previous` and
+     * `advance_payment_amount` (null-safe, int/float/decimal-string alike);
+     * omitting them means "owes nothing", so older callers are unchanged.
      */
-    public static function isBatchCandidate(mixed $type, mixed $increase, mixed $coverageId = null): bool
-    {
+    public static function isBatchCandidate(
+        mixed $type,
+        mixed $increase,
+        mixed $coverageId = null,
+        mixed $pending = null,
+        mixed $advance = null
+    ): bool {
         return self::type($type) !== ScholarshipType::TELMEX->value
             || (float) ($increase ?? 0) > 0
-            || $coverageId !== null;
+            || $coverageId !== null
+            || ((float) ($pending ?? 0) + (float) ($advance ?? 0)) > 0;
     }
 
     /**
@@ -60,15 +72,42 @@ final class TelmexPaymentPolicy
      * surrounding AND chain of batch-key `where()`s. `NULL > 0` evaluates
      * falsy in SQL, so no `COALESCE` is needed for the increase column.
      * `orWhereNotNull` (sdd/telmex-cobertura-iu, design) mirrors the
-     * per-object `$coverageId !== null` check above.
+     * per-object `$coverageId !== null` check above; the owed-money branch
+     * (sdd/telmex-pendiente-lote) mirrors `$pending + $advance > 0` and
+     * needs `COALESCE` because the sum of two NULLs is NULL.
      */
     public static function applyBatchCandidacy(Builder $query, string $alias): void
     {
         $query->where(function (Builder $where) use ($alias) {
             $where->where("{$alias}.snapshot_scholarship_type", '!=', ScholarshipType::TELMEX->value)
                 ->orWhere("{$alias}.snapshot_temporary_increase_amount", '>', 0)
-                ->orWhereNotNull("{$alias}.snapshot_telmex_coverage_id");
+                ->orWhereNotNull("{$alias}.snapshot_telmex_coverage_id")
+                ->orWhereRaw(self::owedSql($alias) . ' > 0');
         });
+    }
+
+    /**
+     * Exact SQL negation of `applyBatchCandidacy()`: pure TELMEX rows that
+     * are NOT payment-batch candidates (no active increase, no coverage,
+     * nothing owed). Consumed by `GenerationPaymentReport::noIuPaymentRows()`
+     * so the NO_IU_PAYMENT classification can never drift from candidacy.
+     */
+    public static function applyNonCandidacy(Builder $query, string $alias): void
+    {
+        $query->where("{$alias}.snapshot_scholarship_type", ScholarshipType::TELMEX->value)
+            ->where(fn (Builder $where) => $where->whereNull("{$alias}.snapshot_temporary_increase_amount")
+                ->orWhere("{$alias}.snapshot_temporary_increase_amount", '<=', 0))
+            ->whereNull("{$alias}.snapshot_telmex_coverage_id")
+            ->whereRaw(self::owedSql($alias) . ' <= 0');
+    }
+
+    /**
+     * Owed money for this refrend (pending from previous periods plus
+     * advance). `$alias` is an internal literal, never user input.
+     */
+    private static function owedSql(string $alias): string
+    {
+        return "(COALESCE({$alias}.amount_pending_from_previous, 0) + COALESCE({$alias}.advance_payment_amount, 0))";
     }
 
     /**

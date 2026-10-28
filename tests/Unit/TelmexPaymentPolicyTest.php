@@ -184,6 +184,62 @@ class TelmexPaymentPolicyTest extends TestCase
         $this->assertTrue($stringResult);
     }
 
+    // ── sdd/telmex-pendiente-lote — owed money (pending/advance) candidacy ──
+
+    /** @test */
+    public function pure_telmex_with_pending_only_is_a_candidate(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, null, 100, 0));
+    }
+
+    /** @test */
+    public function pure_telmex_with_advance_only_is_a_candidate(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, null, 0, 50));
+    }
+
+    /** @test */
+    public function pure_telmex_with_pending_and_advance_is_a_candidate(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, null, null, 100, 50));
+    }
+
+    /** @test */
+    public function pure_telmex_with_string_decimal_owed_is_a_candidate(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, '0.00', null, '100.00', '0.00'));
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, '0.00', null, '0.00', '0.01'));
+    }
+
+    /** @test */
+    public function pure_telmex_with_zero_or_null_owed_is_not_a_candidate(): void
+    {
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, null, 0, 0));
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, null, null, null));
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, null, '0.00', '0.00'));
+    }
+
+    /** @test */
+    public function pure_telmex_with_offsetting_owed_is_not_a_candidate(): void
+    {
+        // owed is the SUM; a net-zero sum owes nothing.
+        $this->assertFalse(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, null, -50, 50));
+    }
+
+    /** @test */
+    public function telmex_with_increase_or_coverage_stays_a_candidate_with_zero_owed(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 500, null, 0, 0));
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX->value, 0, 5, 0, 0));
+    }
+
+    /** @test */
+    public function iu_and_telmex_iu_stay_candidates_with_zero_owed(): void
+    {
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::IU->value, 0, null, 0, 0));
+        $this->assertTrue(TelmexPaymentPolicy::isBatchCandidate(ScholarshipType::TELMEX_IU->value, 0, null, 0, 0));
+    }
+
     /** @test */
     public function iu_and_telmex_iu_candidacy_are_unaffected_by_a_null_coverage_id(): void
     {
