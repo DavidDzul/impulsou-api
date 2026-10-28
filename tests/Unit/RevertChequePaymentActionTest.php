@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Actions\Scholarship\MarkChequePaidAction;
 use App\Actions\Scholarship\RevertChequePaymentAction;
+use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -187,6 +188,36 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertNull($reverted->cheque_delivered_at);
         $this->assertNull($reverted->cheque_notes);
         $this->assertNull($reverted->payment_batch_id);
+    }
+
+    /** @test */
+    public function revert_clears_the_paid_batch_type_stamp_and_logs_old_and_new_values(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->makeProfile($refrend, ['advance_payment_eligible' => true]);
+        $paid = $this->markPaid($refrend);
+        $this->assertSame(PaymentBatchType::CERT_UNID, $paid->paid_batch_type);
+
+        $reverted = $this->revert($paid);
+
+        $this->assertNull($reverted->paid_batch_type);
+        $log = ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)
+            ->where('action', 'CHEQUE_PAYMENT_REVERTED')->sole();
+        $this->assertSame('CERT_UNID', $log->old_values['paid_batch_type']);
+        $this->assertNull($log->new_values['paid_batch_type']);
+    }
+
+    /** @test */
+    public function re_marking_after_a_flag_flip_stamps_the_new_flag(): void
+    {
+        $refrend = $this->makeRefrend();
+        $profile = $this->makeProfile($refrend, ['advance_payment_eligible' => true]);
+        $this->revert($this->markPaid($refrend));
+
+        $profile->update(['advance_payment_eligible' => false]);
+        $again = $this->markPaid($refrend->fresh());
+
+        $this->assertSame(PaymentBatchType::NORMAL, $again->paid_batch_type);
     }
 
     /** @test */

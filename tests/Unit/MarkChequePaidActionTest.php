@@ -4,12 +4,14 @@ namespace Tests\Unit;
 
 use App\Actions\Scholarship\MarkChequePaidAction;
 use App\Actions\Scholarship\RevertChequePaymentAction;
+use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Exceptions\ChequePaymentException;
 use App\Models\ScholarshipPaymentData;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
 use App\Models\User;
@@ -102,6 +104,73 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('A123', $refrend->cheque_number);
         $this->assertSame('2026-05-10', $refrend->cheque_delivered_at->toDateString());
         $this->assertSame('Entregado en ventanilla', $refrend->cheque_notes);
+    }
+
+    // -- paid_batch_type stamp (sdd/cert-unid-historial R2, R8) --------------
+
+    private function setFlag(ScholarshipRefrend $r, bool $flag): void
+    {
+        ScholarshipProfile::factory()->create([
+            'user_id'                  => $r->user_id,
+            'advance_payment_eligible' => $flag,
+        ]);
+    }
+
+    /** @test */
+    public function stamps_cert_unid_when_the_profile_flag_is_on(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->setFlag($refrend, true);
+
+        $this->mark($refrend);
+
+        $this->assertSame(PaymentBatchType::CERT_UNID, $refrend->fresh()->paid_batch_type);
+    }
+
+    /** @test */
+    public function stamps_normal_when_the_profile_flag_is_off(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->setFlag($refrend, false);
+
+        $this->mark($refrend);
+
+        $this->assertSame(PaymentBatchType::NORMAL, $refrend->fresh()->paid_batch_type);
+    }
+
+    /** @test */
+    public function stamps_normal_when_there_is_no_profile(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $this->mark($refrend);
+
+        $this->assertSame(PaymentBatchType::NORMAL, $refrend->fresh()->paid_batch_type);
+    }
+
+    /** @test */
+    public function the_stamp_is_recorded_in_the_cheque_paid_log_and_money_is_untouched(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->setFlag($refrend, true);
+
+        $this->mark($refrend);
+
+        $log = ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)->where('action', 'CHEQUE_PAID')->sole();
+        $this->assertSame('CERT_UNID', $log->new_values['paid_batch_type']);
+        $this->assertEquals('1000.00', $refrend->fresh()->final_amount);
+        $this->assertNull($refrend->fresh()->payment_batch_id);
+    }
+
+    /** @test */
+    public function a_rejected_mark_leaves_the_stamp_null(): void
+    {
+        $refrend = $this->makeRefrend([], false);
+        $this->setFlag($refrend, true);
+
+        $this->failure(fn () => $this->mark($refrend));
+
+        $this->assertNull($refrend->fresh()->paid_batch_type);
     }
 
     // ── Duplicate cheque number (review L3) ─────────────────────────────────

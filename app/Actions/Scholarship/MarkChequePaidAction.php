@@ -2,10 +2,12 @@
 
 namespace App\Actions\Scholarship;
 
+use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Exceptions\ChequePaymentException;
 use App\Models\ScholarshipPaymentData;
+use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Services\Scholarship\PaymentReadinessEvaluator;
 use App\Services\ScholarshipLoggingService;
@@ -111,6 +113,11 @@ class MarkChequePaidAction
                 throw ChequePaymentException::chequeNumberTaken();
             }
 
+            // Freeze the segment at payment time (sdd/cert-unid-historial R2):
+            // a later flag flip must not move this paid cheque between tabs.
+            $isCertUnid = (bool) ScholarshipProfile::where('user_id', $refrend->user_id)
+                ->value('advance_payment_eligible');
+
             $old = $this->logging->snapshotRefrend($refrend);
 
             $refrend->update([
@@ -119,6 +126,7 @@ class MarkChequePaidAction
                 'locked_at'           => now(),
                 'locked_by_id'        => $userId,
                 'paid_payment_method' => PaymentMethod::CHEQUE->value,
+                'paid_batch_type'     => PaymentBatchType::forCertUnidFlag($isCertUnid)->value,
                 'cheque_number'       => $chequeNumber,
                 'cheque_delivered_at' => $deliveredAt ?? now()->toDateString(),
                 'cheque_notes'        => $notes,
@@ -132,6 +140,7 @@ class MarkChequePaidAction
                 $old,
                 $this->logging->snapshotRefrend($refrend) + [
                     'paid_payment_method' => PaymentMethod::CHEQUE->value,
+                    'paid_batch_type'     => $refrend->paid_batch_type?->value,
                     'cheque_number'       => $refrend->cheque_number,
                     'cheque_delivered_at' => $refrend->cheque_delivered_at?->toDateString(),
                     'cheque_notes'        => $refrend->cheque_notes,

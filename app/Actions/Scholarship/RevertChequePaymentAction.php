@@ -72,6 +72,7 @@ class RevertChequePaymentAction
                 'locked_at'           => null,
                 'locked_by_id'        => null,
                 'paid_payment_method' => null,
+                'paid_batch_type'     => null,
                 'cheque_number'       => null,
                 'cheque_delivered_at' => null,
                 'cheque_notes'        => null,
@@ -128,6 +129,7 @@ class RevertChequePaymentAction
     {
         return [
             'paid_payment_method' => $refrend->paid_payment_method?->value,
+            'paid_batch_type'     => $refrend->paid_batch_type?->value,
             'cheque_number'       => $refrend->cheque_number,
             'cheque_delivered_at' => $refrend->cheque_delivered_at?->toDateString(),
             'cheque_notes'        => $refrend->cheque_notes,
