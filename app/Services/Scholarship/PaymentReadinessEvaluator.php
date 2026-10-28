@@ -3,6 +3,7 @@
 namespace App\Services\Scholarship;
 
 use App\Enums\PaymentMethod;
+use App\Support\Scholarship\RefrendPayableTotal;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use BackedEnum;
 
@@ -14,8 +15,9 @@ use BackedEnum;
  * sites share identical rules — never two parallel implementations (design
  * brief requirement, sdd/becario-payment-file-generation/design).
  *
- * Absorbs the WITHHELD && final_amount <= 0 rule that previously lived
- * inline in ScholarshipRefrendController::bulkPay() (lines 562-594).
+ * Absorbs the WITHHELD && nothing-to-pay rule that previously lived inline
+ * in ScholarshipRefrendController::bulkPay() (lines 562-594). Nothing to pay
+ * means final_amount + pending + advance <= 0 (RefrendPayableTotal).
  *
  * PR3 (sdd/becario-payment-bank-file-export/design D2) injects
  * BankDataValidator so account-number/RFC structural rules are enforced
@@ -31,7 +33,9 @@ class PaymentReadinessEvaluator
     /**
      * @param object $refrendRow Duck-typed row exposing workflow_status,
      *                           locked_at, payment_batch_id, status, and
-     *                           final_amount. Works with a stdClass from a
+     *                           final_amount (amount_pending_from_previous and
+     *                           advance_payment_amount are optional, null-safe).
+     *                           Works with a stdClass from a
      *                           DB::table() row or an Eloquent
      *                           ScholarshipRefrend model (enum-cast
      *                           attributes are unwrapped via statusValue()).
@@ -78,7 +82,13 @@ class PaymentReadinessEvaluator
             $reasons[] = ['code' => 'MISSING_PAYMENT_DATA', 'message' => 'Sin datos de pago registrados'];
         }
 
-        if ($this->statusValue($refrendRow->status) === 'WITHHELD' && (float) $refrendRow->final_amount <= 0) {
+        // Nothing to pay means the REAL payable total is <= 0
+        // (final_amount + pending + advance, via the shared helper) — a
+        // WITHHELD row with final_amount = 0 can still owe pending/advance
+        // money (sdd/telmex-pendiente-lote).
+        $payableTotal = RefrendPayableTotal::of($refrendRow);
+
+        if ($this->statusValue($refrendRow->status) === 'WITHHELD' && (float) $payableTotal <= 0) {
             $reasons[] = ['code' => 'NOTHING_TO_PAY', 'message' => 'Monto retenido sin saldo por pagar'];
         }
 
@@ -87,13 +97,17 @@ class PaymentReadinessEvaluator
         // PaymentBatchService::rows()'s SQL-level exclusion for the
         // BulkPayAction re-check under the row lock. `??` null-coalescing
         // keeps this evaluator safe for any caller/fixture that omits these
-        // three columns (e.g. existing tests built before this change).
+        // five columns (e.g. existing tests built before this change).
+        // Owed money (pending + advance, sdd/telmex-pendiente-lote) also
+        // makes a pure TELMEX row a candidate.
         if (!TelmexPaymentPolicy::isBatchCandidate(
             $refrendRow->snapshot_scholarship_type ?? null,
             $refrendRow->snapshot_temporary_increase_amount ?? null,
-            $refrendRow->snapshot_telmex_coverage_id ?? null
+            $refrendRow->snapshot_telmex_coverage_id ?? null,
+            $refrendRow->amount_pending_from_previous ?? null,
+            $refrendRow->advance_payment_amount ?? null
         )) {
-            $reasons[] = ['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal ni cobertura IU vigente'];
+            $reasons[] = ['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal, cobertura IU ni saldo pendiente'];
         }
 
         // Bank-data structural checks (account number, RFC) are delegated to
@@ -101,13 +115,10 @@ class PaymentReadinessEvaluator
         // so this evaluator and the export-time gate share one rule set.
         // BankDataValidator also validates the payable amount, but that rule
         // is intentionally NOT merged in here: this evaluator already owns a
-        // narrower, WITHHELD-specific NOTHING_TO_PAY check above, and
-        // reusing BankDataValidator's blanket amount>0 rule would require
-        // duplicating PaymentBatchService::totalToPay()'s formula just to
-        // feed it — the one thing the design forbids (D1, "no parallel
-        // implementations" of the money formula). $refrendRow->final_amount
-        // is passed so the amount check runs against real data, but its
-        // NOTHING_TO_PAY reason (if any) is discarded below so there is
+        // narrower, WITHHELD-specific NOTHING_TO_PAY check above. The shared
+        // RefrendPayableTotal helper (the single home of the money formula)
+        // feeds the validator so the amount check runs against real data, but
+        // its NOTHING_TO_PAY reason (if any) is discarded below so there is
         // never a second, conflicting source of truth for that code.
         if ($paymentMethod === PaymentMethod::CHEQUE) {
             return [
@@ -116,7 +127,7 @@ class PaymentReadinessEvaluator
             ];
         }
 
-        foreach ($this->bankDataValidator->validate($accountNumber, $rfc, (string) $refrendRow->final_amount) as $bankDataReason) {
+        foreach ($this->bankDataValidator->validate($accountNumber, $rfc, $payableTotal) as $bankDataReason) {
             if ($bankDataReason['code'] === 'NOTHING_TO_PAY') {
                 continue;
             }

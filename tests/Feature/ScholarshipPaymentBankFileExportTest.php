@@ -648,6 +648,34 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         $this->assertCount(1, $lines, 'Only the normal IU row should be present — the pure TELMEX row without an increase stays absent, unfloored.');
     }
 
+    /** @test */
+    public function paid_pure_telmex_owing_pending_money_is_exported_at_the_owed_amount(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides' => [
+                    'snapshot_name'                      => 'Becario Telmex Con Pendiente',
+                    'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+                    'snapshot_temporary_increase_amount' => null,
+                    'final_amount'                       => 0.00,
+                    'amount_pending_from_previous'       => 100.00,
+                ],
+            ],
+        ]);
+
+        $summary = $this->actingAs($this->rootAdmin)->getJson($this->summaryUrl($batch->id));
+        $summary->assertStatus(200);
+        $this->assertSame(1, $summary->json('data.count'));
+        $this->assertSame('100.00', $summary->json('data.total_amount'));
+
+        $response = $this->actingAs($this->rootAdmin)->get($this->exportUrl($batch->id));
+        $response->assertStatus(200);
+        $lines = array_values(array_filter(explode("
+", $response->streamedContent())));
+        $this->assertCount(1, $lines);
+        $this->assertSame(10000, (int) substr($lines[0], 47, 15));
+    }
+
     /**
      * Mixed batch reconciles across all layers (spec "Mixed batch
      * reconciles across all layers" / "Cross-layer amount consistency for

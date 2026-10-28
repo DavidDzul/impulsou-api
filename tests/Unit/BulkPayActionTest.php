@@ -206,6 +206,36 @@ class BulkPayActionTest extends TestCase
     }
 
     /** @test */
+    public function pays_a_pure_telmex_refrend_that_owes_pending_money(): void
+    {
+        $refrend = $this->makePayableRefrend([
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX->value,
+            'final_amount'                 => 0.00,
+            'amount_pending_from_previous' => 100.00,
+        ]);
+
+        $result = $this->action->execute([$refrend->id], $this->admin->id);
+
+        $this->assertSame(1, $result['paid']);
+        $this->assertSame([], $result['errors']);
+        $this->assertSame(RefrendStatus::PAID, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function skips_a_pure_telmex_refrend_that_owes_nothing(): void
+    {
+        $refrend = $this->makePayableRefrend([
+            'snapshot_scholarship_type' => ScholarshipType::TELMEX->value,
+            'final_amount'              => 0.00,
+        ]);
+
+        $result = $this->action->execute([$refrend->id], $this->admin->id);
+
+        $this->assertSame(1, $result['skipped']);
+        $this->assertStringContainsString('saldo pendiente', $result['errors'][0]['reason']);
+    }
+
+    /** @test */
     public function skips_a_withheld_refrend_with_zero_final_amount(): void
     {
         $refrend = $this->makePayableRefrend([

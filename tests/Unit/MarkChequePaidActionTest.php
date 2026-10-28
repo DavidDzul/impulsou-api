@@ -319,6 +319,20 @@ class MarkChequePaidActionTest extends TestCase
     }
 
     /** @test */
+    public function marks_a_pure_telmex_row_that_owes_pending_money(): void
+    {
+        $refrend = $this->makeRefrend([
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX->value,
+            'final_amount'                 => 0.00,
+            'amount_pending_from_previous' => 100.00,
+        ]);
+
+        $paid = $this->mark($refrend);
+
+        $this->assertSame(RefrendStatus::PAID, $paid->fresh()->status);
+    }
+
+    /** @test */
     public function throws_not_found_for_an_unknown_refrend(): void
     {
         $this->expectException(ModelNotFoundException::class);

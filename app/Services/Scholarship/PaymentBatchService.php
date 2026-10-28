@@ -10,6 +10,7 @@ use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Support\Scholarship\PaymentAmountFloor;
 use App\Support\Scholarship\PaymentBatchSegmentPolicy;
+use App\Support\Scholarship\RefrendPayableTotal;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use Illuminate\Support\Facades\DB;
 
@@ -171,8 +172,8 @@ class PaymentBatchService
         }
 
         // Filter A (sdd/scholarship-telmex-iu-split, design D1/D3): a pure
-        // TELMEX row without a currently active temporary increase has
-        // nothing payable and is not a batch candidate at all.
+        // TELMEX row without an active increase, active coverage or owed money
+        // (pending + advance > 0) has nothing payable and is not a candidate.
         TelmexPaymentPolicy::applyBatchCandidacy($query, 'r');
 
         // Filter D (sdd/pagos-lote-pago-adelantado, design "Filter location"):
@@ -901,7 +902,8 @@ class PaymentBatchService
     }
 
     /**
-     * Reuses RefrendBulkQueryService's exact existing formula
+     * Delegates to RefrendPayableTotal (sdd/telmex-pendiente-lote D4), which
+     * holds RefrendBulkQueryService's exact existing formula
      * (final_amount + amount_pending_from_previous
      * + advance_payment_amount), formatted the same way
      * ScholarshipRefrend::getTotalToPayAttribute() does — as a decimal
@@ -918,13 +920,6 @@ class PaymentBatchService
      */
     private function totalToPay(object $row): string
     {
-        return number_format(
-            (float) $row->final_amount
-            + (float) ($row->amount_pending_from_previous ?? 0)
-            + (float) ($row->advance_payment_amount ?? 0),
-            2,
-            '.',
-            ''
-        );
+        return RefrendPayableTotal::of($row);
     }
 }

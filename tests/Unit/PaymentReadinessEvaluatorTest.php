@@ -366,7 +366,7 @@ class PaymentReadinessEvaluatorTest extends TestCase
         $this->assertFalse($result['is_payable']);
         $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
         $this->assertSame(
-            'Beca Telmex sin aumento temporal ni cobertura IU vigente',
+            'Beca Telmex sin aumento temporal, cobertura IU ni saldo pendiente',
             $result['blocking_reasons'][array_search('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'), true)]['message']
         );
     }
@@ -457,6 +457,132 @@ class PaymentReadinessEvaluatorTest extends TestCase
 
         $this->assertFalse($result['is_payable']);
         $this->assertContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
+    }
+
+    // -- sdd/telmex-pendiente-lote: owed money (pending / advance) ---------
+
+    /** @test */
+    public function pure_telmex_with_pending_money_is_payable(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'          => 'TELMEX',
+            'snapshot_temporary_increase_amount' => null,
+            'final_amount'                       => 0,
+            'amount_pending_from_previous'       => 100,
+            'advance_payment_amount'             => 0,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertNotContains('TELMEX_NOT_PAYABLE', array_column($result['blocking_reasons'], 'code'));
+    }
+
+    /** @test */
+    public function pure_telmex_with_advance_money_is_payable(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'    => 'TELMEX',
+            'final_amount'                 => 0,
+            'amount_pending_from_previous' => null,
+            'advance_payment_amount'       => 50,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertTrue($result['is_payable']);
+    }
+
+    /** @test */
+    public function pure_telmex_owing_nothing_is_blocked_with_the_new_message(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'    => 'TELMEX',
+            'final_amount'                 => 0,
+            'amount_pending_from_previous' => 0,
+            'advance_payment_amount'       => 0,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        $this->assertSame(
+            [['code' => 'TELMEX_NOT_PAYABLE', 'message' => 'Beca Telmex sin aumento temporal, cobertura IU ni saldo pendiente']],
+            $result['blocking_reasons']
+        );
+    }
+
+    /** @test */
+    public function pure_telmex_owing_money_without_bank_data_is_blocked_by_missing_data_only(): void
+    {
+        $row = $this->makeRow([
+            'snapshot_scholarship_type'    => 'TELMEX',
+            'final_amount'                 => 0,
+            'amount_pending_from_previous' => 100,
+        ]);
+
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: false, accountNumber: null, rfc: null);
+
+        $codes = array_column($result['blocking_reasons'], 'code');
+        $this->assertFalse($result['is_payable']);
+        $this->assertContains('MISSING_PAYMENT_DATA', $codes);
+        $this->assertNotContains('TELMEX_NOT_PAYABLE', $codes);
+        $this->assertNotContains('NOTHING_TO_PAY', $codes);
+    }
+
+    // -- sdd/telmex-pendiente-lote: NOTHING_TO_PAY uses the real owed total --
+
+    private function withheldCodes(array $overrides): array
+    {
+        $row = $this->makeRow(array_merge(['status' => 'WITHHELD'], $overrides));
+        $result = $this->evaluate($row, hasEnrollment: true, hasPaymentData: true);
+
+        return array_column($result['blocking_reasons'], 'code');
+    }
+
+    /** @test */
+    public function withheld_with_zero_final_but_pending_money_is_not_nothing_to_pay(): void
+    {
+        $this->assertNotContains('NOTHING_TO_PAY', $this->withheldCodes([
+            'final_amount' => 0, 'amount_pending_from_previous' => 80, 'advance_payment_amount' => 0,
+        ]));
+    }
+
+    /** @test */
+    public function withheld_with_zero_final_but_advance_money_is_not_nothing_to_pay(): void
+    {
+        $this->assertNotContains('NOTHING_TO_PAY', $this->withheldCodes([
+            'final_amount' => 0, 'amount_pending_from_previous' => 0, 'advance_payment_amount' => 30,
+        ]));
+    }
+
+    /** @test */
+    public function withheld_with_nothing_owed_at_all_is_nothing_to_pay_exactly_once(): void
+    {
+        $codes = $this->withheldCodes([
+            'final_amount' => 0, 'amount_pending_from_previous' => 0, 'advance_payment_amount' => 0,
+        ]);
+
+        $this->assertSame(['NOTHING_TO_PAY'], $codes);
+    }
+
+    /** @test */
+    public function withheld_with_offsetting_amounts_totalling_zero_is_nothing_to_pay(): void
+    {
+        $this->assertContains('NOTHING_TO_PAY', $this->withheldCodes([
+            'final_amount' => -50, 'amount_pending_from_previous' => 50, 'advance_payment_amount' => 0,
+        ]));
+    }
+
+    /** @test */
+    public function withheld_with_positive_final_is_not_nothing_to_pay(): void
+    {
+        $this->assertNotContains('NOTHING_TO_PAY', $this->withheldCodes(['final_amount' => 100]));
+    }
+
+    /** @test */
+    public function withheld_row_lacking_pending_and_advance_props_is_nothing_to_pay_without_error(): void
+    {
+        $this->assertContains('NOTHING_TO_PAY', $this->withheldCodes(['final_amount' => 0]));
     }
 
     // -- sdd/pago-cheque PR2: payment method -----------------------------

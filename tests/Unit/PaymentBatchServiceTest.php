@@ -1104,6 +1104,69 @@ class PaymentBatchServiceTest extends TestCase
     }
 
     /** @test */
+    public function pure_telmex_owing_pending_and_advance_is_present_at_their_sum(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'          => ScholarshipType::TELMEX->value,
+            'snapshot_temporary_increase_amount' => null,
+            'final_amount'                       => 0.00,
+            'amount_pending_from_previous'       => 100.00,
+            'advance_payment_amount'             => 50.00,
+        ]);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows, 'sdd/telmex-pendiente-lote: owed money makes a pure TELMEX row a candidate.');
+        $this->assertSame('150.00', $rows[0]['total_to_pay']);
+        $this->assertTrue($rows[0]['is_payable']);
+        $this->assertSame('pending', $this->service->partitionGroup($rows[0]));
+    }
+
+    /** @test */
+    public function pure_telmex_owing_money_without_payment_data_is_listed_as_blocked(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX->value,
+            'final_amount'                 => 0.00,
+            'amount_pending_from_previous' => 100.00,
+        ], [], false);
+
+        $rows = $this->rows();
+
+        $this->assertCount(1, $rows);
+        $this->assertFalse($rows[0]['is_payable']);
+        $this->assertSame('blocked', $this->service->partitionGroup($rows[0]));
+        $this->assertNotContains('TELMEX_NOT_PAYABLE', array_column($rows[0]['blocking_reasons'], 'code'));
+    }
+
+    /** @test */
+    public function pure_telmex_owing_money_routes_by_advance_payment_eligibility(): void
+    {
+        $refrend = $this->makeReadyRefrend([
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX->value,
+            'final_amount'                 => 0.00,
+            'amount_pending_from_previous' => 100.00,
+        ]);
+        $this->makeProfile($refrend->user_id, true);
+
+        $this->assertCount(0, $this->rowsFor(PaymentBatchType::NORMAL));
+        $this->assertCount(1, $this->rowsFor(PaymentBatchType::CERT_UNID));
+    }
+
+    /** @test */
+    public function pure_telmex_owing_nothing_stays_absent_from_rows_even_with_zero_columns(): void
+    {
+        $this->makeReadyRefrend([
+            'snapshot_scholarship_type'    => ScholarshipType::TELMEX->value,
+            'final_amount'                 => 0.00,
+            'amount_pending_from_previous' => 0,
+            'advance_payment_amount'       => 0,
+        ]);
+
+        $this->assertCount(0, $this->rows());
+    }
+
+    /** @test */
     public function telmex_iu_is_always_a_candidate_in_rows_regardless_of_increase(): void
     {
         $this->makeReadyRefrend([

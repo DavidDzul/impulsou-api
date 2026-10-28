@@ -136,7 +136,7 @@ class RecordPaymentSituationAction
         }
 
         // Re-recording over a RETENIDA leaves status WITHHELD, which blocks later
-        // payments (PaymentReadinessEvaluator NOTHING_TO_PAY). Reset it unless the
+        // payments (PaymentReadinessEvaluator NOTHING_TO_PAY while the payable total is <= 0). Reset it unless the
         // new type is RETENIDA itself or a cycle cut (CANCELLED). Narrow on purpose:
         // other statuses are left alone.
         if (
