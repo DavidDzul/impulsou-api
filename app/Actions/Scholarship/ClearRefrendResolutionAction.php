@@ -3,6 +3,7 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
+use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
@@ -68,9 +69,9 @@ class ClearRefrendResolutionAction
             // Re-open the advance month settled by the resolution being undone, so no
             // stale settled_resolution_type / divergence_reason / reached_at remain.
             $advanceMonth = $refrend->advancePaymentMonth()->lockForUpdate()->first();
-            if ($advanceMonth && $advanceMonth->status !== 'PENDING') {
+            if ($advanceMonth && $advanceMonth->status !== ScholarshipAdvancePaymentMonth::STATUS_PENDING) {
                 $advanceMonth->update([
-                    'status'                  => 'PENDING',
+                    'status'                  => ScholarshipAdvancePaymentMonth::STATUS_PENDING,
                     'settled_resolution_type' => null,
                     'divergence_reason'       => null,
                     'reached_at'              => null,
