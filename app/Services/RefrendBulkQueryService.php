@@ -199,7 +199,7 @@ class RefrendBulkQueryService
         $currentRefrendIdByUser = $refrends->pluck('id', 'user_id');
         $pendingWithholdings = DB::table('scholarship_withholdings')
             ->whereIn('user_id', $userIds)
-            ->where('status', 'PENDING')
+            ->where('status', ScholarshipAdvancePaymentMonth::STATUS_PENDING)
             ->whereColumn('paid_amount', '<', 'withheld_amount')
             ->whereRaw('(period_year * 12 + period_month) between ? and ?', [$minAbsMonth, $maxAbsMonth])
             ->select(['id', 'user_id', 'origin_refrend_id', 'period_year', 'period_month', 'withheld_amount', 'paid_amount'])
@@ -384,7 +384,7 @@ class RefrendBulkQueryService
     private function activeAdvancesByOrigin(array $refrendIds): array
     {
         $headers = ScholarshipAdvancePayment::whereIn('origin_refrend_id', $refrendIds)
-            ->where('status', 'ACTIVE')
+            ->where('status', ScholarshipAdvancePayment::STATUS_ACTIVE)
             ->get();
 
         if ($headers->isEmpty()) {
@@ -401,7 +401,7 @@ class RefrendBulkQueryService
         foreach ($headers as $header) {
             $result[(int) $header->origin_refrend_id] = [
                 'id'           => (int) $header->id,
-                'status'       => 'ACTIVE',
+                'status'       => ScholarshipAdvancePayment::STATUS_ACTIVE,
                 'months_count' => (int) $header->months_count,
                 'total_amount' => number_format((float) $header->total_amount, 2, '.', ''),
                 'months'       => ($months->get($header->id) ?? collect())

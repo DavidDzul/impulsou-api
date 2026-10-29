@@ -134,7 +134,7 @@ class AdvanceRevertEligibility
             return AdvancePaymentException::ADVANCE_ORIGIN_LOCKED;
         }
 
-        if ($months->contains(fn (ScholarshipAdvancePaymentMonth $m) => $m->status !== 'PENDING')) {
+        if ($months->contains(fn (ScholarshipAdvancePaymentMonth $m) => $m->status !== ScholarshipAdvancePaymentMonth::STATUS_PENDING)) {
             return AdvancePaymentException::ADVANCE_MONTH_SETTLED;
         }
 
@@ -166,8 +166,8 @@ class AdvanceRevertEligibility
         Collection $months,
         ?ScholarshipProfile $profile
     ): bool {
-        return $header->status !== 'ACTIVE'
-            || $months->contains(fn (ScholarshipAdvancePaymentMonth $m) => $m->status === 'CANCELLED')
+        return $header->status !== ScholarshipAdvancePayment::STATUS_ACTIVE
+            || $months->contains(fn (ScholarshipAdvancePaymentMonth $m) => $m->status === ScholarshipAdvancePaymentMonth::STATUS_CANCELLED)
             || ($profile !== null && $profile->hasClosedCycle());
     }
 

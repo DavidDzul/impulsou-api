@@ -191,7 +191,7 @@ class RecordAdvancePaymentAction
                     'period_month' => $mon,
                     'amount'       => number_format($amount, 2, '.', ''),
                     'refrend_id'   => $refrend->id,
-                    'status'       => 'PENDING',
+                    'status'       => ScholarshipAdvancePaymentMonth::STATUS_PENDING,
                 ];
             }
 
@@ -202,7 +202,7 @@ class RecordAdvancePaymentAction
                 'origin_period_month' => $originRefrend->period_month,
                 'months_count'        => count($childrenData),
                 'total_amount'        => number_format($totalAmount, 2, '.', ''),
-                'status'              => 'ACTIVE',
+                'status'              => ScholarshipAdvancePayment::STATUS_ACTIVE,
                 'cause'               => $data['cause'] ?? null,
                 'notes'               => $data['notes'] ?? null,
                 'created_by_id'       => $userId,

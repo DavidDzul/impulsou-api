@@ -16,6 +16,10 @@ class ScholarshipAdvancePayment extends Model
 {
     use HasFactory;
 
+    public const STATUS_ACTIVE              = 'ACTIVE';
+    public const STATUS_PARTIALLY_CANCELLED = 'PARTIALLY_CANCELLED';
+    public const STATUS_CANCELLED           = 'CANCELLED';
+
     protected $table = 'scholarship_advance_payments';
 
     protected $fillable = [
@@ -29,15 +33,24 @@ class ScholarshipAdvancePayment extends Model
         'cause',
         'notes',
         'created_by_id',
+        'cancelled_at',
+        'cancelled_by_id',
+        'cancel_reason',
+        'cancelled_cut_refrend_id',
+        'cancelled_amount',
+        'overpaid_amount',
     ];
 
     protected $casts = [
-        'total_amount' => 'decimal:2',
+        'total_amount'     => 'decimal:2',
+        'cancelled_amount' => 'decimal:2',
+        'overpaid_amount'  => 'decimal:2',
+        'cancelled_at'     => 'datetime',
     ];
 
     public function scopeActive($query)
     {
-        return $query->where('status', 'ACTIVE');
+        return $query->where('status', self::STATUS_ACTIVE);
     }
 
     public function user(): BelongsTo
@@ -53,6 +66,16 @@ class ScholarshipAdvancePayment extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_id');
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by_id');
+    }
+
+    public function cancelledCutRefrend(): BelongsTo
+    {
+        return $this->belongsTo(ScholarshipRefrend::class, 'cancelled_cut_refrend_id');
     }
 
     public function months(): HasMany

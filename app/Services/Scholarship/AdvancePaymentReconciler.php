@@ -56,7 +56,7 @@ class AdvancePaymentReconciler
         }
 
         $advanceMonth->update([
-            'status'                  => $diverged ? 'OVERRIDDEN' : 'REACHED',
+            'status'                  => $diverged ? ScholarshipAdvancePaymentMonth::STATUS_OVERRIDDEN : ScholarshipAdvancePaymentMonth::STATUS_REACHED,
             'settled_resolution_type' => $settledResolutionType,
             'divergence_reason'       => $divergenceReason,
             'reached_at'              => now(),

@@ -17,6 +17,11 @@ class ScholarshipAdvancePaymentMonth extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING    = 'PENDING';
+    public const STATUS_REACHED    = 'REACHED';
+    public const STATUS_OVERRIDDEN = 'OVERRIDDEN';
+    public const STATUS_CANCELLED  = 'CANCELLED';
+
     protected $table = 'scholarship_advance_payment_months';
 
     protected $fillable = [
@@ -39,7 +44,7 @@ class ScholarshipAdvancePaymentMonth extends Model
 
     public function scopePending($query)
     {
-        return $query->where('status', 'PENDING');
+        return $query->where('status', self::STATUS_PENDING);
     }
 
     public function advancePayment(): BelongsTo
