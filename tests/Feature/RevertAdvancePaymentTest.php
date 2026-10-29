@@ -515,6 +515,28 @@ class RevertAdvancePaymentTest extends TestCase
     }
 
     /** @test */
+    public function it_reports_state_changed_when_a_month_is_repointed_to_another_refrend_keeping_the_count(): void
+    {
+        $f = $this->makeAdvance();
+
+        $this->swapActionWith(function () use ($f) {
+            // Same number of months, but one month now points to a different
+            // (spare) refrend: the future-refrend ID set differs.
+            $spare = $this->makeRefrend($f['origin']->user_id, 2027, 1, ['created_via' => 'ADVANCE_PAYMENT']);
+            DB::table('scholarship_advance_payment_months')
+                ->where('id', $f['months'][2]->id)
+                ->update(['refrend_id' => $spare->id]);
+        });
+
+        $this->revert($f['origin']->id)
+            ->assertStatus(422)
+            ->assertJson(['res' => false, 'code' => 'ADVANCE_STATE_CHANGED']);
+
+        $this->assertSame(1, ScholarshipAdvancePayment::count());
+        $this->assertSame(3, ScholarshipAdvancePaymentMonth::count());
+    }
+
+    /** @test */
     public function it_reports_the_specific_code_when_the_origin_gets_paid_before_the_lock(): void
     {
         $f = $this->makeAdvance();

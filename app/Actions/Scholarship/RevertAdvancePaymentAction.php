@@ -114,7 +114,7 @@ class RevertAdvancePaymentAction
     {
     }
 
-    /** @return array{header_id: int|null, months: array<int, string>, future_ids: array<int, int>} */
+    /** @return array{header_id: int|null, months: array<int, string>, month_refrends: array<int, int>, future_ids: array<int, int>} */
     private function snapshotAdvance(int $originRefrendId): array
     {
         $header = ScholarshipAdvancePayment::where('origin_refrend_id', $originRefrendId)->first();
@@ -125,12 +125,13 @@ class RevertAdvancePaymentAction
         return [
             'header_id'  => $header?->id,
             'months'     => $months->mapWithKeys(fn ($m) => [$m->id => (string) $m->status])->all(),
+            'month_refrends' => $months->mapWithKeys(fn ($m) => [$m->id => (int) $m->refrend_id])->all(),
             'future_ids' => $months->pluck('refrend_id')->filter()->map(fn ($id) => (int) $id)->sort()->values()->all(),
         ];
     }
 
     /**
-     * @param array{header_id: int|null, months: array<int, string>, future_ids: array<int, int>} $snapshot
+     * @param array{header_id: int|null, months: array<int, string>, month_refrends: array<int, int>, future_ids: array<int, int>} $snapshot
      * @param Collection<int, ScholarshipAdvancePaymentMonth> $months
      * @param Collection<int, ScholarshipRefrend> $futures
      */
@@ -149,7 +150,16 @@ class RevertAdvancePaymentAction
         $expected = $snapshot['months'];
         ksort($expected);
 
-        return $current === $expected && $futures->count() === count($snapshot['future_ids']);
+        // Month -> future refrend mapping (and therefore the future ID set):
+        // a count-only comparison would miss a repoint that keeps the size.
+        $currentRefrends = $months->mapWithKeys(fn ($m) => [$m->id => (int) $m->refrend_id])->all();
+        ksort($currentRefrends);
+        $expectedRefrends = $snapshot['month_refrends'];
+        ksort($expectedRefrends);
+
+        return $current === $expected
+            && $currentRefrends === $expectedRefrends
+            && $futures->count() === count($snapshot['future_ids']);
     }
 
     /** @param Collection<int, ScholarshipAdvancePaymentMonth> $months */
