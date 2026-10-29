@@ -12,6 +12,7 @@ use App\Actions\Scholarship\BulkPayAction;
 use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\ResolveAprobacionAction;
+use App\Exceptions\AdvancePaymentException;
 use App\Exceptions\Contracts\CarriesErrorPayload;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
@@ -495,6 +496,15 @@ class ScholarshipRefrendController extends Controller
 
         try {
             $header = app(RecordAdvancePaymentAction::class)->execute($refrend, $data, auth()->id());
+        } catch (AdvancePaymentException $e) {
+            // Must precede the generic \DomainException catch so the typed
+            // code reaches the client.
+            return response()->json([
+                'res'  => false,
+                'msg'  => $e->getMessage(),
+                'code' => $e->code(),
+                'data' => $e->payload(),
+            ], $e->httpStatus());
         } catch (\DomainException $e) {
             return response()->json(['res' => false, 'msg' => $e->getMessage()], 422);
         } catch (QueryException $e) {

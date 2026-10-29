@@ -3,6 +3,7 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendType;
+use App\Exceptions\AdvancePaymentException;
 use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipProfile;
@@ -41,6 +42,11 @@ class RecordAdvancePaymentAction
 
     public function execute(ScholarshipRefrend $originRefrend, array $data, int $userId): ScholarshipAdvancePayment
     {
+        // sdd/revertir-pago-adelantado, R6: chained advances are forbidden.
+        // Cheap pre-check on the caller's model; re-asserted under the origin
+        // lock inside the transaction (authoritative).
+        $this->assertNotChained($originRefrend);
+
         if (!in_array($originRefrend->workflow_status, self::ALLOWED_WORKFLOW_STATUSES, true)) {
             throw new \DomainException(
                 'Solo se puede registrar un pago adelantado sobre refrendos en estado DRAFT, CON_INCIDENCIA o LISTO_PARA_PAGO.'
@@ -93,6 +99,16 @@ class RecordAdvancePaymentAction
         $old = $this->logging->snapshotRefrend($originRefrend);
 
         return DB::transaction(function () use ($originRefrend, $months, $seenAbsolutes, $userId, $data, $old) {
+            // Lock order (shared with revert / reticula edit): origin refrend
+            // first, then the scholarship profile. Serializes record vs revert
+            // vs reticula edit on the same becario.
+            $lockedOrigin = ScholarshipRefrend::whereKey($originRefrend->id)->lockForUpdate()->firstOrFail();
+            $this->assertNotChained($lockedOrigin);
+
+            $profile = ScholarshipProfile::where('user_id', $originRefrend->user_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             // Re-assert no advance batch already exists for this origin refrend
             // (mirrors scholarship_advance_payments.unique(origin_refrend_id)).
             // Locked inside the transaction to close the check-then-act window,
@@ -124,8 +140,6 @@ class RecordAdvancePaymentAction
             if ($claimed) {
                 throw new \DomainException('Uno o más de los meses solicitados ya fue pagado por adelantado.');
             }
-
-            $profile = ScholarshipProfile::where('user_id', $originRefrend->user_id)->firstOrFail();
 
             $childrenData = [];
             $totalAmount  = 0.0;
@@ -209,5 +223,18 @@ class RecordAdvancePaymentAction
 
             return $header->fresh('months');
         });
+    }
+
+    /**
+     * An origin is "chained" when it was itself created by an advance
+     * (created_via) or is linked to an advance month. The two are equivalent
+     * by invariant (future refrends are only born in generateFutureForAdvance),
+     * but created_via also survives a header cascade.
+     */
+    private function assertNotChained(ScholarshipRefrend $origin): void
+    {
+        if ($origin->created_via === 'ADVANCE_PAYMENT' || $origin->hasLinkedAdvanceMonth()) {
+            throw AdvancePaymentException::chainedForbidden();
+        }
     }
 }
