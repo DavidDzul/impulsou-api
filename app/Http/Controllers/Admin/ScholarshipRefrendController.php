@@ -12,10 +12,12 @@ use App\Actions\Scholarship\BulkPayAction;
 use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\ResolveAprobacionAction;
+use App\Actions\Scholarship\RevertAdvancePaymentAction;
 use App\Exceptions\AdvancePaymentException;
 use App\Exceptions\Contracts\CarriesErrorPayload;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
+use App\Http\Requests\RevertAdvancePaymentRequest;
 use App\Models\Attendance;
 use App\Models\ScholarshipLateConsumption;
 use App\Models\ScholarshipProfile;
@@ -518,6 +520,31 @@ class ScholarshipRefrendController extends Controller
         }
 
         return response()->json(['res' => true, 'data' => $header]);
+    }
+
+    /**
+     * sdd/revertir-pago-adelantado: hard-reverts the advance payment recorded
+     * against this origin refrend. Same gate as recordAdvancePayment. Guards
+     * live in RevertAdvancePaymentAction (typed AdvancePaymentException with
+     * its own HTTP status: 404 NOT_FOUND, 409 ADVANCE_CYCLE_CLOSED, 422 rest).
+     */
+    public function revertAdvancePayment(RevertAdvancePaymentRequest $request, int $refrend): JsonResponse
+    {
+        try {
+            $origin = app(RevertAdvancePaymentAction::class)->execute(
+                $refrend,
+                $request->validated()['reason']
+            );
+        } catch (AdvancePaymentException $e) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => $e->getMessage(),
+                'code' => $e->code(),
+                'data' => $e->payload(),
+            ], $e->httpStatus());
+        }
+
+        return response()->json(['res' => true, 'data' => $origin]);
     }
 
     /**

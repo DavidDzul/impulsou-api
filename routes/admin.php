@@ -153,6 +153,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         // ADM_PROCESS_PAYMENTS): inherits the group's auth:sanctum +
         // user_type:ADMIN only.
         Route::post('{refrend}/advance-payment', [ScholarshipRefrendController::class, 'recordAdvancePayment']);
+        Route::post('{refrend}/advance-payment/revert', [ScholarshipRefrendController::class, 'revertAdvancePayment'])
+            ->whereNumber('refrend');
         Route::post('{refrend}/clear-resolution', [ScholarshipRefrendController::class, 'clearResolution']);
         Route::post('{refrend}/atencion-flag', [ScholarshipRefrendController::class, 'atencionFlag']);
         Route::post('{refrend}/atencion-clear', [ScholarshipRefrendController::class, 'atencionClearFlag']);
