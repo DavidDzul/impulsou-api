@@ -226,6 +226,16 @@ class ScholarshipProfile extends Model
     // Cycle closure (sdd/egresado-baja-definitiva, design D1/D2)
 
     /**
+     * Whether the becario's cycle was already cut (stop marker set). Shared
+     * by CloseScholarshipCycleAction's "already closed" guard and
+     * AdvanceRevertEligibility (sdd/revertir-pago-adelantado).
+     */
+    public function hasClosedCycle(): bool
+    {
+        return $this->cycle_closed_period !== null;
+    }
+
+    /**
      * Whether (year, month) falls STRICTLY AFTER the stop marker
      * cycle_closed_period. The cut period itself (period == closed) is
      * deliberately NOT closed — the cut's own refrend is generated/updated

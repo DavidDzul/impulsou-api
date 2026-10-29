@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Enums\PaymentBatchType;
+use App\Models\ScholarshipAdvancePayment;
+use App\Models\ScholarshipAdvancePaymentMonth;
+use App\Services\Scholarship\AdvanceRevertEligibility;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Support\Scholarship\PaymentBatchSegmentPolicy;
 use Carbon\Carbon;
@@ -10,6 +13,10 @@ use Illuminate\Support\Facades\DB;
 
 class RefrendBulkQueryService
 {
+    public function __construct(private AdvanceRevertEligibility $advanceRevertEligibility)
+    {
+    }
+
     /**
      * Build the paginated bulk master table for a given period.
      *
@@ -225,8 +232,18 @@ class RefrendBulkQueryService
             ->get()
             ->keyBy('refrend_id');
 
+        // ── Active advance + revert block (sdd/revertir-pago-adelantado) ────
+        // Only on the ORIGIN row while its header is ACTIVE. The block code
+        // comes from the shared AdvanceRevertEligibility predicate, evaluated
+        // in batch (constant queries per page, advisory: the revert action
+        // re-checks under locks).
+        $activeAdvanceByOriginId = $this->activeAdvancesByOrigin($refrendIds);
+        $advanceRevertBlocks     = $activeAdvanceByOriginId === []
+            ? []
+            : $this->advanceRevertEligibility->evaluateMany(array_keys($activeAdvanceByOriginId));
+
         // ── Assemble rows ──────────────────────────────────────────────────
-        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings, $advancePaidByRefrendId) {
+        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings, $advancePaidByRefrendId, $activeAdvanceByOriginId, $advanceRevertBlocks) {
             $snap         = $r->attendance_summary_snapshot ? json_decode($r->attendance_summary_snapshot, true) : null;
             $gradeRecord  = $gradeRows->get($r->user_id);
             $incident     = $firstIncidents->get($r->id);
@@ -339,6 +356,10 @@ class RefrendBulkQueryService
                     : null,
                 'advance_paid_origin_year'      => $advance->origin_period_year ?? null,
                 'advance_paid_origin_month'     => $advance->origin_period_month ?? null,
+                'active_advance'                => $activeAdvanceByOriginId[$r->id] ?? null,
+                'advance_revert_block'          => isset($activeAdvanceByOriginId[$r->id])
+                    ? ($advanceRevertBlocks[$r->id] ?? null)
+                    : null,
             ];
         })->values()->all();
 
@@ -351,6 +372,52 @@ class RefrendBulkQueryService
                 'last_page'    => (int) ceil(max($total, 1) / $perPage),
             ],
         ];
+    }
+
+    /**
+     * ACTIVE advance headers originated by the given refrends, shaped for the
+     * payload. Two queries regardless of the number of refrends.
+     *
+     * @param array<int, int> $refrendIds
+     * @return array<int, array<string, mixed>> originRefrendId => active_advance
+     */
+    private function activeAdvancesByOrigin(array $refrendIds): array
+    {
+        $headers = ScholarshipAdvancePayment::whereIn('origin_refrend_id', $refrendIds)
+            ->where('status', 'ACTIVE')
+            ->get();
+
+        if ($headers->isEmpty()) {
+            return [];
+        }
+
+        $months = ScholarshipAdvancePaymentMonth::whereIn('advance_payment_id', $headers->pluck('id')->all())
+            ->orderBy('period_year')
+            ->orderBy('period_month')
+            ->get()
+            ->groupBy('advance_payment_id');
+
+        $result = [];
+        foreach ($headers as $header) {
+            $result[(int) $header->origin_refrend_id] = [
+                'id'           => (int) $header->id,
+                'status'       => 'ACTIVE',
+                'months_count' => (int) $header->months_count,
+                'total_amount' => number_format((float) $header->total_amount, 2, '.', ''),
+                'months'       => ($months->get($header->id) ?? collect())
+                    ->map(fn (ScholarshipAdvancePaymentMonth $m) => [
+                        'id'           => (int) $m->id,
+                        'period_year'  => (int) $m->period_year,
+                        'period_month' => (int) $m->period_month,
+                        'amount'       => number_format((float) $m->amount, 2, '.', ''),
+                        'status'       => $m->status,
+                    ])
+                    ->values()
+                    ->all(),
+            ];
+        }
+
+        return $result;
     }
 
     private function resolveAcademicStatus(?float $grade, bool $hasGrade): string

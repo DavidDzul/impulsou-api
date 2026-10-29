@@ -77,7 +77,7 @@ class CloseScholarshipCycleAction
     {
         $profile = ScholarshipProfile::where('user_id', $refrend->user_id)->first();
 
-        if ($profile !== null && $profile->cycle_closed_period !== null) {
+        if ($profile !== null && $profile->hasClosedCycle()) {
             throw new ScholarshipCycleClosedException(
                 'Este becario ya tiene un ciclo cerrado previamente.'
             );

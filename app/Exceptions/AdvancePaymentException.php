@@ -116,6 +116,24 @@ class AdvancePaymentException extends \DomainException implements CarriesErrorPa
         );
     }
 
+    /** Maps an eligibility code (AdvanceRevertEligibility) to its typed exception. */
+    public static function fromCode(string $code): self
+    {
+        return match ($code) {
+            self::NOT_FOUND                     => self::notFound(),
+            self::ADVANCE_NOT_FOUND             => self::advanceNotFound(),
+            self::ADVANCE_ORIGIN_PAID           => self::originPaid(),
+            self::ADVANCE_ORIGIN_LOCKED         => self::originLocked(),
+            self::ADVANCE_CYCLE_CLOSED          => self::cycleClosed(),
+            self::ADVANCE_MONTH_SETTLED         => self::monthSettled(),
+            self::ADVANCE_FUTURE_TELMEX_COVERED => self::futureTelmexCovered(),
+            self::ADVANCE_FUTURE_NOT_PRISTINE   => self::futureNotPristine(),
+            self::ADVANCE_STATE_CHANGED         => self::stateChanged(),
+            self::ADVANCE_CHAINED_FORBIDDEN     => self::chainedForbidden(),
+            default                             => throw new \InvalidArgumentException("Unknown advance payment code {$code}."),
+        };
+    }
+
     public function code(): string
     {
         return $this->errorCode;
