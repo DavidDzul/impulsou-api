@@ -6,14 +6,15 @@ use App\Actions\Scholarship\CloseScholarshipCycleAction;
 use App\Enums\RefrendType;
 use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
+use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\CycleCutActiveTelmexCoverageException;
 use App\Exceptions\CycleCutBlockedException;
-use App\Exceptions\CycleCutPendingWithholdingsException;
 use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendLog;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Models\TelmexCoverage;
@@ -28,7 +29,7 @@ use Tests\TestCase;
  *
  * PR2b (task 2b.8) adds the remaining guards here: blocking later months
  * (CYCLE_CUT_BLOCKED), own abonos (D9), ACTIVA Telmex coverage (amendment-3),
- * ANY pending withholding (amendment-4), and cascade-closing later open
+ * cancellation of ANY pending withholding (sdd/retenciones-pendientes), and cascade-closing later open
  * refrends (D7).
  */
 class CloseScholarshipCycleActionTest extends TestCase
@@ -212,6 +213,38 @@ class CloseScholarshipCycleActionTest extends TestCase
     }
 
     /** @test */
+    public function the_cascade_tags_a_later_refrends_origin_ledger_row_as_cycle_cut(): void
+    {
+        $user         = $this->makeBecario();
+        $refrend      = $this->makeRefrend($user, ['period_month' => 6]);
+        $laterRefrend = $this->makeRefrend($user, [
+            'period_month'    => 7,
+            'workflow_status' => 'DRAFT',
+            'status'          => RefrendStatus::DRAFT->value,
+        ]);
+        // A zero-amount PENDING row is not "pending with balance" (the
+        // canceller's pending() scope does not see it) yet is still reached by
+        // the cascade cancel.
+        $ledger = ScholarshipWithholding::create([
+            'user_id'           => $user->id,
+            'origin_refrend_id' => $laterRefrend->id,
+            'period_year'       => 2026,
+            'period_month'      => 7,
+            'withheld_amount'   => '0.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+
+        $this->action->execute($refrend, 'EGRESADO', $user->id);
+
+        $ledger = $ledger->fresh();
+        $this->assertSame('CANCELLED', $ledger->status);
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $ledger->cancellation_reason);
+        $this->assertNotNull($ledger->cancelled_at);
+        $this->assertSame($user->id, $ledger->cancelled_by_id);
+    }
+
+    /** @test */
     public function a_later_advance_refrend_that_is_paid_still_blocks_with_the_paid_reason_and_cancels_nothing(): void
     {
         $user         = $this->makeBecario();
@@ -389,90 +422,125 @@ class CloseScholarshipCycleActionTest extends TestCase
         $this->assertNotNull(ScholarshipProfile::where('user_id', $user->id)->first()->cycle_closed_period);
     }
 
-    /** @test */
-    public function rejects_the_cut_when_any_pending_withholding_exists_even_out_of_the_payable_window(): void
-    {
-        $user          = $this->makeBecario();
-        $refrend       = $this->makeRefrend($user, ['period_month' => 6]);
-        $oldOrigin     = $this->makeRefrend($user, ['period_year' => 2020, 'period_month' => 1]);
-        $oldWithholding = ScholarshipWithholding::create([
-            'user_id'           => $user->id,
-            'origin_refrend_id' => $oldOrigin->id,
-            'period_year'       => 2020,
-            'period_month'      => 1,
-            'withheld_amount'   => '150.00',
-            'paid_amount'       => '0.00',
-            'status'            => 'PENDING',
-        ]);
-
-        try {
-            $this->action->execute($refrend, 'EGRESADO', $user->id);
-            $this->fail('Expected CycleCutPendingWithholdingsException.');
-        } catch (CycleCutPendingWithholdingsException $e) {
-            $payload = $e->payload();
-            $this->assertCount(1, $payload['withholdings']);
-            $this->assertSame($oldWithholding->id, $payload['withholdings'][0]['id']);
-            $this->assertSame('150.00', $payload['withholdings'][0]['remaining_amount']);
-        }
-
-        $this->assertNull(ScholarshipProfile::where('user_id', $user->id)->first());
-    }
-
-    private function makePendingLedger(User $user, ScholarshipRefrend $origin): ScholarshipWithholding
+    private function makePendingLedger(User $user, ScholarshipRefrend $origin, string $withheld = '300.00', string $paid = '0.00'): ScholarshipWithholding
     {
         return ScholarshipWithholding::create([
             'user_id'           => $user->id,
             'origin_refrend_id' => $origin->id,
             'period_year'       => $origin->period_year,
             'period_month'      => $origin->period_month,
-            'withheld_amount'   => '300.00',
-            'paid_amount'       => '0.00',
+            'withheld_amount'   => $withheld,
+            'paid_amount'       => $paid,
             'status'            => 'PENDING',
         ]);
     }
 
     /** @test */
-    public function flags_the_cut_months_own_retention_and_points_staff_to_undo_it(): void
+    public function pending_withholdings_no_longer_block_the_cut_they_are_cancelled_as_cycle_cut(): void
+    {
+        $user      = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend   = $this->makeRefrend($user, ['period_month' => 6]);
+        $oldOrigin = $this->makeRefrend($user, ['period_year' => 2020, 'period_month' => 1]);
+        $otherOrigin = $this->makeRefrend($user, ['period_month' => 2]);
+        $old   = $this->makePendingLedger($user, $oldOrigin, '150.00');
+        $other = $this->makePendingLedger($user, $otherOrigin, '300.00');
+
+        $this->action->execute($refrend, 'EGRESADO', $user->id);
+
+        foreach ([$old, $other] as $ledger) {
+            $ledger = $ledger->fresh();
+            $this->assertSame('CANCELLED', $ledger->status);
+            $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $ledger->cancellation_reason);
+            $this->assertNotNull($ledger->cancelled_at);
+            $this->assertSame($user->id, $ledger->cancelled_by_id);
+            $this->assertSame(
+                1,
+                ScholarshipRefrendLog::where('action', 'WITHHOLDING_CANCELLED')
+                    ->where('scholarship_refrend_id', $ledger->origin_refrend_id)
+                    ->count()
+            );
+        }
+        $this->assertNotNull(ScholarshipProfile::where('user_id', $user->id)->first()->cycle_closed_period);
+    }
+
+    /** @test */
+    public function a_partially_paid_withholding_is_cancelled_with_its_paid_amount_frozen(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user, ['period_month' => 6]);
+        $other   = $this->makeRefrend($user, ['period_month' => 2]);
+        $partial = $this->makePendingLedger($user, $other, '300.00', '100.00');
+
+        $this->action->execute($refrend, 'BAJA_DEFINITIVA', $user->id);
+
+        $partial = $partial->fresh();
+        $this->assertSame('CANCELLED', $partial->status);
+        $this->assertSame('100.00', $partial->paid_amount);
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $partial->cancellation_reason);
+    }
+
+    /** @test */
+    public function the_cut_months_own_pending_withholding_is_cancelled_as_cycle_cut(): void
     {
         $user    = $this->makeBecario();
         $refrend = $this->makeRefrend($user, ['period_month' => 6]);
         $own     = $this->makePendingLedger($user, $refrend);
 
-        try {
-            $this->action->execute($refrend, 'EGRESADO', $user->id);
-            $this->fail('Expected CycleCutPendingWithholdingsException.');
-        } catch (CycleCutPendingWithholdingsException $e) {
-            $rows = $e->payload()['withholdings'];
-            $this->assertCount(1, $rows);
-            $this->assertSame($own->id, $rows[0]['id']);
-            $this->assertTrue($rows[0]['is_current_refrend']);
-            $this->assertSame(
-                'Este mes tiene una retención registrada; deshaga la resolución de este mes antes de marcar egreso o baja definitiva.',
-                $e->getMessage()
-            );
-        }
+        $this->action->execute($refrend, 'EGRESADO', $user->id);
 
-        $this->assertSame('PENDING', $own->fresh()->status);
+        $own = $own->fresh();
+        $this->assertSame('CANCELLED', $own->status);
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $own->cancellation_reason);
     }
 
     /** @test */
-    public function does_not_flag_pending_withholdings_from_another_month_and_keeps_the_original_message(): void
+    public function the_cascade_leaves_a_later_refrends_real_pending_withholding_to_the_canceller(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user, ['period_month' => 6]);
+        $later   = $this->makeRefrend($user, [
+            'period_month'    => 7,
+            'workflow_status' => 'DRAFT',
+            'status'          => RefrendStatus::DRAFT->value,
+        ]);
+        $ledger = $this->makePendingLedger($user, $later, '250.00');
+
+        $this->action->execute($refrend, 'EGRESADO', $user->id);
+
+        $ledger = $ledger->fresh();
+        $this->assertSame('CANCELLED', $ledger->status);
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $ledger->cancellation_reason);
+        $this->assertSame(
+            1,
+            ScholarshipRefrendLog::where('action', 'WITHHOLDING_CANCELLED')->where('scholarship_refrend_id', $later->id)->count()
+        );
+        $this->assertSame(RefrendStatus::CANCELLED, $later->fresh()->status);
+    }
+
+    /** @test */
+    public function a_blocked_cut_cancels_no_withholding(): void
     {
         $user    = $this->makeBecario();
         $refrend = $this->makeRefrend($user, ['period_month' => 6]);
         $other   = $this->makeRefrend($user, ['period_month' => 2]);
-        $this->makePendingLedger($user, $other);
+        $ledger  = $this->makePendingLedger($user, $other);
+        TelmexCoverage::create([
+            'user_id'                        => $user->id,
+            'scholarship_type_at_activation' => 'TELMEX',
+            'start_period'                   => '2026-01-01',
+            'status'                         => 'ACTIVA',
+        ]);
 
         try {
             $this->action->execute($refrend, 'EGRESADO', $user->id);
-            $this->fail('Expected CycleCutPendingWithholdingsException.');
-        } catch (CycleCutPendingWithholdingsException $e) {
-            $this->assertFalse($e->payload()['withholdings'][0]['is_current_refrend']);
-            $this->assertSame(
-                'Tiene retenciones pendientes de pago; resuélvalas en Pago de meses retenidos antes de cerrar el ciclo.',
-                $e->getMessage()
-            );
+            $this->fail('Expected CycleCutActiveTelmexCoverageException.');
+        } catch (CycleCutActiveTelmexCoverageException $e) {
+            // expected
         }
+
+        $this->assertSame('PENDING', $ledger->fresh()->status);
+        $this->assertNull($ledger->fresh()->cancelled_at);
     }
 
     /** @test */

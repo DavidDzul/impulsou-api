@@ -33,6 +33,7 @@ class ScholarshipWithholdingController extends Controller
         $status = $validated['status'] ?? 'pending';
 
         $query = ScholarshipWithholding::with([
+            'cancelledBy:id,first_name,last_name',
             'payments' => fn ($q) => $q->where('is_voided', false)
                 ->with('createdBy:id,first_name,last_name')
                 ->orderByDesc('created_at'),

@@ -6,6 +6,7 @@ use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Enums\WithholdingCancellationReason;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
@@ -45,6 +46,52 @@ class ScholarshipWithholdingEndpointTest extends TestCase
             'snapshot_campus'              => 'MERIDA',
             'snapshot_scholarship_type'    => ScholarshipType::IU->value,
         ], $overrides));
+    }
+
+    /** @test */
+    public function status_all_exposes_cancellation_audit_fields_and_the_canceller(): void
+    {
+        $user    = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $actor   = User::factory()->create(['user_type' => 'ADMIN', 'active' => true, 'first_name' => 'Ana', 'last_name' => 'Lopez']);
+        $refrend = $this->makeRefrend($user->id);
+
+        $cancelled = ScholarshipWithholding::create([
+            'user_id'             => $user->id,
+            'origin_refrend_id'   => $refrend->id,
+            'period_year'         => 2026,
+            'period_month'        => 1,
+            'withheld_amount'     => '300.00',
+            'paid_amount'         => '0.00',
+            'status'              => 'CANCELLED',
+            'cancelled_at'        => '2026-10-30 10:00:00',
+            'cancellation_reason' => WithholdingCancellationReason::CYCLE_CUT->value,
+            'cancelled_by_id'     => $actor->id,
+        ]);
+        $legacy = ScholarshipWithholding::create([
+            'user_id'           => $user->id,
+            'origin_refrend_id' => $this->makeRefrend($user->id, ['period_month' => 2])->id,
+            'period_year'       => 2026,
+            'period_month'      => 2,
+            'withheld_amount'   => '100.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'CANCELLED',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/admin/users/{$user->id}/scholarship-withholdings?status=all");
+
+        $response->assertOk();
+        $rows = collect($response->json('data'))->keyBy('id');
+
+        $this->assertSame('CYCLE_CUT', $rows[$cancelled->id]['cancellation_reason']);
+        $this->assertNotNull($rows[$cancelled->id]['cancelled_at']);
+        $this->assertSame($actor->id, $rows[$cancelled->id]['cancelled_by']['id']);
+        $this->assertSame('Ana', $rows[$cancelled->id]['cancelled_by']['first_name']);
+        $this->assertArrayNotHasKey('email', $rows[$cancelled->id]['cancelled_by']);
+
+        $this->assertNull($rows[$legacy->id]['cancellation_reason']);
+        $this->assertNull($rows[$legacy->id]['cancelled_at']);
+        $this->assertNull($rows[$legacy->id]['cancelled_by']);
     }
 
     /** @test */

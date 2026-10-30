@@ -3,12 +3,14 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
+use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\WithholdingAmountMismatchException;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Services\AttendancePenaltyService;
 use App\Services\Scholarship\AdvancePaymentReconciler;
+use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Services\Scholarship\RefrendPaymentTotalsSyncer;
 use App\Services\ScholarshipLoggingService;
@@ -190,6 +192,14 @@ class RecordPaymentSituationAction
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $type, $paymentInputs, $neutralizePenalties) {
+            // Global lock order (see BecarioLockOrder): a terminal cycle cut
+            // updates the users row (graduation / active=false) further down, so
+            // lock it FIRST, before the withholding and refrend locks, to match
+            // UserDeactivationService. Other situations never touch users.
+            if (in_array($updates['resolution_type'], ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true)) {
+                BecarioLockOrder::lockUser((int) $refrend->user_id);
+            }
+
             // An advance-paid month is $0 (or, on appeal, paid in full): a retention
             // ledger here could be paid out a second time via "Pago meses retenidos".
             if ($type === 'RETENIDA' && $refrend->hasLinkedAdvanceMonth()) {
@@ -241,10 +251,20 @@ class RecordPaymentSituationAction
                         'created_by_id'   => $userId,
                     ]
                 );
-            } elseif ($existingLedger && $existingLedger->status !== 'CANCELLED') {
+            } elseif ($existingLedger) {
                 // Re-classified away from RETENIDA. Guarded above: paid_amount is
                 // guaranteed to be 0 here, so cancelling is safe and orphans nothing.
-                $existingLedger->update(['status' => 'CANCELLED']);
+                // Re-read: a cycle cut earlier in this transaction may already have
+                // cancelled the row, and its CYCLE_CUT tag must not be overwritten.
+                $currentLedger = $existingLedger->fresh();
+                if ($currentLedger !== null && $currentLedger->status !== 'CANCELLED') {
+                    $currentLedger->update([
+                        'status'              => 'CANCELLED',
+                        'cancelled_at'        => now(),
+                        'cancellation_reason' => WithholdingCancellationReason::RECLASSIFIED->value,
+                        'cancelled_by_id'     => $userId,
+                    ]);
+                }
             }
 
             if ($paymentInputs) {

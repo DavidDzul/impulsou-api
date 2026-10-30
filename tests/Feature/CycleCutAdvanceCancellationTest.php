@@ -309,11 +309,11 @@ class CycleCutAdvanceCancellationTest extends TestCase
     }
 
     /** @test */
-    public function pending_withholdings_block_the_cut_and_nothing_is_cancelled(): void
+    public function pending_withholdings_no_longer_block_the_cut_withholdings_and_advances_are_both_cancelled(): void
     {
         $f = $this->makeAdvance(false);
         $old = $this->makeRefrend($f['user']->id, 1);
-        ScholarshipWithholding::create([
+        $withholding = ScholarshipWithholding::create([
             'user_id'           => $f['user']->id,
             'origin_refrend_id' => $old->id,
             'period_year'       => 2026,
@@ -323,11 +323,13 @@ class CycleCutAdvanceCancellationTest extends TestCase
             'status'            => 'PENDING',
         ]);
 
-        $this->cut($f['refrends'][4])->assertStatus(422)->assertJson(['code' => 'CYCLE_CUT_PENDING_WITHHOLDINGS']);
+        $this->cut($f['refrends'][4])->assertOk();
 
-        $this->assertSame('PENDING', $f['months'][5]->fresh()->status);
-        $this->assertSame('5000.00', $f['origin']->fresh()->advance_payment_amount);
-        $this->assertSame('ACTIVE', $f['header']->fresh()->status);
+        $withholding = $withholding->fresh();
+        $this->assertSame('CANCELLED', $withholding->status);
+        $this->assertSame('CYCLE_CUT', $withholding->cancellation_reason->value);
+        $this->assertSame('CANCELLED', $f['months'][5]->fresh()->status);
+        $this->assertSame('CANCELLED', $f['header']->fresh()->status);
     }
 
     /** @test */

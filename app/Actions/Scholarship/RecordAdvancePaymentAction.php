@@ -8,7 +8,9 @@ use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Models\User;
 use App\Services\GenerateMonthlyRefrendsService;
+use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\ScholarshipLoggingService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -99,9 +101,19 @@ class RecordAdvancePaymentAction
         $old = $this->logging->snapshotRefrend($originRefrend);
 
         return DB::transaction(function () use ($originRefrend, $months, $seenAbsolutes, $userId, $data, $old) {
-            // Lock order (shared with revert / reticula edit): origin refrend
-            // first, then the scholarship profile. Serializes record vs revert
-            // vs reticula edit on the same becario.
+            // Global lock order (see BecarioLockOrder): the users row FIRST, so
+            // this path cannot deadlock with UserDeactivationService. A
+            // deactivation cancels the user's advances; locking the user here
+            // also means an advance cannot be recorded for a user that was
+            // just deactivated (checked on the locked row).
+            $lockedUser = BecarioLockOrder::lockUser((int) $originRefrend->user_id);
+            if (! $lockedUser->active) {
+                throw new \DomainException('No se puede registrar un pago adelantado a un usuario inactivo.');
+            }
+
+            // Then (shared with revert / reticula edit): origin refrend, then
+            // the scholarship profile. Serializes record vs revert vs reticula
+            // edit on the same becario.
             $lockedOrigin = ScholarshipRefrend::whereKey($originRefrend->id)->lockForUpdate()->firstOrFail();
             $this->assertNotChained($lockedOrigin);
 

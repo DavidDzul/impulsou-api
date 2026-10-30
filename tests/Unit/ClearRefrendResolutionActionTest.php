@@ -8,6 +8,7 @@ use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Enums\WithholdingCancellationReason;
 use App\Models\ClassModel;
 use App\Models\Generation;
 use App\Models\ScholarshipAdvancePaymentMonth;
@@ -362,6 +363,36 @@ class ClearRefrendResolutionActionTest extends TestCase
 
         $this->assertSame('DRAFT', $result->workflow_status);
         $this->assertSame('CANCELLED', $ledger->fresh()->status);
+    }
+
+    /** @test */
+    public function undoing_retenida_tags_the_cancelled_ledger_row_as_reclassified(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user, [
+            'resolution_type'   => 'RETENIDA',
+            'status'            => RefrendStatus::WITHHELD->value,
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 30.00,
+        ]);
+
+        $ledger = ScholarshipWithholding::create([
+            'user_id'           => $user->id,
+            'origin_refrend_id' => $refrend->id,
+            'period_year'       => 2026,
+            'period_month'      => 3,
+            'withheld_amount'   => 300.00,
+            'paid_amount'       => 0,
+            'status'            => 'PENDING',
+        ]);
+
+        $this->action->execute($refrend, $this->admin->id);
+
+        $ledger = $ledger->fresh();
+        $this->assertSame(WithholdingCancellationReason::RECLASSIFIED, $ledger->cancellation_reason);
+        $this->assertNotNull($ledger->cancelled_at);
+        $this->assertSame($this->admin->id, $ledger->cancelled_by_id);
     }
 
     // ── Field reset correctness ──────────────────────────────────────────────

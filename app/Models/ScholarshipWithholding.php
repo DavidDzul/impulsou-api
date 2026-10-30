@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\WithholdingCancellationReason;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -24,12 +25,17 @@ class ScholarshipWithholding extends Model
         'cause',
         'created_by_id',
         'settled_at',
+        'cancelled_at',
+        'cancellation_reason',
+        'cancelled_by_id',
     ];
 
     protected $casts = [
         'withheld_amount' => 'decimal:2',
         'paid_amount'     => 'decimal:2',
         'settled_at'      => 'datetime',
+        'cancelled_at'    => 'datetime',
+        'cancellation_reason' => WithholdingCancellationReason::class,
     ];
 
     protected $appends = ['remaining_amount'];
@@ -73,6 +79,11 @@ class ScholarshipWithholding extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_id');
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by_id');
     }
 
     public function payments(): HasMany

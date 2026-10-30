@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Scholarship\GraduateBecarioAction;
+use App\Exceptions\CycleCutBlockedException;
 use App\Exceptions\ReticulaPeriodOutOfRangeException;
 use App\Exceptions\ScholarshipConfigPendingException;
 use App\Exceptions\ScholarshipReticulaMissingException;
@@ -10,6 +11,10 @@ use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
+use App\Services\Scholarship\BecarioLockOrder;
+use App\Services\Scholarship\CutAnchor;
+use App\Services\Scholarship\CycleTerminationCanceller;
+use App\Enums\WithholdingCancellationReason;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use Carbon\Carbon;
@@ -22,15 +27,18 @@ class GenerateMonthlyRefrendsService
     private ScholarshipCalculationService $calculationService;
     private AttendancePenaltyService $penaltyService;
     private GraduateBecarioAction $graduateBecario;
+    private CycleTerminationCanceller $terminationCanceller;
 
     public function __construct(
         ScholarshipCalculationService $calculationService,
         AttendancePenaltyService $penaltyService,
-        GraduateBecarioAction $graduateBecario
+        GraduateBecarioAction $graduateBecario,
+        CycleTerminationCanceller $terminationCanceller
     ) {
-        $this->calculationService = $calculationService;
-        $this->penaltyService     = $penaltyService;
-        $this->graduateBecario    = $graduateBecario;
+        $this->calculationService   = $calculationService;
+        $this->penaltyService       = $penaltyService;
+        $this->graduateBecario      = $graduateBecario;
+        $this->terminationCanceller = $terminationCanceller;
     }
 
     /**
@@ -354,6 +362,14 @@ class GenerateMonthlyRefrendsService
         }
 
         return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
+            // Global lock order (see BecarioLockOrder): the automatic egreso
+            // graduates the becario (users update) and cancels withholdings /
+            // advances, so lock the users row FIRST, before the egreso refrend
+            // insert and the cancellers' locks. Matches UserDeactivationService.
+            if ($isEgreso && $createdVia === 'GENERATION') {
+                BecarioLockOrder::lockUser((int) $profile->user_id);
+            }
+
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,
@@ -438,12 +454,47 @@ class GenerateMonthlyRefrendsService
                 // and flipping user_type for a FUTURE month would be wrong.
                 // The money mutation above stays ungated as defense-in-depth.
                 if ($createdVia === 'GENERATION') {
+                    // sdd/retenciones-pendientes (R5): the egreso also cancels
+                    // the PENDING retentions and the advance payments, in this
+                    // same transaction (system actor). A CycleCutBlockedException
+                    // here rolls the whole egreso back for this becario.
+                    try {
+                        $this->terminationCanceller->cancel(
+                            CutAnchor::fromRefrend($refrend),
+                            WithholdingCancellationReason::EGRESO_RETICULA,
+                            null
+                        );
+                    } catch (CycleCutBlockedException $e) {
+                        throw $this->asEgresoBlock($e);
+                    }
+
                     $this->graduateBecario->execute($user, $refrend, $notes, null);
                 }
             }
 
             return $refrend->fresh();
         });
+    }
+
+    /**
+     * The canceller's message is written for the manual cut ("...antes de
+     * marcar egreso o baja definitiva"). The automatic egreso runs inside a
+     * bulk generation, so the failures[] reason must say what happened and what
+     * to do. Same blocking months, so the payload is unchanged.
+     */
+    private function asEgresoBlock(CycleCutBlockedException $e): CycleCutBlockedException
+    {
+        /** @var array<int, array{year:int,month:int,reason:string}> $months */
+        $months = $e->payload()['blocking_months'];
+        $labels = array_map(fn ($m) => sprintf('%02d/%d', $m['month'], $m['year']), $months);
+
+        return new CycleCutBlockedException(
+            sprintf(
+                'No se pudo egresar automáticamente: tiene %s pagado(s) o bloqueado(s) posterior(es) al egreso. Revísalo y vuelve a generar.',
+                implode(' y ', $labels)
+            ),
+            $months
+        );
     }
 
     /**

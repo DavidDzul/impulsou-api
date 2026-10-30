@@ -32,6 +32,13 @@ use Illuminate\Support\Facades\DB;
  * ADVANCE_PAYMENT_CANCELLED_BY_CYCLE_CUT, the "Cancelado por ..." cascade
  * notes (fed by AdvanceCutPlan::$advanceRefrendIds) and the reconciler no-op.
  * Amounts are handled with bcmath strings, never floats.
+ *
+ * sdd/retenciones-pendientes (PR2): the anchor of the cancellation is either
+ * the cut ScholarshipRefrend (manual cut, automatic egreso) or a CutAnchor
+ * (user deactivation: the current month, no cut refrend). The actor is
+ * nullable (system, automatic egreso). With no cut refrend, an anchor-month
+ * advance month whose refrend is already locked/batched is consumed history
+ * and is excluded; a later locked/batched month still blocks (anomalous state).
  */
 class AdvanceCycleCutCanceller
 {
@@ -42,17 +49,18 @@ class AdvanceCycleCutCanceller
      *         months = candidate months; headers = headers with at least one
      *         candidate, each carrying ALL its months ('months') and its origin ('originRefrend').
      */
-    public function loadCandidates(ScholarshipRefrend $cut, bool $lock): array
+    public function loadCandidates(CutAnchor|ScholarshipRefrend $cut, bool $lock): array
     {
-        $cutAbs = PayableWithholdingWindow::absoluteMonth($cut->period_year, $cut->period_month);
+        $cut    = $this->anchorOf($cut);
+        $cutAbs = PayableWithholdingWindow::absoluteMonth($cut->year, $cut->month);
 
-        $discovered = ScholarshipAdvancePaymentMonth::where('user_id', $cut->user_id)
+        $discovered = ScholarshipAdvancePaymentMonth::where('user_id', $cut->userId)
             ->where('status', '!=', ScholarshipAdvancePaymentMonth::STATUS_CANCELLED)
             ->where(function (Builder $q) use ($cut) {
-                $q->where('period_year', '>', $cut->period_year)
+                $q->where('period_year', '>', $cut->year)
                     ->orWhere(function (Builder $same) use ($cut) {
-                        $same->where('period_year', $cut->period_year)
-                            ->where('period_month', '>=', $cut->period_month);
+                        $same->where('period_year', $cut->year)
+                            ->where('period_month', '>=', $cut->month);
                     });
             })
             ->orderBy('id')
@@ -73,7 +81,8 @@ class AdvanceCycleCutCanceller
         $allMonths = $this->locked(ScholarshipAdvancePaymentMonth::whereIn('advance_payment_id', $headerIds)->orderBy('id'), $lock)->get();
 
         $candidates = $allMonths
-            ->filter(fn (ScholarshipAdvancePaymentMonth $m) => $this->isCandidate($m, $cutAbs))
+            ->filter(fn (ScholarshipAdvancePaymentMonth $m) => $this->isCandidate($m, $cutAbs)
+                && ! $this->isConsumedAnchorMonth($m, $cut, $cutAbs, $refrends))
             ->values();
 
         $withCandidates = $candidates->pluck('advance_payment_id')->unique()->all();
@@ -99,13 +108,14 @@ class AdvanceCycleCutCanceller
      * @param Collection<int, ScholarshipAdvancePaymentMonth> $months  candidate months
      * @param Collection<int, ScholarshipAdvancePayment>      $headers headers with candidates
      */
-    public function plan(ScholarshipRefrend $cut, Collection $months, Collection $headers): AdvanceCutPlan
+    public function plan(CutAnchor|ScholarshipRefrend $cut, Collection $months, Collection $headers): AdvanceCutPlan
     {
         if ($months->isEmpty()) {
             return AdvanceCutPlan::empty();
         }
 
-        $cutAbs = PayableWithholdingWindow::absoluteMonth($cut->period_year, $cut->period_month);
+        $cut    = $this->anchorOf($cut);
+        $cutAbs = PayableWithholdingWindow::absoluteMonth($cut->year, $cut->month);
 
         $sortedMonths = $months->sortBy(fn (ScholarshipAdvancePaymentMonth $m) => [
             PayableWithholdingWindow::absoluteMonth($m->period_year, $m->period_month),
@@ -185,8 +195,10 @@ class AdvanceCycleCutCanceller
     }
 
     /** Locks, plans and applies. Must run inside the caller's transaction (nested is fine). */
-    public function cancelAfterCut(ScholarshipRefrend $cut, string $reason, int $userId): AdvanceCutPlan
+    public function cancelAfterCut(CutAnchor|ScholarshipRefrend $cut, string $reason, ?int $userId): AdvanceCutPlan
     {
+        $cut = $this->anchorOf($cut);
+
         return DB::transaction(function () use ($cut, $reason, $userId) {
             $loaded = $this->loadCandidates($cut, true);
             $plan   = $this->plan($cut, $loaded['months'], $loaded['headers']);
@@ -200,8 +212,9 @@ class AdvanceCycleCutCanceller
     }
 
     /** Read-only: same candidates and plan as cancelAfterCut, no locks, no writes. */
-    public function preview(ScholarshipRefrend $cut): AdvanceCutPlan
+    public function preview(CutAnchor|ScholarshipRefrend $cut): AdvanceCutPlan
     {
+        $cut    = $this->anchorOf($cut);
         $loaded = $this->loadCandidates($cut, false);
 
         return $this->plan($cut, $loaded['months'], $loaded['headers']);
@@ -210,7 +223,7 @@ class AdvanceCycleCutCanceller
     /**
      * @param array{months: Collection, origins: Collection, headers: Collection} $loaded
      */
-    private function apply(AdvanceCutPlan $plan, array $loaded, ScholarshipRefrend $cut, string $reason, int $userId): void
+    private function apply(AdvanceCutPlan $plan, array $loaded, CutAnchor $cut, string $reason, ?int $userId): void
     {
         $now = now();
 
@@ -226,7 +239,7 @@ class AdvanceCycleCutCanceller
                 'cancelled_at'             => $now,
                 'cancelled_by_id'          => $userId,
                 'cancel_reason'            => $reason,
-                'cancelled_cut_refrend_id' => $cut->id,
+                'cancelled_cut_refrend_id' => $cut->cutRefrendId,
                 'cancelled_amount'         => bcadd($this->money($header->cancelled_amount), $row['cancelled_amount'], self::SCALE),
                 'overpaid_amount'          => bcadd($this->money($header->overpaid_amount), $row['overpaid_amount'], self::SCALE),
             ]);
@@ -254,9 +267,9 @@ class AdvanceCycleCutCanceller
      * @param Collection<int, ScholarshipRefrend>             $origins
      * @param Collection<int, ScholarshipRefrend>             $refrends   locked rows keyed by id
      */
-    private function assertLaterRefrendsNotPaid(ScholarshipRefrend $cut, Collection $candidates, Collection $origins, Collection $refrends): void
+    private function assertLaterRefrendsNotPaid(CutAnchor $cut, Collection $candidates, Collection $origins, Collection $refrends): void
     {
-        $cutAbs = PayableWithholdingWindow::absoluteMonth($cut->period_year, $cut->period_month);
+        $cutAbs = PayableWithholdingWindow::absoluteMonth($cut->year, $cut->month);
 
         $touchedIds = $candidates->pluck('refrend_id')->filter()->merge($origins->keys())->unique();
 
@@ -265,7 +278,7 @@ class AdvanceCycleCutCanceller
             /** @var ScholarshipRefrend|null $later */
             $later = $refrends->get($id);
 
-            if ($later === null || (int) $later->id === (int) $cut->id) {
+            if ($later === null) {
                 continue;
             }
 
@@ -290,6 +303,32 @@ class AdvanceCycleCutCanceller
             ),
             $months
         );
+    }
+
+    private function anchorOf(CutAnchor|ScholarshipRefrend $cut): CutAnchor
+    {
+        return $cut instanceof CutAnchor ? $cut : CutAnchor::fromRefrend($cut);
+    }
+
+    /**
+     * Deactivation only (no cut refrend): the anchor month is the current
+     * month and a refrend of it that is already locked/batched is consumed
+     * history, not cancellable. A cut/egreso anchor IS its own refrend, which
+     * is cancelled even when locked.
+     *
+     * @param Collection<int, ScholarshipRefrend> $refrends locked/read rows keyed by id
+     */
+    private function isConsumedAnchorMonth(ScholarshipAdvancePaymentMonth $month, CutAnchor $cut, int $cutAbs, Collection $refrends): bool
+    {
+        if ($cut->cutRefrendId !== null
+            || PayableWithholdingWindow::absoluteMonth($month->period_year, $month->period_month) !== $cutAbs
+        ) {
+            return false;
+        }
+
+        $refrend = $month->refrend_id !== null ? $refrends->get($month->refrend_id) : null;
+
+        return $refrend !== null && ($refrend->isLocked() || $refrend->payment_batch_id !== null);
     }
 
     private function isCandidate(ScholarshipAdvancePaymentMonth $month, int $cutAbs): bool

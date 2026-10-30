@@ -7,7 +7,7 @@ use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
 use App\Actions\Scholarship\ClearRefrendResolutionAction;
-use App\Exceptions\CycleCutPendingWithholdingsException;
+use App\Enums\WithholdingCancellationReason;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
@@ -135,7 +135,7 @@ class RecordPaymentSituationActionBajaDefinitivaTest extends TestCase
         $this->assertTrue((bool) $user->fresh()->active);
     }
 
-    // ── Amendment 6: the cut month's own retention keeps blocking ───────────
+    // ── sdd/retenciones-pendientes: the cut month's own retention is cancelled as CYCLE_CUT ───────────
 
     private function makeRetenidaWithPendingLedger(): array
     {
@@ -164,33 +164,25 @@ class RecordPaymentSituationActionBajaDefinitivaTest extends TestCase
     }
 
     /** @test */
-    public function reclassifying_a_retenida_month_to_a_cut_type_is_rejected_flagged_and_mutates_nothing(): void
+    public function reclassifying_a_retenida_month_to_a_cut_type_cancels_its_withholding_as_cycle_cut(): void
     {
         foreach (['EGRESADO', 'BAJA_DEFINITIVA'] as $type) {
             [$refrend, $ledger] = $this->makeRetenidaWithPendingLedger();
-            $before = $refrend->fresh()->getAttributes();
 
-            try {
-                $this->action->execute($refrend, [
-                    'resolution_type'  => $type,
-                    'resolution_cause' => 'BAJO_PROMEDIO',
-                ], $this->admin->id);
-                $this->fail("Expected the {$type} cut to be rejected.");
-            } catch (CycleCutPendingWithholdingsException $e) {
-                $this->assertSame('CYCLE_CUT_PENDING_WITHHOLDINGS', $e->code());
-                $this->assertTrue($e->payload()['withholdings'][0]['is_current_refrend']);
-                $this->assertSame(
-                    'Este mes tiene una retención registrada; deshaga la resolución de este mes antes de marcar egreso o baja definitiva.',
-                    $e->getMessage()
-                );
-            }
+            $this->action->execute($refrend, [
+                'resolution_type'  => $type,
+                'resolution_cause' => 'BAJO_PROMEDIO',
+            ], $this->admin->id);
 
-            $this->assertSame($before, $refrend->fresh()->getAttributes());
-            $this->assertSame('PENDING', $ledger->fresh()->status);
-            $this->assertNull(ScholarshipProfile::where('user_id', $refrend->user_id)->first()->cycle_closed_period);
-            $user = $refrend->user->fresh();
-            $this->assertTrue((bool) $user->active);
-            $this->assertSame('BEC_ACTIVE', $user->user_type);
+            // The cut canceller ran earlier in the transaction; the re-classify
+            // branch must see the row already CANCELLED and keep its CYCLE_CUT
+            // tag instead of overwriting it with RECLASSIFIED.
+            $ledger = $ledger->fresh();
+            $this->assertSame('CANCELLED', $ledger->status);
+            $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $ledger->cancellation_reason);
+            $this->assertNotNull($ledger->cancelled_at);
+            $this->assertSame($this->admin->id, $ledger->cancelled_by_id);
+            $this->assertNotNull(ScholarshipProfile::where('user_id', $refrend->user_id)->first()->cycle_closed_period);
         }
     }
 

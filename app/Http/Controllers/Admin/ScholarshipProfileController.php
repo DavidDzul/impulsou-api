@@ -138,7 +138,9 @@ class ScholarshipProfileController extends Controller
             'file.required' => 'El documento es obligatorio.',
         ]);
 
-        // Lock order vs RecordAdvancePaymentAction (origin refrend -> profile):
+        // Never touches the users row, so it sits outside the users-first rule
+        // (see BecarioLockOrder). Lock order vs RecordAdvancePaymentAction
+        // (users -> origin refrend -> profile):
         // this endpoint only ever takes the profile lock and reads advance
         // months WITHOUT locking, so it never waits on an origin row and
         // cannot close a lock cycle. If a record races us it blocks on the
