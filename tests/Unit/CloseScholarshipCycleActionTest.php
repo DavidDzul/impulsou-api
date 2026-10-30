@@ -193,23 +193,43 @@ class CloseScholarshipCycleActionTest extends TestCase
     }
 
     /** @test */
-    public function rejects_the_cut_when_a_later_month_has_a_pending_advance_payment(): void
+    public function a_later_month_with_a_pending_advance_payment_no_longer_blocks_the_cut_it_gets_cancelled(): void
+    {
+        $user         = $this->makeBecario();
+        $profile      = $this->makeProfile($user);
+        $refrend      = $this->makeRefrend($user, ['period_month' => 6]);
+        $laterRefrend = $this->makeRefrend($user, ['period_year' => 2027, 'period_month' => 2, 'workflow_status' => 'DRAFT', 'status' => RefrendStatus::DRAFT->value]);
+        $month        = $this->makeAdvancePaymentMonth($user, $laterRefrend, 'PENDING');
+
+        $this->action->execute($refrend, 'EGRESADO', $user->id);
+
+        $this->assertSame('CANCELLED', $month->fresh()->status);
+        $this->assertSame('CANCELLED', $month->advancePayment->fresh()->status);
+        $this->assertSame('Cancelado por EGRESO del 06/2026', $laterRefrend->fresh()->resolution_notes);
+        $this->assertSame(RefrendStatus::CANCELLED, $laterRefrend->fresh()->status);
+        $this->assertSame('2026-06-01', $profile->fresh()->cycle_closed_period->toDateString());
+        $this->assertNull($refrend->fresh()->resolution_notes);
+    }
+
+    /** @test */
+    public function a_later_advance_refrend_that_is_paid_still_blocks_with_the_paid_reason_and_cancels_nothing(): void
     {
         $user         = $this->makeBecario();
         $refrend      = $this->makeRefrend($user, ['period_month' => 6]);
-        $laterRefrend = $this->makeRefrend($user, ['period_year' => 2027, 'period_month' => 2]);
-        $this->makeAdvancePaymentMonth($user, $laterRefrend, 'PENDING');
+        $laterRefrend = $this->makeRefrend($user, ['period_year' => 2027, 'period_month' => 2]); // CLOSED by default
+        $month        = $this->makeAdvancePaymentMonth($user, $laterRefrend, 'PENDING');
 
         try {
             $this->action->execute($refrend, 'EGRESADO', $user->id);
             $this->fail('Expected CycleCutBlockedException.');
         } catch (CycleCutBlockedException $e) {
             $this->assertSame(
-                [['year' => 2027, 'month' => 2, 'reason' => 'ADVANCE_PAID']],
+                [['year' => 2027, 'month' => 2, 'reason' => 'PAID']],
                 $e->payload()['blocking_months']
             );
         }
 
+        $this->assertSame('PENDING', $month->fresh()->status);
         $this->assertNull(ScholarshipProfile::where('user_id', $user->id)->first());
     }
 

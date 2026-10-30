@@ -50,6 +50,15 @@ class AdvancePaymentReconciler
             return;
         }
 
+        // sdd/revertir-pago-adelantado (S5, R17): a month cancelled by a cycle
+        // cut (AdvanceCycleCutCanceller, which runs earlier in the same
+        // transaction and includes the cut month) is final. Returning BEFORE
+        // the divergence check keeps it from being re-marked REACHED/OVERRIDDEN
+        // and from raising ADVANCE_DIVERGENCE_REQUIRED.
+        if ($advanceMonth->status === ScholarshipAdvancePaymentMonth::STATUS_CANCELLED) {
+            return;
+        }
+
         $diverged = (float) $refrend->final_amount > 0.01;
         if ($diverged && empty($divergenceReason)) {
             throw new AdvanceDivergenceRequiredException();

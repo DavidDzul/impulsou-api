@@ -8,11 +8,11 @@ use App\Exceptions\Contracts\CarriesErrorPayload;
  * sdd/egresado-baja-definitiva, amendment-2 / amendment-4 (guard #1 of 4,
  * evaluated second — after CYCLE_ALREADY_CLOSED). Thrown by
  * CloseScholarshipCycleAction when at least one period AFTER the cut period
- * is already settled in a way the cut cannot silently override: a PENDING
- * ScholarshipAdvancePaymentMonth (reason ADVANCE_PAID), a later refrend that
- * is already locked/batched (reason PAID), or a later refrend that already
+ * is already settled in a way the cut cannot silently override: a later
+ * refrend that is already locked/batched (reason PAID), or a later refrend that already
  * has active applied ScholarshipWithholdingPayment rows (reason
- * ABONOS_APPLIED). No partial state — ALL blocking months are listed in one
+ * ABONOS_APPLIED). A PENDING advance month no longer blocks (S5: it is
+ * cancelled instead). No partial state — ALL blocking months are listed in one
  * response so staff can resolve them together instead of resubmitting once
  * per month.
  */

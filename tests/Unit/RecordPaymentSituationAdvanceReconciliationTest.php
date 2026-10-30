@@ -127,8 +127,11 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
         ], $this->admin->id);
 
         $advanceMonth->refresh();
-        $this->assertSame('REACHED', $advanceMonth->status);
-        $this->assertSame('BAJA_DEFINITIVA', $advanceMonth->settled_resolution_type);
+        // sdd/revertir-pago-adelantado (decision 3b): the cut month is CANCELLED
+        // by the cycle-cut canceller (counted as overpayment), not REACHED, and
+        // the reconciler leaves it alone.
+        $this->assertSame('CANCELLED', $advanceMonth->status);
+        $this->assertNull($advanceMonth->settled_resolution_type);
         $this->assertNull($advanceMonth->divergence_reason);
     }
 
@@ -216,8 +219,9 @@ class RecordPaymentSituationAdvanceReconciliationTest extends TestCase
         ], $this->admin->id);
 
         $advanceMonth->refresh();
-        $this->assertSame('REACHED', $advanceMonth->status);
-        $this->assertSame('EGRESADO', $advanceMonth->settled_resolution_type);
+        // Decision 3b: the cut month is CANCELLED by the canceller, not REACHED.
+        $this->assertSame('CANCELLED', $advanceMonth->status);
+        $this->assertNull($advanceMonth->settled_resolution_type);
         $this->assertNull($advanceMonth->divergence_reason);
     }
 
