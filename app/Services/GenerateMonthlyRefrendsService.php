@@ -10,6 +10,9 @@ use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
+use App\Services\Scholarship\CutAnchor;
+use App\Services\Scholarship\CycleTerminationCanceller;
+use App\Enums\WithholdingCancellationReason;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use Carbon\Carbon;
@@ -22,15 +25,18 @@ class GenerateMonthlyRefrendsService
     private ScholarshipCalculationService $calculationService;
     private AttendancePenaltyService $penaltyService;
     private GraduateBecarioAction $graduateBecario;
+    private CycleTerminationCanceller $terminationCanceller;
 
     public function __construct(
         ScholarshipCalculationService $calculationService,
         AttendancePenaltyService $penaltyService,
-        GraduateBecarioAction $graduateBecario
+        GraduateBecarioAction $graduateBecario,
+        CycleTerminationCanceller $terminationCanceller
     ) {
-        $this->calculationService = $calculationService;
-        $this->penaltyService     = $penaltyService;
-        $this->graduateBecario    = $graduateBecario;
+        $this->calculationService   = $calculationService;
+        $this->penaltyService       = $penaltyService;
+        $this->graduateBecario      = $graduateBecario;
+        $this->terminationCanceller = $terminationCanceller;
     }
 
     /**
@@ -438,6 +444,16 @@ class GenerateMonthlyRefrendsService
                 // and flipping user_type for a FUTURE month would be wrong.
                 // The money mutation above stays ungated as defense-in-depth.
                 if ($createdVia === 'GENERATION') {
+                    // sdd/retenciones-pendientes (R5): the egreso also cancels
+                    // the PENDING retentions and the advance payments, in this
+                    // same transaction (system actor). A CycleCutBlockedException
+                    // here rolls the whole egreso back for this becario.
+                    $this->terminationCanceller->cancel(
+                        CutAnchor::fromRefrend($refrend),
+                        WithholdingCancellationReason::EGRESO_RETICULA,
+                        null
+                    );
+
                     $this->graduateBecario->execute($user, $refrend, $notes, null);
                 }
             }

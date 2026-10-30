@@ -314,7 +314,7 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
     }
 
     /** @test */
-    public function month_plus_two_zeroing_does_not_touch_a_pending_withholding_ledger_row(): void
+    public function month_plus_two_zeroes_the_refrend_and_cancels_the_pending_withholding_ledger_row(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 15));
         $profile = $this->makeProfile(['reticula_end_date' => '2026-07-31']);
@@ -347,7 +347,10 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
         $withholding->refresh();
         $this->assertSame('500.00', (string) $withholding->withheld_amount);
         $this->assertSame('0.00', (string) $withholding->paid_amount);
-        $this->assertSame('PENDING', $withholding->status);
+        // sdd/retenciones-pendientes (R5): the egreso now cancels the debt it
+        // used to leave dangling; the amounts themselves are frozen as-is.
+        $this->assertSame('CANCELLED', $withholding->status);
+        $this->assertSame(\App\Enums\WithholdingCancellationReason::EGRESO_RETICULA, $withholding->cancellation_reason);
     }
 
     /** @test */
