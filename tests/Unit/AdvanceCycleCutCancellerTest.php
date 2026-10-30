@@ -12,6 +12,7 @@ use App\Models\ScholarshipRefrend;
 use App\Models\User;
 use App\Services\Scholarship\AdvanceCutPlan;
 use App\Services\Scholarship\AdvanceCycleCutCanceller;
+use App\Services\Scholarship\CutAnchor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -500,5 +501,97 @@ class AdvanceCycleCutCancellerTest extends TestCase
 
         $this->assertSame('1000.00', $plan->cancelledAmount);
         $this->assertSame(ScholarshipAdvancePayment::STATUS_CANCELLED, $f['header']->fresh()->status);
+    }
+
+    /** @test */
+    public function an_egreso_anchor_cancels_with_the_egreso_reason_and_a_null_actor(): void
+    {
+        $f      = $this->makeAdvance(3, [4 => '1000.00', 5 => '1000.00']);
+        $anchor = CutAnchor::fromRefrend($f['refrends'][4]);
+
+        $plan = $this->canceller->cancelAfterCut($anchor, 'EGRESO_RETICULA', null);
+
+        $header = $f['header']->fresh();
+        $this->assertSame('2000.00', $plan->cancelledAmount);
+        $this->assertSame(ScholarshipAdvancePayment::STATUS_CANCELLED, $header->status);
+        $this->assertSame('EGRESO_RETICULA', $header->cancel_reason);
+        $this->assertNull($header->cancelled_by_id);
+        $this->assertSame($f['refrends'][4]->id, (int) $header->cancelled_cut_refrend_id);
+    }
+
+    /** @test */
+    public function a_deactivation_anchor_cancels_from_the_current_month_with_no_cut_refrend(): void
+    {
+        $f      = $this->makeAdvance(3, [4 => '1000.00', 5 => '1000.00', 6 => '1000.00']);
+        $anchor = CutAnchor::forDeactivation($f['user']->id, \Carbon\Carbon::create(2026, 5, 10));
+
+        $plan = $this->canceller->cancelAfterCut($anchor, 'USER_DEACTIVATED', $this->actor->id);
+
+        $header = $f['header']->fresh();
+        $this->assertSame('2000.00', $plan->cancelledAmount);
+        $this->assertSame(ScholarshipAdvancePayment::STATUS_PARTIALLY_CANCELLED, $header->status);
+        $this->assertSame('USER_DEACTIVATED', $header->cancel_reason);
+        $this->assertSame($this->actor->id, (int) $header->cancelled_by_id);
+        $this->assertNull($header->cancelled_cut_refrend_id);
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_PENDING, $f['months'][4]->fresh()->status);
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_CANCELLED, $f['months'][5]->fresh()->status);
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_CANCELLED, $f['months'][6]->fresh()->status);
+    }
+
+    /** @test */
+    public function a_deactivation_anchor_month_that_is_locked_is_excluded_as_consumed_history(): void
+    {
+        $f = $this->makeAdvance(3, [4 => '1000.00', 5 => '1000.00']);
+        $f['refrends'][4]->update(['workflow_status' => 'CLOSED', 'locked_at' => now(), 'locked_by_id' => $this->actor->id]);
+        $anchor = CutAnchor::forDeactivation($f['user']->id, \Carbon\Carbon::create(2026, 4, 10));
+
+        $plan = $this->canceller->cancelAfterCut($anchor, 'USER_DEACTIVATED', $this->actor->id);
+
+        $this->assertSame('1000.00', $plan->cancelledAmount);
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_PENDING, $f['months'][4]->fresh()->status);
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_CANCELLED, $f['months'][5]->fresh()->status);
+    }
+
+    /** @test */
+    public function a_deactivation_anchor_month_that_is_batched_is_excluded_as_consumed_history(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
+        $f    = $this->makeAdvance(3, [4 => '1000.00'], [], $user);
+        $f['refrends'][4]->update(['payment_batch_id' => $this->batchFor($user)->id]);
+        $anchor = CutAnchor::forDeactivation($user->id, \Carbon\Carbon::create(2026, 4, 10));
+
+        $plan = $this->canceller->cancelAfterCut($anchor, 'USER_DEACTIVATED', $this->actor->id);
+
+        $this->assertTrue($plan->isEmpty());
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_PENDING, $f['months'][4]->fresh()->status);
+    }
+
+    /** @test */
+    public function a_deactivation_anchor_with_a_later_locked_month_throws_and_writes_nothing(): void
+    {
+        $f = $this->makeAdvance(3, [4 => '1000.00', 5 => '1000.00']);
+        $f['refrends'][5]->update(['workflow_status' => 'CLOSED', 'locked_at' => now(), 'locked_by_id' => $this->actor->id]);
+        $anchor = CutAnchor::forDeactivation($f['user']->id, \Carbon\Carbon::create(2026, 4, 10));
+
+        try {
+            $this->canceller->cancelAfterCut($anchor, 'USER_DEACTIVATED', $this->actor->id);
+            $this->fail('Expected CycleCutBlockedException');
+        } catch (CycleCutBlockedException $e) {
+            $this->assertSame([['year' => 2026, 'month' => 5, 'reason' => 'PAID']], $e->payload()['blocking_months']);
+        }
+
+        $this->assertSame(ScholarshipAdvancePayment::STATUS_ACTIVE, $f['header']->fresh()->status);
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_PENDING, $f['months'][4]->fresh()->status);
+    }
+
+    /** @test */
+    public function a_refrend_and_its_anchor_give_the_same_plan(): void
+    {
+        $f = $this->makeAdvance(3, [4 => '1000.00', 5 => '1000.00']);
+
+        $viaRefrend = $this->canceller->preview($f['refrends'][4]);
+        $viaAnchor  = $this->canceller->preview(CutAnchor::fromRefrend($f['refrends'][4]));
+
+        $this->assertEquals($viaRefrend->toArray(), $viaAnchor->toArray());
     }
 }
