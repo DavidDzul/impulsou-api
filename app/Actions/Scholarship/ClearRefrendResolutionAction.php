@@ -69,7 +69,14 @@ class ClearRefrendResolutionAction
             // Re-open the advance month settled by the resolution being undone, so no
             // stale settled_resolution_type / divergence_reason / reached_at remain.
             $advanceMonth = $refrend->advancePaymentMonth()->lockForUpdate()->first();
-            if ($advanceMonth && $advanceMonth->status !== ScholarshipAdvancePaymentMonth::STATUS_PENDING) {
+            // A CANCELLED month (cycle cut) is terminal: never re-open it.
+            if (
+                $advanceMonth
+                && ! in_array($advanceMonth->status, [
+                    ScholarshipAdvancePaymentMonth::STATUS_PENDING,
+                    ScholarshipAdvancePaymentMonth::STATUS_CANCELLED,
+                ], true)
+            ) {
                 $advanceMonth->update([
                     'status'                  => ScholarshipAdvancePaymentMonth::STATUS_PENDING,
                     'settled_resolution_type' => null,

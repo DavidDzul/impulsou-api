@@ -620,6 +620,25 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->assertSame('PENDING', $month->fresh()->status);
     }
 
+    /** @test */
+    public function clearing_never_moves_a_cancelled_advance_month_back_to_pending(): void
+    {
+        $user = $this->makeBecario();
+        $this->makeProfile($user);
+        $refrend = $this->makeResolvedRefrend($user);
+        $month   = $this->linkAdvanceMonth($refrend, [
+            'status'                  => ScholarshipAdvancePaymentMonth::STATUS_CANCELLED,
+            'settled_resolution_type' => null,
+            'divergence_reason'       => 'cancelled by cycle cut',
+        ]);
+
+        $this->action->execute($refrend, $this->admin->id);
+
+        $month->refresh();
+        $this->assertSame(ScholarshipAdvancePaymentMonth::STATUS_CANCELLED, $month->status);
+        $this->assertSame('cancelled by cycle cut', $month->divergence_reason);
+    }
+
     // -- recalculation keeps the incident status -------------------------------
 
     private function makeHumanIncident(ScholarshipRefrend $refrend): ScholarshipRefrendIncident
