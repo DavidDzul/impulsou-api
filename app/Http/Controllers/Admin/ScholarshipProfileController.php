@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\ScholarshipType;
+use App\Exceptions\ReticulaAdvanceConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreScholarshipProfileRequest;
 use App\Http\Requests\UpdateScholarshipProfileConfigRequest;
 use App\Http\Requests\UpdateScholarshipProfileRequest;
 use App\Models\ScholarshipProfile;
 use App\Models\User;
+use App\Services\Scholarship\ReticulaAdvanceGuard;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ScholarshipProfileController extends Controller
@@ -119,7 +122,7 @@ class ScholarshipProfileController extends Controller
      * Guarda o actualiza la retícula del becario (fechas + archivo).
      * Acepta multipart/form-data.
      */
-    public function updateReticula(Request $request, int $userId)
+    public function updateReticula(Request $request, int $userId, ReticulaAdvanceGuard $guard)
     {
         $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
 
@@ -135,24 +138,52 @@ class ScholarshipProfileController extends Controller
             'file.required' => 'El documento es obligatorio.',
         ]);
 
-        $attrs = [
-            'reticula_start_date' => $data['reticula_start_date'],
-            'reticula_end_date'   => $data['reticula_end_date'],
-        ];
+        // Lock order vs RecordAdvancePaymentAction (origin refrend -> profile):
+        // this endpoint only ever takes the profile lock and reads advance
+        // months WITHOUT locking, so it never waits on an origin row and
+        // cannot close a lock cycle. If a record races us it blocks on the
+        // profile until we commit and then validates against the new dates.
+        $oldPath = null;
 
-        if ($request->hasFile('file')) {
-            if ($profile->reticula_file_path) {
-                Storage::disk('public')->delete($profile->reticula_file_path);
-            }
+        try {
+            DB::transaction(function () use ($request, $userId, $data, $guard, &$oldPath) {
+                $profile = ScholarshipProfile::where('user_id', $userId)->lockForUpdate()->firstOrFail();
 
-            $file = $request->file('file');
-            $path = $file->store("scholarships/{$userId}/reticula", 'public');
+                // Guard BEFORE any file is stored.
+                $guard->assertCompatible($profile, $data['reticula_end_date']);
 
-            $attrs['reticula_file_path']     = $path;
-            $attrs['reticula_original_name'] = $file->getClientOriginalName();
+                $attrs = [
+                    'reticula_start_date' => $data['reticula_start_date'],
+                    'reticula_end_date'   => $data['reticula_end_date'],
+                ];
+
+                if ($request->hasFile('file')) {
+                    $oldPath = $profile->reticula_file_path;
+
+                    $file = $request->file('file');
+                    $path = $file->store("scholarships/{$userId}/reticula", 'public');
+
+                    $attrs['reticula_file_path']     = $path;
+                    $attrs['reticula_original_name'] = $file->getClientOriginalName();
+                }
+
+                $profile->update($attrs);
+            });
+        } catch (ReticulaAdvanceConflictException $e) {
+            return response()->json([
+                'res'  => false,
+                'msg'  => $e->getMessage(),
+                'code' => $e->code(),
+                'data' => $e->payload(),
+            ], $e->httpStatus());
         }
 
-        $profile->update($attrs);
+        // The previous document is removed only after the new state committed.
+        if ($oldPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        $profile = ScholarshipProfile::where('user_id', $userId)->firstOrFail();
 
         return response()->json(['res' => true, 'data' => $profile->fresh()]);
     }

@@ -80,8 +80,19 @@ class ScholarshipProfile extends Model
     public function egresoAdministrativoDate(): ?Carbon
     {
         return $this->reticula_end_date
-            ? Carbon::parse($this->reticula_end_date)->startOfMonth()->addMonths(2)->endOfMonth()
+            ? self::egresoMonthStart($this->reticula_end_date)->endOfMonth()
             : null;
+    }
+
+    /**
+     * First day of the egreso month (retícula end + 2 months) for a given
+     * retícula end date. Single home of the "+2 months" rule so callers that
+     * evaluate a CANDIDATE end date (sdd/revertir-pago-adelantado reticula
+     * guard) cannot drift from egresoAdministrativoDate().
+     */
+    public static function egresoMonthStart(\DateTimeInterface|string $reticulaEnd): Carbon
+    {
+        return Carbon::parse($reticulaEnd)->startOfMonth()->addMonths(2);
     }
 
     public function getEgresoAdministrativoAttribute(): ?string
