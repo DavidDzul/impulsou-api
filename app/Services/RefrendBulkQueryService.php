@@ -199,7 +199,7 @@ class RefrendBulkQueryService
         $currentRefrendIdByUser = $refrends->pluck('id', 'user_id');
         $pendingWithholdings = DB::table('scholarship_withholdings')
             ->whereIn('user_id', $userIds)
-            ->where('status', ScholarshipAdvancePaymentMonth::STATUS_PENDING)
+            ->where('status', 'PENDING')
             ->whereColumn('paid_amount', '<', 'withheld_amount')
             ->whereRaw('(period_year * 12 + period_month) between ? and ?', [$minAbsMonth, $maxAbsMonth])
             ->select(['id', 'user_id', 'origin_refrend_id', 'period_year', 'period_month', 'withheld_amount', 'paid_amount'])
