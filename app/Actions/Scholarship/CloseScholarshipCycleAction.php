@@ -14,8 +14,10 @@ use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
 use App\Models\TelmexCoverage;
+use App\Services\Scholarship\AdvanceCancellationLogger;
 use App\Services\Scholarship\AdvanceCutPlan;
 use App\Services\Scholarship\AdvanceCycleCutCanceller;
+use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleCutBlocker;
 use App\Services\Scholarship\CycleCutPreview;
 use App\Services\Scholarship\PayableWithholdingWindow;
@@ -75,7 +77,8 @@ class CloseScholarshipCycleAction
     public function __construct(
         private GraduateBecarioAction $graduate,
         private ScholarshipLoggingService $logging,
-        private AdvanceCycleCutCanceller $advanceCanceller
+        private AdvanceCycleCutCanceller $advanceCanceller,
+        private AdvanceCancellationLogger $advanceLogger
     ) {
     }
 
@@ -100,7 +103,7 @@ class CloseScholarshipCycleAction
         // rolls the cancellation back too.
         $advancePlan = $this->advanceCanceller->cancelAfterCut($refrend, $reason, $userId);
 
-        $this->logAdvanceCancellations($refrend, $advancePlan, $reason);
+        $this->advanceLogger->log(CutAnchor::fromRefrend($refrend), $advancePlan, $reason);
 
         $closedLaterLabels = $this->cascadeCloseLaterRefrends(
             $refrend,
@@ -308,67 +311,6 @@ class CloseScholarshipCycleAction
         ));
     }
 
-    /** Human label of the cut type used in the advance cancellation notes. */
-    private function cutTypeLabel(string $reason): string
-    {
-        return $reason === CycleClosureReason::EGRESADO->value ? 'EGRESO' : 'BAJA DEFINITIVA';
-    }
-
-    /**
-     * Spec R16: one ADVANCE_PAYMENT_CANCELLED_BY_CYCLE_CUT log per affected
-     * origin refrend (several headers of the same origin cannot exist: the
-     * origin->header relation is unique). Runs after the canceller applied the
-     * plan, so the "old" origin amount is reconstructed from the reduction.
-     */
-    private function logAdvanceCancellations(ScholarshipRefrend $cut, AdvanceCutPlan $plan, string $reason): void
-    {
-        foreach ($plan->origins as $row) {
-            $origin = ScholarshipRefrend::find($row['origin_refrend_id']);
-            if ($origin === null) {
-                continue;
-            }
-
-            $months = array_values(array_map(
-                fn (array $m) => [
-                    'period_year'  => $m['period_year'],
-                    'period_month' => $m['period_month'],
-                    'amount'       => $m['amount'],
-                ],
-                array_filter($plan->months, fn (array $m) => $m['header_id'] === $row['header_id'])
-            ));
-
-            $currentAmount = bcadd((string) ($origin->advance_payment_amount ?? '0'), '0', 2);
-
-            $this->logging->log(
-                $origin,
-                'ADVANCE_PAYMENT_CANCELLED_BY_CYCLE_CUT',
-                [
-                    'header_id'              => $row['header_id'],
-                    'header_status'          => ScholarshipAdvancePayment::STATUS_ACTIVE,
-                    'advance_payment_amount' => bcadd($currentAmount, $row['advance_payment_reduction'], 2),
-                ],
-                [
-                    'header_id'                 => $row['header_id'],
-                    'header_status'             => $row['resulting_header_status'],
-                    'months'                    => $months,
-                    'cancelled_amount'          => $row['cancelled_amount'],
-                    'origin_paid'               => $row['origin_paid'],
-                    'overpaid_amount'           => $row['overpaid_amount'],
-                    'advance_payment_reduction' => $row['advance_payment_reduction'],
-                    'advance_payment_amount'    => $currentAmount,
-                    'cut_refrend_id'            => $cut->id,
-                    'cut_reason'                => $reason,
-                ],
-                sprintf(
-                    'Pago adelantado cancelado por %s del %02d/%d.',
-                    $this->cutTypeLabel($reason),
-                    $cut->period_month,
-                    $cut->period_year
-                )
-            );
-        }
-    }
-
     /** @param array<int, string> $closedLaterLabels */
     private function cycleClosedNote(string $reason, array $closedLaterLabels, AdvanceCutPlan $plan): string
     {
@@ -421,7 +363,7 @@ class CloseScholarshipCycleAction
             $later->update([
                 'resolution_type'     => $reason,
                 'resolution_notes'    => in_array($later->id, $advanceRefrendIds, true)
-                    ? sprintf('Cancelado por %s del %02d/%d', $this->cutTypeLabel($reason), $refrend->period_month, $refrend->period_year)
+                    ? sprintf('Cancelado por %s del %02d/%d', AdvanceCancellationLogger::label($reason), $refrend->period_month, $refrend->period_year)
                     : sprintf('Cerrado por %s en %02d/%d.', $reason, $refrend->period_month, $refrend->period_year),
                 'final_amount'        => '0.00',
                 'discount_percentage' => '100.00',
