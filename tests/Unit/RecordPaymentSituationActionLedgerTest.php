@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Enums\RefrendStatus;
+use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\WithholdingAmountMismatchException;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
@@ -128,6 +129,55 @@ class RecordPaymentSituationActionLedgerTest extends TestCase
 
         $ledger = ScholarshipWithholding::where('origin_refrend_id', $refrend->id)->first();
         $this->assertSame('CANCELLED', $ledger->status);
+    }
+
+    /** @test */
+    public function reclassifying_away_from_retenida_tags_the_cancelled_ledger_row_as_reclassified(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user->id);
+
+        $this->action->execute($refrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 30,
+            'resolution_cause'  => 'BAJO_PROMEDIO',
+        ], $this->admin->id);
+
+        $this->action->execute($refrend->fresh(), ['resolution_type' => 'BECA_MES'], $this->admin->id);
+
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $refrend->id)->first();
+        $this->assertSame(WithholdingCancellationReason::RECLASSIFIED, $ledger->cancellation_reason);
+        $this->assertNotNull($ledger->cancelled_at);
+        $this->assertSame($this->admin->id, $ledger->cancelled_by_id);
+    }
+
+    /** @test */
+    public function reclassifying_never_overwrites_the_tag_of_a_row_already_cancelled_by_a_cut(): void
+    {
+        $user    = $this->makeBecario();
+        $refrend = $this->makeRefrend($user->id);
+
+        $this->action->execute($refrend, [
+            'resolution_type'   => 'RETENIDA',
+            'withholding_mode'  => 'percentage',
+            'withholding_value' => 30,
+            'resolution_cause'  => 'BAJO_PROMEDIO',
+        ], $this->admin->id);
+
+        $cutAt  = now()->subDay()->startOfSecond();
+        $ledger = ScholarshipWithholding::where('origin_refrend_id', $refrend->id)->first();
+        $ledger->update([
+            'status'              => 'CANCELLED',
+            'cancelled_at'        => $cutAt,
+            'cancellation_reason' => WithholdingCancellationReason::CYCLE_CUT->value,
+        ]);
+
+        $this->action->execute($refrend->fresh(), ['resolution_type' => 'BECA_MES'], $this->admin->id);
+
+        $ledger = $ledger->fresh();
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $ledger->cancellation_reason);
+        $this->assertTrue($cutAt->equalTo($ledger->cancelled_at));
     }
 
     /** @test */

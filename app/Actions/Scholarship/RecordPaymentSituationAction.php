@@ -3,6 +3,7 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
+use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\WithholdingAmountMismatchException;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
@@ -241,10 +242,20 @@ class RecordPaymentSituationAction
                         'created_by_id'   => $userId,
                     ]
                 );
-            } elseif ($existingLedger && $existingLedger->status !== 'CANCELLED') {
+            } elseif ($existingLedger) {
                 // Re-classified away from RETENIDA. Guarded above: paid_amount is
                 // guaranteed to be 0 here, so cancelling is safe and orphans nothing.
-                $existingLedger->update(['status' => 'CANCELLED']);
+                // Re-read: a cycle cut earlier in this transaction may already have
+                // cancelled the row, and its CYCLE_CUT tag must not be overwritten.
+                $currentLedger = $existingLedger->fresh();
+                if ($currentLedger !== null && $currentLedger->status !== 'CANCELLED') {
+                    $currentLedger->update([
+                        'status'              => 'CANCELLED',
+                        'cancelled_at'        => now(),
+                        'cancellation_reason' => WithholdingCancellationReason::RECLASSIFIED->value,
+                        'cancelled_by_id'     => $userId,
+                    ]);
+                }
             }
 
             if ($paymentInputs) {

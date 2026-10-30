@@ -6,6 +6,7 @@ use App\Actions\Scholarship\CloseScholarshipCycleAction;
 use App\Enums\RefrendType;
 use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
+use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\CycleCutActiveTelmexCoverageException;
 use App\Exceptions\CycleCutBlockedException;
 use App\Exceptions\CycleCutPendingWithholdingsException;
@@ -209,6 +210,37 @@ class CloseScholarshipCycleActionTest extends TestCase
         $this->assertSame(RefrendStatus::CANCELLED, $laterRefrend->fresh()->status);
         $this->assertSame('2026-06-01', $profile->fresh()->cycle_closed_period->toDateString());
         $this->assertNull($refrend->fresh()->resolution_notes);
+    }
+
+    /** @test */
+    public function the_cascade_tags_a_later_refrends_origin_ledger_row_as_cycle_cut(): void
+    {
+        $user         = $this->makeBecario();
+        $refrend      = $this->makeRefrend($user, ['period_month' => 6]);
+        $laterRefrend = $this->makeRefrend($user, [
+            'period_month'    => 7,
+            'workflow_status' => 'DRAFT',
+            'status'          => RefrendStatus::DRAFT->value,
+        ]);
+        // A zero-amount PENDING row is not "pending with balance" (guard 5 does
+        // not see it) yet is still reached by the cascade cancel.
+        $ledger = ScholarshipWithholding::create([
+            'user_id'           => $user->id,
+            'origin_refrend_id' => $laterRefrend->id,
+            'period_year'       => 2026,
+            'period_month'      => 7,
+            'withheld_amount'   => '0.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+
+        $this->action->execute($refrend, 'EGRESADO', $user->id);
+
+        $ledger = $ledger->fresh();
+        $this->assertSame('CANCELLED', $ledger->status);
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $ledger->cancellation_reason);
+        $this->assertNotNull($ledger->cancelled_at);
+        $this->assertSame($user->id, $ledger->cancelled_by_id);
     }
 
     /** @test */

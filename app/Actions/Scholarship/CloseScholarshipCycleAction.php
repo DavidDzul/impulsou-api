@@ -4,6 +4,7 @@ namespace App\Actions\Scholarship;
 
 use App\Enums\CycleClosureReason;
 use App\Enums\RefrendStatus;
+use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\CycleCutActiveTelmexCoverageException;
 use App\Exceptions\CycleCutBlockedException;
 use App\Exceptions\CycleCutPendingWithholdingsException;
@@ -435,7 +436,12 @@ class CloseScholarshipCycleAction
                 ->where('status', '!=', 'CANCELLED')
                 ->first();
             if ($originLedger !== null && (float) $originLedger->paid_amount <= 0.0) {
-                $originLedger->update(['status' => 'CANCELLED']);
+                $originLedger->update([
+                    'status'              => 'CANCELLED',
+                    'cancelled_at'        => now(),
+                    'cancellation_reason' => WithholdingCancellationReason::CYCLE_CUT->value,
+                    'cancelled_by_id'     => $userId,
+                ]);
             }
 
             $label           = sprintf('%02d/%d', $later->period_month, $later->period_year);

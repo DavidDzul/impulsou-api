@@ -3,6 +3,7 @@
 namespace App\Actions\Scholarship;
 
 use App\Enums\RefrendStatus;
+use App\Enums\WithholdingCancellationReason;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
@@ -63,7 +64,12 @@ class ClearRefrendResolutionAction
             // Cancel the pending retention ledger row, if any. Guard 3 proves
             // paid_amount = 0, so nothing is orphaned. Cancel, never delete.
             if ($existingLedger && $existingLedger->status !== 'CANCELLED') {
-                $existingLedger->update(['status' => 'CANCELLED']);
+                $existingLedger->update([
+                    'status'              => 'CANCELLED',
+                    'cancelled_at'        => now(),
+                    'cancellation_reason' => WithholdingCancellationReason::RECLASSIFIED->value,
+                    'cancelled_by_id'     => $userId,
+                ]);
             }
 
             // Re-open the advance month settled by the resolution being undone, so no
