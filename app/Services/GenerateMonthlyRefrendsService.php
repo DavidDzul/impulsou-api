@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Scholarship\GraduateBecarioAction;
+use App\Exceptions\CycleCutBlockedException;
 use App\Exceptions\ReticulaPeriodOutOfRangeException;
 use App\Exceptions\ScholarshipConfigPendingException;
 use App\Exceptions\ScholarshipReticulaMissingException;
@@ -448,11 +449,15 @@ class GenerateMonthlyRefrendsService
                     // the PENDING retentions and the advance payments, in this
                     // same transaction (system actor). A CycleCutBlockedException
                     // here rolls the whole egreso back for this becario.
-                    $this->terminationCanceller->cancel(
-                        CutAnchor::fromRefrend($refrend),
-                        WithholdingCancellationReason::EGRESO_RETICULA,
-                        null
-                    );
+                    try {
+                        $this->terminationCanceller->cancel(
+                            CutAnchor::fromRefrend($refrend),
+                            WithholdingCancellationReason::EGRESO_RETICULA,
+                            null
+                        );
+                    } catch (CycleCutBlockedException $e) {
+                        throw $this->asEgresoBlock($e);
+                    }
 
                     $this->graduateBecario->execute($user, $refrend, $notes, null);
                 }
@@ -460,6 +465,27 @@ class GenerateMonthlyRefrendsService
 
             return $refrend->fresh();
         });
+    }
+
+    /**
+     * The canceller's message is written for the manual cut ("...antes de
+     * marcar egreso o baja definitiva"). The automatic egreso runs inside a
+     * bulk generation, so the failures[] reason must say what happened and what
+     * to do. Same blocking months, so the payload is unchanged.
+     */
+    private function asEgresoBlock(CycleCutBlockedException $e): CycleCutBlockedException
+    {
+        /** @var array<int, array{year:int,month:int,reason:string}> $months */
+        $months = $e->payload()['blocking_months'];
+        $labels = array_map(fn ($m) => sprintf('%02d/%d', $m['month'], $m['year']), $months);
+
+        return new CycleCutBlockedException(
+            sprintf(
+                'No se pudo egresar automáticamente: tiene %s pagado(s) o bloqueado(s) posterior(es) al egreso. Revísalo y vuelve a generar.',
+                implode(' y ', $labels)
+            ),
+            $months
+        );
     }
 
     /**

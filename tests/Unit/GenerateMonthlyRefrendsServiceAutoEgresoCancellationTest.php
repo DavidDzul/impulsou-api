@@ -34,6 +34,9 @@ class GenerateMonthlyRefrendsServiceAutoEgresoCancellationTest extends TestCase
 
     private GenerateMonthlyRefrendsService $service;
 
+    private const BLOCKED_EGRESO_MESSAGE =
+        'No se pudo egresar automáticamente: tiene 11/2026 pagado(s) o bloqueado(s) posterior(es) al egreso. Revísalo y vuelve a generar.';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -358,7 +361,10 @@ class GenerateMonthlyRefrendsServiceAutoEgresoCancellationTest extends TestCase
         try {
             $this->service->generateForUser($p, 2026, 9);
             $this->fail('Expected CycleCutBlockedException');
-        } catch (CycleCutBlockedException) {
+        } catch (CycleCutBlockedException $e) {
+            // Egreso-specific text, not the manual-cut "marcar egreso o baja definitiva" one.
+            $this->assertSame(self::BLOCKED_EGRESO_MESSAGE, $e->getMessage());
+            $this->assertSame([['year' => 2026, 'month' => 11, 'reason' => 'PAID']], $e->payload()['blocking_months']);
         }
 
         $this->assertFalse(ScholarshipRefrend::where('user_id', $p->user_id)->where('period_month', 9)->exists());
@@ -392,6 +398,7 @@ class GenerateMonthlyRefrendsServiceAutoEgresoCancellationTest extends TestCase
         $this->assertCount(1, $stats['failures']);
         $this->assertSame($blocked->user_id, $stats['failures'][0]['user_id']);
         $this->assertSame('error', $stats['failures'][0]['kind']);
+        $this->assertSame(self::BLOCKED_EGRESO_MESSAGE, $stats['failures'][0]['reason']);
 
         // The blocked becario is fully rolled back; the others completed normally.
         $this->assertFalse(ScholarshipRefrend::where('user_id', $blocked->user_id)->where('period_month', 9)->exists());
