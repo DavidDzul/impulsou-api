@@ -6,6 +6,7 @@ use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\ScholarshipType;
+use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Support\Scholarship\PaymentAmountFloor;
@@ -313,6 +314,11 @@ class PaymentBatchService
         $advancePaidByRefrendId = DB::table('scholarship_advance_payment_months as apm')
             ->join('scholarship_advance_payments as ap', 'ap.id', '=', 'apm.advance_payment_id')
             ->whereIn('apm.refrend_id', $refrends->pluck('refrend_id'))
+            // sdd/revertir-pago-adelantado S13c: a CANCELLED month (cycle cut)
+            // no longer covers its refrend. The refrends a cut cancels are
+            // already absent from here (Filter C: resolution_type
+            // BAJA_DEFINITIVA/EGRESADO), this keeps the indicator honest.
+            ->where('apm.status', '!=', ScholarshipAdvancePaymentMonth::STATUS_CANCELLED)
             ->select([
                 'apm.refrend_id', 'apm.amount', 'apm.divergence_reason',
                 'ap.origin_period_year', 'ap.origin_period_month',

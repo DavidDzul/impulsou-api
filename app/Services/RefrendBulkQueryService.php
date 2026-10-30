@@ -228,6 +228,9 @@ class RefrendBulkQueryService
         $advancePaidByRefrendId = DB::table('scholarship_advance_payment_months as apm')
             ->join('scholarship_advance_payments as ap', 'ap.id', '=', 'apm.advance_payment_id')
             ->whereIn('apm.refrend_id', $refrendIds)
+            // sdd/revertir-pago-adelantado S13c: a CANCELLED month (cycle cut)
+            // no longer covers its refrend, so it is not "advance-paid".
+            ->where('apm.status', '!=', ScholarshipAdvancePaymentMonth::STATUS_CANCELLED)
             ->select(['apm.refrend_id', 'apm.amount', 'ap.origin_period_year', 'ap.origin_period_month'])
             ->get()
             ->keyBy('refrend_id');
@@ -242,8 +245,11 @@ class RefrendBulkQueryService
             ? []
             : $this->advanceRevertEligibility->evaluateMany(array_keys($activeAdvanceByOriginId));
 
+        // ── Advance overpayment on the cycle-cut row (S37) ─────────────────
+        $advanceOverpaymentByCutId = $this->advanceOverpaymentsByCutRefrend($refrendIds);
+
         // ── Assemble rows ──────────────────────────────────────────────────
-        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings, $advancePaidByRefrendId, $activeAdvanceByOriginId, $advanceRevertBlocks) {
+        $rows = $refrends->map(function ($r) use ($gradeRows, $incidentCounts, $firstIncidents, $attendanceDiscounts, $pendingWithholdings, $advancePaidByRefrendId, $activeAdvanceByOriginId, $advanceRevertBlocks, $advanceOverpaymentByCutId) {
             $snap         = $r->attendance_summary_snapshot ? json_decode($r->attendance_summary_snapshot, true) : null;
             $gradeRecord  = $gradeRows->get($r->user_id);
             $incident     = $firstIncidents->get($r->id);
@@ -360,6 +366,7 @@ class RefrendBulkQueryService
                 'advance_revert_block'          => isset($activeAdvanceByOriginId[$r->id])
                     ? ($advanceRevertBlocks[$r->id] ?? null)
                     : null,
+                'advance_overpayment'           => $advanceOverpaymentByCutId[$r->id] ?? null,
             ];
         })->values()->all();
 
@@ -414,6 +421,59 @@ class RefrendBulkQueryService
                     ])
                     ->values()
                     ->all(),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * `advance_overpayment` for the cut rows (sdd/revertir-pago-adelantado
+     * S37): headers whose cancelled_cut_refrend_id is one of the given rows
+     * and that recorded an overpayment (paid origin). Summed across headers;
+     * months = the CANCELLED months of those headers; origin_* = earliest
+     * origin. Two queries regardless of the number of rows.
+     *
+     * @param array<int, int> $refrendIds
+     * @return array<int, array<string, mixed>> cutRefrendId => advance_overpayment
+     */
+    private function advanceOverpaymentsByCutRefrend(array $refrendIds): array
+    {
+        $headers = ScholarshipAdvancePayment::whereIn('cancelled_cut_refrend_id', $refrendIds)
+            ->where('overpaid_amount', '>', 0)
+            ->get();
+
+        if ($headers->isEmpty()) {
+            return [];
+        }
+
+        $months = ScholarshipAdvancePaymentMonth::whereIn('advance_payment_id', $headers->pluck('id')->all())
+            ->where('status', ScholarshipAdvancePaymentMonth::STATUS_CANCELLED)
+            ->get()
+            ->groupBy('advance_payment_id');
+
+        $result = [];
+        foreach ($headers->groupBy('cancelled_cut_refrend_id') as $cutId => $group) {
+            $earliest = $group
+                ->sortBy(fn (ScholarshipAdvancePayment $h) => $h->origin_period_year * 12 + $h->origin_period_month)
+                ->first();
+
+            $cancelledMonths = $group
+                ->flatMap(fn (ScholarshipAdvancePayment $h) => $months->get($h->id) ?? collect())
+                ->sortBy(fn (ScholarshipAdvancePaymentMonth $m) => $m->period_year * 12 + $m->period_month)
+                ->map(fn (ScholarshipAdvancePaymentMonth $m) => [
+                    'period_year'  => (int) $m->period_year,
+                    'period_month' => (int) $m->period_month,
+                    'amount'       => number_format((float) $m->amount, 2, '.', ''),
+                ])
+                ->values()
+                ->all();
+
+            $result[(int) $cutId] = [
+                'amount'              => number_format((float) $group->sum('overpaid_amount'), 2, '.', ''),
+                'months'              => $cancelledMonths,
+                'origin_period_year'  => (int) $earliest->origin_period_year,
+                'origin_period_month' => (int) $earliest->origin_period_month,
             ];
         }
 
