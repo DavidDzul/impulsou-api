@@ -388,7 +388,11 @@ class RevertAdvancePaymentTest extends TestCase
 
         $this->revert($f['origin']->id)
             ->assertStatus(422)
-            ->assertJson(['res' => false, 'code' => 'ADVANCE_FUTURE_TELMEX_COVERED']);
+            ->assertJson([
+                'res'  => false,
+                'code' => 'ADVANCE_FUTURE_TELMEX_COVERED',
+                'msg'  => 'No puedes revertir: alguno de los meses adelantados está cubierto por Telmex. Termina o cancela primero la cobertura Telmex.',
+            ]);
 
         $this->assertSame(3, ScholarshipRefrend::where('created_via', 'ADVANCE_PAYMENT')->count());
     }

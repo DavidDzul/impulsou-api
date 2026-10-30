@@ -83,7 +83,7 @@ class AdvancePaymentException extends \DomainException implements CarriesErrorPa
     public static function futureTelmexCovered(): self
     {
         return new self(
-            'Alguno de los refrendos adelantados está cubierto por Telmex; no se puede revertir el pago adelantado.',
+            'No puedes revertir: alguno de los meses adelantados está cubierto por Telmex. Termina o cancela primero la cobertura Telmex.',
             self::ADVANCE_FUTURE_TELMEX_COVERED,
             422
         );
