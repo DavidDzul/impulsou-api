@@ -10,6 +10,7 @@ use App\Models\ScholarshipWithholding;
 use App\Models\ScholarshipWithholdingPayment;
 use App\Services\AttendancePenaltyService;
 use App\Services\Scholarship\AdvancePaymentReconciler;
+use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Services\Scholarship\RefrendPaymentTotalsSyncer;
 use App\Services\ScholarshipLoggingService;
@@ -191,6 +192,14 @@ class RecordPaymentSituationAction
         $old = $this->logging->snapshotRefrend($refrend);
 
         return DB::transaction(function () use ($refrend, $updates, $old, $ledgerAmount, $data, $userId, $type, $paymentInputs, $neutralizePenalties) {
+            // Global lock order (see BecarioLockOrder): a terminal cycle cut
+            // updates the users row (graduation / active=false) further down, so
+            // lock it FIRST, before the withholding and refrend locks, to match
+            // UserDeactivationService. Other situations never touch users.
+            if (in_array($updates['resolution_type'], ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true)) {
+                BecarioLockOrder::lockUser((int) $refrend->user_id);
+            }
+
             // An advance-paid month is $0 (or, on appeal, paid in full): a retention
             // ledger here could be paid out a second time via "Pago meses retenidos".
             if ($type === 'RETENIDA' && $refrend->hasLinkedAdvanceMonth()) {

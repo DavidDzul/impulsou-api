@@ -11,6 +11,7 @@ use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
+use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleTerminationCanceller;
 use App\Enums\WithholdingCancellationReason;
@@ -361,6 +362,14 @@ class GenerateMonthlyRefrendsService
         }
 
         return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
+            // Global lock order (see BecarioLockOrder): the automatic egreso
+            // graduates the becario (users update) and cancels withholdings /
+            // advances, so lock the users row FIRST, before the egreso refrend
+            // insert and the cancellers' locks. Matches UserDeactivationService.
+            if ($isEgreso && $createdVia === 'GENERATION') {
+                BecarioLockOrder::lockUser((int) $profile->user_id);
+            }
+
             $refrend = ScholarshipRefrend::create([
                 'user_id'                      => $profile->user_id,
                 'period_year'                  => $year,

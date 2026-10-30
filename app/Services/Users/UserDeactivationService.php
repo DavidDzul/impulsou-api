@@ -6,6 +6,7 @@ use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\CycleCutBlockedException;
 use App\Models\ScholarshipProfile;
 use App\Models\User;
+use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleTerminationCanceller;
 use Illuminate\Support\Facades\DB;
@@ -40,9 +41,10 @@ class UserDeactivationService
     {
         try {
             return DB::transaction(function () use ($user, $data, $actorId) {
-                // Serializes against RecordAdvancePaymentAction, which re-reads
-                // the user FOR UPDATE and rejects inactive users.
-                $locked = User::whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+                // Global lock order (see BecarioLockOrder): users row FIRST.
+                // Serializes against RecordAdvancePaymentAction, which locks the
+                // same row first and rejects inactive users.
+                $locked = BecarioLockOrder::lockUser((int) $user->getKey());
 
                 $isDeactivation = (bool) $locked->active
                     && array_key_exists('active', $data)
