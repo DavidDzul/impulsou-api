@@ -125,7 +125,7 @@ class ReticulaAdvanceGuardTest extends TestCase
 
         $response->assertStatus(422)->assertExactJson([
             'res'  => false,
-            'msg'  => 'Con esta retícula el egreso sería en 05/2026, pero el becario tiene 05/2026, 06/2026 y 07/2026 pagado por adelantado. Revierte primero el pago adelantado.',
+            'msg'  => 'Con esta retícula el egreso sería en 05/2026, pero el becario tiene 05/2026, 06/2026 y 07/2026 pagados por adelantado. Revierte primero el pago adelantado.',
             'code' => 'RETICULA_ADVANCE_CONFLICT',
             'data' => [
                 'egreso_period_year'  => 2026,
@@ -144,6 +144,40 @@ class ReticulaAdvanceGuardTest extends TestCase
         $this->assertSame('old.pdf', $fresh->reticula_original_name);
         Storage::disk('public')->assertExists(self::OLD_FILE);
         $this->assertSame([self::OLD_FILE], Storage::disk('public')->allFiles());
+    }
+
+    /** @test */
+    public function the_conflict_message_uses_the_singular_for_a_single_month(): void
+    {
+        $this->addAdvanceMonths([[2026, 5, 'PENDING']]);
+
+        $this->postReticula('2026-03-31')->assertStatus(422)->assertJsonPath(
+            'msg',
+            'Con esta retícula el egreso sería en 05/2026, pero el becario tiene 05/2026 pagado por adelantado. Revierte primero el pago adelantado.'
+        );
+    }
+
+    /** @test */
+    public function it_deletes_the_newly_stored_file_when_the_transaction_fails_after_the_store(): void
+    {
+        ScholarshipProfile::updating(function () {
+            throw new \RuntimeException('forced failure after store');
+        });
+
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->postReticula('2026-05-31', true);
+            $this->fail('Expected the forced failure to propagate.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('forced failure after store', $e->getMessage());
+        }
+
+        // Old file untouched, the orphan new file removed, dates unchanged.
+        $this->assertSame([self::OLD_FILE], Storage::disk('public')->allFiles());
+        $fresh = $this->profile->fresh();
+        $this->assertSame(self::OLD_FILE, $fresh->reticula_file_path);
+        $this->assertSame('2028-06-30', $fresh->reticula_end_date->toDateString());
     }
 
     /** @test */

@@ -31,10 +31,11 @@ class ReticulaAdvanceConflictException extends \DomainException implements Carri
             : ($labels[0] ?? '');
 
         parent::__construct(sprintf(
-            'Con esta retícula el egreso sería en %02d/%d, pero el becario tiene %s pagado por adelantado. Revierte primero el pago adelantado.',
+            'Con esta retícula el egreso sería en %02d/%d, pero el becario tiene %s %s por adelantado. Revierte primero el pago adelantado.',
             $egresoMonth,
             $egresoYear,
-            $list
+            $list,
+            count($labels) > 1 ? 'pagados' : 'pagado'
         ));
     }
 
