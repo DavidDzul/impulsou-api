@@ -144,9 +144,10 @@ class ScholarshipProfileController extends Controller
         // cannot close a lock cycle. If a record races us it blocks on the
         // profile until we commit and then validates against the new dates.
         $oldPath = null;
+        $newPath = null;
 
         try {
-            DB::transaction(function () use ($request, $userId, $data, $guard, &$oldPath) {
+            DB::transaction(function () use ($request, $userId, $data, $guard, &$oldPath, &$newPath) {
                 $profile = ScholarshipProfile::where('user_id', $userId)->lockForUpdate()->firstOrFail();
 
                 // Guard BEFORE any file is stored.
@@ -162,6 +163,7 @@ class ScholarshipProfileController extends Controller
 
                     $file = $request->file('file');
                     $path = $file->store("scholarships/{$userId}/reticula", 'public');
+                    $newPath = $path;
 
                     $attrs['reticula_file_path']     = $path;
                     $attrs['reticula_original_name'] = $file->getClientOriginalName();
@@ -176,6 +178,13 @@ class ScholarshipProfileController extends Controller
                 'code' => $e->code(),
                 'data' => $e->payload(),
             ], $e->httpStatus());
+        } catch (\Throwable $e) {
+            // The stored file is not covered by the DB rollback: drop the orphan.
+            if ($newPath) {
+                Storage::disk('public')->delete($newPath);
+            }
+
+            throw $e;
         }
 
         // The previous document is removed only after the new state committed.
