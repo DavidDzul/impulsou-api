@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use App\Exceptions\Contracts\CarriesErrorPayload;
+use Illuminate\Http\JsonResponse;
 
 /**
  * sdd/egresado-baja-definitiva, amendment-2 / amendment-4 (guard #1 of 4,
@@ -34,5 +35,16 @@ class CycleCutBlockedException extends \DomainException implements CarriesErrorP
     public function payload(): array
     {
         return ['blocking_months' => $this->blockingMonths];
+    }
+
+    /** 409 body used by the user deactivation endpoints (sdd/retenciones-pendientes). */
+    public function toConflictResponse(): JsonResponse
+    {
+        return response()->json([
+            'res'  => false,
+            'msg'  => $this->getMessage(),
+            'code' => self::CODE,
+            'data' => $this->payload(),
+        ], 409);
     }
 }

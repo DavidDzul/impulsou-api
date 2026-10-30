@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Exceptions\UserTypeLockedException;
+use App\Exceptions\CycleCutBlockedException;
 use App\Models\User;
+use App\Services\Users\UserDeactivationService;
 use App\Support\Scholarship\UserTypeChangeGuard;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -100,7 +102,7 @@ class GraduateController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, UserDeactivationService $deactivation)
     {
         $user = User::findOrFail($id);
         $data = $request->validate(User::updateRulesUser($user->id));
@@ -119,13 +121,19 @@ class GraduateController extends Controller
             $data['active'] = (bool) $request->active;
         }
 
-        $user->fill($data)->save();
+        try {
+            $saved = $deactivation->save($user, $data, (int) $request->user()->id);
+        } catch (CycleCutBlockedException $e) {
+            return $e->toConflictResponse();
+        }
+        $user = $saved['user'];
         // Re-fetch with the list flags so the row the panel swaps in keeps them.
         $user = User::withListFlags()->findOrFail($user->id);
 
         return response()->json([
             'res' => true,
             'msg' => 'Usuario actualizado correctamente',
+            'deactivation_effects' => $saved['effects'],
             'updateGraduate' => $user
         ], 200);
     }

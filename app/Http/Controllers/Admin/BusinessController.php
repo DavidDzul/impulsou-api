@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Exceptions\CycleCutBlockedException;
 use App\Models\User;
+use App\Services\Users\UserDeactivationService;
 use App\Models\BusinessData;
 use App\Models\BusinessAgreement;
 use Illuminate\Support\Facades\Hash;
@@ -106,7 +108,7 @@ class BusinessController extends Controller
     }
 
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, UserDeactivationService $deactivation)
     {
         $user = User::findOrFail($id);
         $data = $request->validate(User::updateRulesBusiness($user->id));
@@ -119,7 +121,12 @@ class BusinessController extends Controller
             $data['active'] = (bool) $request->active;
         }
 
-        $user->fill($data)->save();
+        try {
+            $saved = $deactivation->save($user, $data, (int) $request->user()->id);
+        } catch (CycleCutBlockedException $e) {
+            return $e->toConflictResponse();
+        }
+        $user = $saved['user'];
 
         if ($request->filled('role')) {
             $user->syncRoles([$request->input('role')]);
@@ -136,6 +143,7 @@ class BusinessController extends Controller
         return response()->json([
             'res' => true,
             'msg' => 'Usuario actualizado correctamente',
+            'deactivation_effects' => $saved['effects'],
             'updateBusiness' => $userArray
         ], 200);
     }

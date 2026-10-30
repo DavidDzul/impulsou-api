@@ -101,6 +101,27 @@ class RecordAdvancePaymentActionTest extends TestCase
         $this->assertSame(1, ScholarshipRefrend::where('user_id', $profile->user_id)->count());
     }
 
+    /** @test */
+    public function an_inactive_user_is_rejected_and_nothing_is_persisted(): void
+    {
+        $profile = $this->makeProfile();
+        $origin  = $this->makeOriginRefrend($profile->user_id);
+        User::whereKey($profile->user_id)->update(['active' => false]);
+
+        try {
+            $this->action->execute($origin, [
+                'months' => [['year' => 2026, 'month' => 12]],
+            ], $this->admin->id);
+            $this->fail('Expected DomainException for an inactive user.');
+        } catch (\DomainException $e) {
+            $this->assertSame('No se puede registrar un pago adelantado a un usuario inactivo.', $e->getMessage());
+        }
+
+        $this->assertSame(0, ScholarshipAdvancePayment::count());
+        $this->assertSame(0, ScholarshipAdvancePaymentMonth::count());
+        $this->assertSame(1, ScholarshipRefrend::where('user_id', $profile->user_id)->count());
+    }
+
     // ── Validation matrix ────────────────────────────────────────────────────
 
     /** @test */

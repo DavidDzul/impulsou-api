@@ -8,6 +8,7 @@ use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Models\User;
 use App\Services\GenerateMonthlyRefrendsService;
 use App\Services\ScholarshipLoggingService;
 use Carbon\Carbon;
@@ -108,6 +109,15 @@ class RecordAdvancePaymentAction
             $profile = ScholarshipProfile::where('user_id', $originRefrend->user_id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // sdd/retenciones-pendientes: a deactivation cancels the advances of
+            // the user inside a transaction that locks the users row. Re-read the
+            // user FOR UPDATE here (after the profile lock) so an advance cannot
+            // be recorded for a user that was just deactivated.
+            $lockedUser = User::whereKey($originRefrend->user_id)->lockForUpdate()->firstOrFail();
+            if (! $lockedUser->active) {
+                throw new \DomainException('No se puede registrar un pago adelantado a un usuario inactivo.');
+            }
 
             // Re-assert no advance batch already exists for this origin refrend
             // (mirrors scholarship_advance_payments.unique(origin_refrend_id)).
