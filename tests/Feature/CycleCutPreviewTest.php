@@ -156,6 +156,7 @@ class CycleCutPreviewTest extends TestCase
                         'overpaid_amount'           => '5000.00',
                         'advance_payment_reduction' => '0.00',
                     ],
+                    'withholdings_to_cancel' => ['rows' => [], 'total_remaining' => '0.00'],
                 ],
             ]);
     }
@@ -341,7 +342,6 @@ class CycleCutPreviewTest extends TestCase
                 'CYCLE_CUT_OWN_ABONOS',
                 'CYCLE_CUT_BLOCKED',
                 'CYCLE_CUT_ACTIVE_TELMEX_COVERAGE',
-                'CYCLE_CUT_PENDING_WITHHOLDINGS',
             ],
             $codes
         );
@@ -352,6 +352,91 @@ class CycleCutPreviewTest extends TestCase
         }
         // The planner output is still reported next to the blockers.
         $this->assertCount(2, $data['advance']['months']);
+    }
+
+    /** @test */
+    public function pending_withholdings_are_listed_for_cancellation_and_do_not_block_the_cut(): void
+    {
+        $f   = $this->makeAdvance(false);
+        $old = $this->makeRefrend($f['user']->id, 1);
+        $oldW = ScholarshipWithholding::create([
+            'user_id'           => $f['user']->id,
+            'origin_refrend_id' => $old->id,
+            'period_year'       => 2026,
+            'period_month'      => 1,
+            'withheld_amount'   => '300.00',
+            'paid_amount'       => '100.00',
+            'status'            => 'PENDING',
+        ]);
+        $ownW = ScholarshipWithholding::create([
+            'user_id'           => $f['user']->id,
+            'origin_refrend_id' => $f['refrends'][4]->id,
+            'period_year'       => 2026,
+            'period_month'      => 4,
+            'withheld_amount'   => '150.00',
+            'paid_amount'       => '0.00',
+            'status'            => 'PENDING',
+        ]);
+        // Already settled / cancelled rows are not part of the plan.
+        ScholarshipWithholding::create([
+            'user_id'           => $f['user']->id,
+            'origin_refrend_id' => $f['origin']->id,
+            'period_year'       => 2026,
+            'period_month'      => 3,
+            'withheld_amount'   => '80.00',
+            'paid_amount'       => '80.00',
+            'status'            => 'PAID',
+        ]);
+
+        $data = $this->previewData($f['refrends'][4]->id);
+
+        $this->assertTrue($data['can_cut']);
+        $this->assertSame([], $data['blockers']);
+        $this->assertSame('350.00', $data['withholdings_to_cancel']['total_remaining']);
+        $this->assertSame([
+            [
+                'id' => $oldW->id, 'period_year' => 2026, 'period_month' => 1,
+                'withheld_amount' => '300.00', 'paid_amount' => '100.00', 'remaining_amount' => '200.00',
+                'is_current_refrend' => false,
+            ],
+            [
+                'id' => $ownW->id, 'period_year' => 2026, 'period_month' => 4,
+                'withheld_amount' => '150.00', 'paid_amount' => '0.00', 'remaining_amount' => '150.00',
+                'is_current_refrend' => true,
+            ],
+        ], $data['withholdings_to_cancel']['rows']);
+    }
+
+    /** @test */
+    public function the_withholding_preview_matches_what_the_real_cut_cancels(): void
+    {
+        $f   = $this->makeAdvance(false);
+        $old = $this->makeRefrend($f['user']->id, 1);
+        ScholarshipWithholding::create([
+            'user_id' => $f['user']->id, 'origin_refrend_id' => $old->id,
+            'period_year' => 2026, 'period_month' => 1,
+            'withheld_amount' => '300.00', 'paid_amount' => '100.00', 'status' => 'PENDING',
+        ]);
+        ScholarshipWithholding::create([
+            'user_id' => $f['user']->id, 'origin_refrend_id' => $f['refrends'][4]->id,
+            'period_year' => 2026, 'period_month' => 4,
+            'withheld_amount' => '150.00', 'paid_amount' => '0.00', 'status' => 'PENDING',
+        ]);
+
+        $preview = $this->previewData($f['refrends'][4]->id)['withholdings_to_cancel'];
+        $this->realCutState($f, 'BAJA_DEFINITIVA');
+
+        $cancelled = ScholarshipWithholding::where('user_id', $f['user']->id)
+            ->where('cancellation_reason', 'CYCLE_CUT')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame(array_column($preview['rows'], 'id'), $cancelled->pluck('id')->all());
+        $this->assertSame(
+            $preview['total_remaining'],
+            bcsub((string) $cancelled->sum('withheld_amount'), (string) $cancelled->sum('paid_amount'), 2)
+        );
+        $this->assertSame(0, ScholarshipWithholding::where('user_id', $f['user']->id)->where('status', 'PENDING')->count());
     }
 
     /** @test */
@@ -429,6 +514,7 @@ class CycleCutPreviewTest extends TestCase
                         'overpaid_amount'           => '0.00',
                         'advance_payment_reduction' => '0.00',
                     ],
+                    'withholdings_to_cancel' => ['rows' => [], 'total_remaining' => '0.00'],
                 ],
             ]);
     }

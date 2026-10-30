@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Enums\WithholdingCancellationReason;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipWithholding;
@@ -16,7 +17,7 @@ use Tests\TestCase;
 /**
  * sdd/egresado-baja-definitiva, PR2b, task 2b.9: the HTTP contract for the
  * four cycle-cut guards (CYCLE_CUT_BLOCKED, CYCLE_CUT_ACTIVE_TELMEX_COVERAGE,
- * CYCLE_CUT_PENDING_WITHHOLDINGS, CYCLE_ALREADY_CLOSED) via
+ * CYCLE_ALREADY_CLOSED; pending withholdings are cancelled, no longer a guard) via
  * POST /api/admin/scholarship-refrends/{id}/situation, plus the
  * `withholding_payments` prohibited_if validation rule for cut types.
  */
@@ -148,7 +149,7 @@ class CycleCutGuardsFeatureTest extends TestCase
     }
 
     /** @test */
-    public function it_returns_cycle_cut_pending_withholdings_with_the_pending_list(): void
+    public function pending_withholdings_no_longer_block_the_cut_they_are_cancelled(): void
     {
         $user          = $this->makeBecario();
         $refrend       = $this->makeRefrend($user->id, ['period_month' => 6]);
@@ -168,22 +169,18 @@ class CycleCutGuardsFeatureTest extends TestCase
                 'resolution_type' => 'EGRESADO',
             ]);
 
-        $response->assertStatus(422);
-        $response->assertJson([
-            'res'  => false,
-            'code' => 'CYCLE_CUT_PENDING_WITHHOLDINGS',
-        ]);
-        $this->assertSame($withholding->id, $response->json('data.withholdings.0.id'));
-        $this->assertSame('200.00', $response->json('data.withholdings.0.remaining_amount'));
-        $this->assertFalse($response->json('data.withholdings.0.is_current_refrend'));
+        $response->assertOk();
+        $withholding = $withholding->fresh();
+        $this->assertSame('CANCELLED', $withholding->status);
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $withholding->cancellation_reason);
     }
 
     /** @test */
-    public function it_flags_the_cut_months_own_retention_in_the_422_rows(): void
+    public function the_cut_months_own_retention_is_cancelled_instead_of_blocking(): void
     {
         $user    = $this->makeBecario();
         $refrend = $this->makeRefrend($user->id, ['period_month' => 6]);
-        ScholarshipWithholding::create([
+        $own     = ScholarshipWithholding::create([
             'user_id'           => $user->id,
             'origin_refrend_id' => $refrend->id,
             'period_year'       => 2026,
@@ -196,9 +193,8 @@ class CycleCutGuardsFeatureTest extends TestCase
         $response = $this->actingAs($this->admin)
             ->postJson($this->situationUrl($refrend->id), ['resolution_type' => 'BAJA_DEFINITIVA']);
 
-        $response->assertStatus(422);
-        $response->assertJson(['code' => 'CYCLE_CUT_PENDING_WITHHOLDINGS']);
-        $this->assertTrue($response->json('data.withholdings.0.is_current_refrend'));
+        $response->assertOk();
+        $this->assertSame(WithholdingCancellationReason::CYCLE_CUT, $own->fresh()->cancellation_reason);
     }
 
     /** @test */

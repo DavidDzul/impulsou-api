@@ -7,7 +7,6 @@ use App\Enums\RefrendStatus;
 use App\Enums\WithholdingCancellationReason;
 use App\Exceptions\CycleCutActiveTelmexCoverageException;
 use App\Exceptions\CycleCutBlockedException;
-use App\Exceptions\CycleCutPendingWithholdingsException;
 use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipAdvancePayment;
 use App\Models\ScholarshipProfile;
@@ -21,6 +20,7 @@ use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleCutBlocker;
 use App\Services\Scholarship\CycleCutPreview;
 use App\Services\Scholarship\PayableWithholdingWindow;
+use App\Services\Scholarship\PendingWithholdingCanceller;
 use App\Services\ScholarshipLoggingService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -54,11 +54,11 @@ use Illuminate\Support\Collection;
  *      to it (design D7 / amendment-2).
  *   4. CYCLE_CUT_ACTIVE_TELMEX_COVERAGE  — an ACTIVA Telmex coverage exists
  *      (amendment-3; EN_COBRO/LIQUIDADA/CANCELADA do not block).
- *   5. CYCLE_CUT_PENDING_WITHHOLDINGS    — ANY PENDING ScholarshipWithholding
- *      row exists for the becario, in or out of the payable window
- *      (amendment-4 — no acknowledge flag, no FORFEITED status; both moved
- *      to a future "Retenciones pendientes" change).
- * All five checks run inside the SAME DB transaction RecordPaymentSituation-
+ * Pending retentions are NOT a guard any more (sdd/retenciones-pendientes,
+ * R4): after guards 1-4 every PENDING ScholarshipWithholding of the becario
+ * (the cut month's own RETENIDA row included) is cancelled as CYCLE_CUT via
+ * PendingWithholdingCanceller, before the advance canceller runs.
+ * All four checks and the cancellations run inside the SAME DB transaction RecordPaymentSituation-
  * Action already opened, so a failure here rolls back the refrend's own
  * field updates too — no partial state is ever committed, even though in
  * source order this method runs after `$refrend->update($updates)` within
@@ -78,7 +78,8 @@ class CloseScholarshipCycleAction
         private GraduateBecarioAction $graduate,
         private ScholarshipLoggingService $logging,
         private AdvanceCycleCutCanceller $advanceCanceller,
-        private AdvanceCancellationLogger $advanceLogger
+        private AdvanceCancellationLogger $advanceLogger,
+        private PendingWithholdingCanceller $withholdingCanceller
     ) {
     }
 
@@ -94,7 +95,13 @@ class CloseScholarshipCycleAction
         $laterRefrends = $this->laterRefrends($refrend);
         $this->throwIfBlocked($this->inspectBlockingMonths($laterRefrends));
         $this->throwIfBlocked($this->inspectActiveTelmexCoverage($refrend));
-        $this->throwIfBlocked($this->inspectPendingWithholdings($refrend));
+
+        // sdd/retenciones-pendientes (R4): pending retentions no longer block
+        // the cut, they are cancelled (CYCLE_CUT) once guards 1-4 passed. This
+        // includes the cut month's own RETENIDA row. Runs before the advance
+        // canceller, inside the same transaction, so any later failure rolls it
+        // back too.
+        $this->withholdingCanceller->cancelAll($refrend->user_id, WithholdingCancellationReason::CYCLE_CUT, $userId);
 
         // sdd/revertir-pago-adelantado (S5): advances no longer block the cut,
         // they are CANCELLED (cut month included). Runs only after every guard
@@ -145,11 +152,12 @@ class CloseScholarshipCycleAction
 
     /**
      * sdd/revertir-pago-adelantado, S6 (spec R20): read-only dry run of
-     * execute(). Evaluates the five guards as if the cut were happening now
+     * execute(). Evaluates the four guards as if the cut were happening now
      * (every guard reads other rows or user-level rows, never the cut
      * refrend's own pending update, so the verdict matches the real cut) and
      * COLLECTS every blocker instead of throwing the first. The advance plan
-     * is the canceller's no-lock, no-write preview. No transaction, no writes.
+     * and the pending retentions to cancel are the cancellers' no-lock,
+     * no-write previews. No transaction, no writes.
      */
     public function preview(ScholarshipRefrend $refrend, string $reason): CycleCutPreview
     {
@@ -160,10 +168,14 @@ class CloseScholarshipCycleAction
             $this->inspectOwnAbonos($refrend),
             $this->inspectBlockingMonths($this->laterRefrends($refrend)),
             $this->inspectActiveTelmexCoverage($refrend),
-            $this->inspectPendingWithholdings($refrend),
         ]));
 
-        return new CycleCutPreview($reason, $blockers, $this->advanceCanceller->preview($refrend));
+        return new CycleCutPreview(
+            $reason,
+            $blockers,
+            $this->advanceCanceller->preview($refrend),
+            $this->withholdingCanceller->preview($refrend->user_id, $refrend->id)
+        );
     }
 
     /** Code reported to the preview for the plain-DomainException own-abonos guard. */
@@ -280,37 +292,6 @@ class CloseScholarshipCycleAction
         ));
     }
 
-    /** Guard #5 (amendment-4): ANY pending withholding blocks the cut outright, no acknowledge flag. */
-    private function inspectPendingWithholdings(ScholarshipRefrend $refrend): ?CycleCutBlocker
-    {
-        $pending = ScholarshipWithholding::where('user_id', $refrend->user_id)->pending()->get();
-
-        if ($pending->isEmpty()) {
-            return null;
-        }
-
-        $rows = $pending->map(fn (ScholarshipWithholding $w) => [
-            'id'               => $w->id,
-            'period_year'      => $w->period_year,
-            'period_month'     => $w->period_month,
-            'withheld_amount'  => $w->withheld_amount,
-            'paid_amount'      => $w->paid_amount,
-            'remaining_amount' => $w->remaining_amount,
-            // Amendment 6: the cut month's own retention is NOT excluded; it
-            // is flagged so staff are told to undo that month's resolution.
-            'is_current_refrend' => (int) $w->origin_refrend_id === (int) $refrend->id,
-        ])->values()->all();
-
-        $hasOwnRetention = $pending->contains(fn (ScholarshipWithholding $w) => (int) $w->origin_refrend_id === (int) $refrend->id);
-
-        return CycleCutBlocker::fromException(new CycleCutPendingWithholdingsException(
-            $hasOwnRetention
-                ? 'Este mes tiene una retención registrada; deshaga la resolución de este mes antes de marcar egreso o baja definitiva.'
-                : 'Tiene retenciones pendientes de pago; resuélvalas en Pago de meses retenidos antes de cerrar el ciclo.',
-            $rows
-        ));
-    }
-
     /** @param array<int, string> $closedLaterLabels */
     private function cycleClosedNote(string $reason, array $closedLaterLabels, AdvanceCutPlan $plan): string
     {
@@ -337,12 +318,12 @@ class CloseScholarshipCycleAction
      * guardBlockingMonths) are closed the same way the cut refrend itself
      * is — $0, CANCELLED/CLOSED, locked. Their own origin withholding row
      * (if any) is cancelled too, guarded to paid_amount being 0 — by the
-     * time this runs, guardPendingWithholdings has already rejected the cut
-     * if ANY pending withholding existed anywhere for this user (including
-     * one originating from a later refrend), so a PENDING row reaching this
-     * point should be unreachable in practice; the paid_amount guard is a
-     * second line of defense that never silently discards a
-     * partially-settled retention.
+     * time this runs, PendingWithholdingCanceller has already cancelled every
+     * PENDING withholding of the becario as CYCLE_CUT (including those
+     * originating from a later refrend), so the status != CANCELLED lookup
+     * below only reaches zero-amount rows the canceller's pending() scope does
+     * not see; the paid_amount guard remains a second line of defense that
+     * never silently discards a partially-settled retention.
      *
      * Refrends in $advanceRefrendIds (born from a cancelled advance month,
      * S5) get the note "Cancelado por <BAJA DEFINITIVA|EGRESO> del MM/YYYY".

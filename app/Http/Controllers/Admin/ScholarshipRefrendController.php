@@ -450,12 +450,12 @@ class ScholarshipRefrendController extends Controller
             if (defined(get_class($e) . '::CODE')) {
                 $payload['code'] = $e::CODE;
             }
-            // sdd/egresado-baja-definitiva, PR2b: the four cycle-cut guard
+            // sdd/egresado-baja-definitiva, PR2b: the cycle-cut guard
             // exceptions (CYCLE_ALREADY_CLOSED, CYCLE_CUT_BLOCKED,
-            // CYCLE_CUT_ACTIVE_TELMEX_COVERAGE, CYCLE_CUT_PENDING_WITHHOLDINGS)
-            // additionally carry a machine-readable `data` payload (blocking
-            // months / withholdings / coverage info) so the panel can render
-            // the specific list without string-parsing `msg`.
+            // CYCLE_CUT_ACTIVE_TELMEX_COVERAGE) additionally carry a
+            // machine-readable `data` payload (blocking months / coverage
+            // info) so the panel can render the specific list without
+            // string-parsing `msg`.
             if ($e instanceof CarriesErrorPayload) {
                 $payload['data'] = $e->payload();
             }

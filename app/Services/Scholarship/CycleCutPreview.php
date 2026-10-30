@@ -10,11 +10,15 @@ namespace App\Services\Scholarship;
  */
 final class CycleCutPreview
 {
-    /** @param array<int, CycleCutBlocker> $blockers */
+    /**
+     * @param array<int, CycleCutBlocker> $blockers
+     * @param array{rows: array<int, array<string, mixed>>, total_remaining: string} $withholdings pending retentions the cut will cancel
+     */
     public function __construct(
         public readonly string $reason,
         public readonly array $blockers,
-        public readonly AdvanceCutPlan $plan
+        public readonly AdvanceCutPlan $plan,
+        public readonly array $withholdings = ['rows' => [], 'total_remaining' => '0.00']
     ) {
     }
 
@@ -56,6 +60,7 @@ final class CycleCutPreview
                 'overpaid_amount'           => $this->plan->overpaidAmount,
                 'advance_payment_reduction' => $this->plan->advancePaymentReduction,
             ],
+            'withholdings_to_cancel' => $this->withholdings,
         ];
     }
 }

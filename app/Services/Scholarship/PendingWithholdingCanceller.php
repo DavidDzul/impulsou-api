@@ -71,6 +71,34 @@ class PendingWithholdingCanceller
         });
     }
 
+    /**
+     * Read-only dry run of cancelAll(): same scope and order, no lock, no write.
+     * Rows follow the cut preview contract; the cut refrend's own retention is
+     * flagged with is_current_refrend.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, total_remaining: string}
+     */
+    public function preview(int $userId, ?int $cutRefrendId = null): array
+    {
+        $rows  = [];
+        $total = '0.00';
+
+        foreach (ScholarshipWithholding::where('user_id', $userId)->pending()->orderBy('id')->get() as $w) {
+            $rows[] = [
+                'id'                 => $w->id,
+                'period_year'        => $w->period_year,
+                'period_month'       => $w->period_month,
+                'withheld_amount'    => $w->withheld_amount,
+                'paid_amount'        => $w->paid_amount,
+                'remaining_amount'   => $w->remaining_amount,
+                'is_current_refrend' => $cutRefrendId !== null && (int) $w->origin_refrend_id === $cutRefrendId,
+            ];
+            $total = bcadd($total, (string) $w->remaining_amount, self::SCALE);
+        }
+
+        return ['rows' => $rows, 'total_remaining' => $total];
+    }
+
     private function log(ScholarshipWithholding $row, WithholdingCancellationReason $reason, ?int $actorId, string $remaining): void
     {
         ScholarshipRefrendLog::create([
