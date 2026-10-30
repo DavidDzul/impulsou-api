@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\ApproveFullPaymentAction;
 use App\Actions\Scholarship\ClearRefrendResolutionAction;
+use App\Actions\Scholarship\CloseScholarshipCycleAction;
 use App\Actions\Scholarship\RecordAdvancePaymentAction;
 use App\Actions\Scholarship\RecordPaymentSituationAction;
 use App\Actions\Scholarship\ClearRefrendIncidentAction;
@@ -16,6 +17,7 @@ use App\Actions\Scholarship\RevertAdvancePaymentAction;
 use App\Exceptions\AdvancePaymentException;
 use App\Exceptions\Contracts\CarriesErrorPayload;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CycleCutPreviewRequest;
 use App\Http\Requests\InlineUpdateScholarshipRefrendRequest;
 use App\Http\Requests\RevertAdvancePaymentRequest;
 use App\Models\Attendance;
@@ -520,6 +522,32 @@ class ScholarshipRefrendController extends Controller
         }
 
         return response()->json(['res' => true, 'data' => $header]);
+    }
+
+    /**
+     * sdd/revertir-pago-adelantado S6 (spec R20): strictly read-only preview
+     * of a BAJA_DEFINITIVA / EGRESADO cycle cut. Takes the id as int and
+     * resolves it by hand: the global handler maps ModelNotFound to 400, this
+     * endpoint answers a typed 404.
+     */
+    public function cycleCutPreview(CycleCutPreviewRequest $request, int $refrend): JsonResponse
+    {
+        $model = ScholarshipRefrend::find($refrend);
+
+        if ($model === null) {
+            $e = AdvancePaymentException::notFound();
+
+            return response()->json([
+                'res'  => false,
+                'msg'  => $e->getMessage(),
+                'code' => $e->code(),
+                'data' => $e->payload(),
+            ], $e->httpStatus());
+        }
+
+        $preview = app(CloseScholarshipCycleAction::class)->preview($model, $request->validated()['reason']);
+
+        return response()->json(['res' => true, 'data' => $preview->toArray()]);
     }
 
     /**

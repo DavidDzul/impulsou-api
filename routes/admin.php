@@ -149,6 +149,9 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('{refrend}', [ScholarshipRefrendController::class, 'show']);
         Route::post('{refrend}/approve-full', [ScholarshipRefrendController::class, 'approveFullPayment']);
         Route::post('{refrend}/situation', [ScholarshipRefrendController::class, 'recordSituation']);
+        // Read-only dry run of the BAJA_DEFINITIVA / EGRESADO cut; same gate as `situation`.
+        Route::get('{refrend}/cycle-cut-preview', [ScholarshipRefrendController::class, 'cycleCutPreview'])
+            ->whereNumber('refrend');
         // Same permission gate as `situation` above (confirmed — not
         // ADM_PROCESS_PAYMENTS): inherits the group's auth:sanctum +
         // user_type:ADMIN only.

@@ -16,6 +16,7 @@ use App\Models\TelmexCoverage;
 use App\Services\Scholarship\AdvanceCutPlan;
 use App\Services\Scholarship\AdvanceCycleCutCanceller;
 use App\Services\Scholarship\CycleCutBlocker;
+use App\Services\Scholarship\CycleCutPreview;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Services\ScholarshipLoggingService;
 use Carbon\Carbon;
@@ -136,6 +137,29 @@ class CloseScholarshipCycleAction
         }
 
         $refrend->user()->update(['active' => false]);
+    }
+
+    /**
+     * sdd/revertir-pago-adelantado, S6 (spec R20): read-only dry run of
+     * execute(). Evaluates the five guards as if the cut were happening now
+     * (every guard reads other rows or user-level rows, never the cut
+     * refrend's own pending update, so the verdict matches the real cut) and
+     * COLLECTS every blocker instead of throwing the first. The advance plan
+     * is the canceller's no-lock, no-write preview. No transaction, no writes.
+     */
+    public function preview(ScholarshipRefrend $refrend, string $reason): CycleCutPreview
+    {
+        $profile = ScholarshipProfile::where('user_id', $refrend->user_id)->first();
+
+        $blockers = array_values(array_filter([
+            $this->inspectCycleAlreadyClosed($profile),
+            $this->inspectOwnAbonos($refrend),
+            $this->inspectBlockingMonths($this->laterRefrends($refrend)),
+            $this->inspectActiveTelmexCoverage($refrend),
+            $this->inspectPendingWithholdings($refrend),
+        ]));
+
+        return new CycleCutPreview($reason, $blockers, $this->advanceCanceller->preview($refrend));
     }
 
     /** Code reported to the preview for the plain-DomainException own-abonos guard. */
