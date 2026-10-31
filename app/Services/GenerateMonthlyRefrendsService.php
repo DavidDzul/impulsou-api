@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleTerminationCanceller;
+use App\Services\Scholarship\RefrendAttendanceSummaryBuilder;
 use App\Enums\WithholdingCancellationReason;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -28,13 +29,16 @@ class GenerateMonthlyRefrendsService
     private AttendancePenaltyService $penaltyService;
     private GraduateBecarioAction $graduateBecario;
     private CycleTerminationCanceller $terminationCanceller;
+    private RefrendAttendanceSummaryBuilder $attendanceSummaryBuilder;
 
     public function __construct(
         ScholarshipCalculationService $calculationService,
         AttendancePenaltyService $penaltyService,
         GraduateBecarioAction $graduateBecario,
-        CycleTerminationCanceller $terminationCanceller
+        CycleTerminationCanceller $terminationCanceller,
+        RefrendAttendanceSummaryBuilder $attendanceSummaryBuilder
     ) {
+        $this->attendanceSummaryBuilder = $attendanceSummaryBuilder;
         $this->calculationService   = $calculationService;
         $this->penaltyService       = $penaltyService;
         $this->graduateBecario      = $graduateBecario;
@@ -326,7 +330,7 @@ class GenerateMonthlyRefrendsService
 
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
-        $attendanceSummary = $this->getAttendanceSummaryForPeriod(
+        $attendanceSummary = $this->attendanceSummaryBuilder->buildForPeriod(
             $profile->user_id,
             $year,
             $month
@@ -575,78 +579,5 @@ class GenerateMonthlyRefrendsService
         return $row !== null ? (float) $row : null;
     }
 
-    /**
-     * Builds an attendance summary snapshot for the given period.
-     * Frozen at generation time — only updated on explicit recalculate.
-     *
-     * @return array{present: int, late: int, absent: int, late_unconsumed: int, total: int, month_absent: int}
-     */
-    private function getAttendanceSummaryForPeriod(
-        int $userId,
-        int $year,
-        int $month
-    ): array {
-        $start = $month <= 7
-            ? Carbon::create($year, 1, 1)->toDateString()
-            : Carbon::create($year, 8, 1)->toDateString();
-
-        $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
-        $periodMonthStart = "{$year}-{$monthPadded}-01";
-        // Bound parameter instead of DB::raw('CURDATE()') — CURDATE() is MySQL-only
-        // syntax and errors ("no such function: CURDATE") against the SQLite
-        // in-memory connection used by the test suite (phpunit.xml). Same semantics
-        // in production (MySQL): "today", computed once so all three queries below
-        // agree even across a midnight rollover during a slow request.
-        $today = now()->toDateString();
-
-        $rows = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->where('attendances.user_id', $userId)
-            ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', $today)
-            ->selectRaw('attendances.status, COUNT(*) as cnt')
-            ->groupBy('attendances.status')
-            ->get();
-
-        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_unjustified' => 0];
-
-        foreach ($rows as $row) {
-            $cnt = (int) $row->cnt;
-            match ($row->status) {
-                'PRESENT'           => $summary['present'] += $cnt,
-                'LATE'              => [$summary['late'] += $cnt, $summary['late_unjustified'] += $cnt],
-                'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
-                'ABSENT'            => $summary['absent'] += $cnt,
-                'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
-                default             => null,
-            };
-        }
-
-        $lateConsumed = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->join('scholarship_late_consumptions', 'scholarship_late_consumptions.attendance_id', '=', 'attendances.id')
-            ->where('attendances.user_id', $userId)
-            ->where('attendances.status', 'LATE')
-            ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', $today)
-            ->count();
-
-        $monthAbsent = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->where('attendances.user_id', $userId)
-            ->where('attendances.status', 'ABSENT')
-            ->where('classes.date', '>=', $periodMonthStart)
-            ->where('classes.date', '<=', $today)
-            ->count();
-
-        return [
-            'present'         => $summary['present'],
-            'late'            => $summary['late'],
-            'absent'          => $summary['absent'],
-            'late_unconsumed' => max(0, $summary['late_unjustified'] - $lateConsumed),
-            'total'           => $summary['present'] + $summary['late'] + $summary['absent'],
-            'month_absent'    => (int) $monthAbsent,
-        ];
-    }
 
 }
