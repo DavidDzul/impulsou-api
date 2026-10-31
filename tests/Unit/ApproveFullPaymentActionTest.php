@@ -12,6 +12,7 @@ use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipLateConsumption;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
+use App\Services\Scholarship\AttendanceWindow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -129,7 +130,7 @@ class ApproveFullPaymentActionTest extends TestCase
 
         $refrend = $this->makeDraftRefrend($user);
         $this->app->make(\App\Services\AttendancePenaltyService::class)
-            ->applyPenaltyIfDue($refrend, $user, 25.0, \Carbon\Carbon::create(2026, 3, 15));
+            ->applyPenaltyIfDue($refrend, $user, 25.0, AttendanceWindow::endingAt(\Carbon\Carbon::create(2026, 3, 15)));
 
         $discount = $refrend->discounts()->where('discount_type', 'RETARDOS')->first();
         $this->assertNotNull($discount, 'Precondition: RETARDOS discount must exist before forgiveness.');
@@ -160,7 +161,7 @@ class ApproveFullPaymentActionTest extends TestCase
 
         $refrend = $this->makeDraftRefrend($user);
         $penaltyService = $this->app->make(\App\Services\AttendancePenaltyService::class);
-        $penaltyService->applyPenaltyIfDue($refrend, $user, 25.0, \Carbon\Carbon::create(2026, 3, 15));
+        $penaltyService->applyPenaltyIfDue($refrend, $user, 25.0, AttendanceWindow::endingAt(\Carbon\Carbon::create(2026, 3, 15)));
 
         $this->action->execute($refrend->fresh(), $this->admin->id);
 
@@ -171,7 +172,7 @@ class ApproveFullPaymentActionTest extends TestCase
             $refrend->fresh(),
             $user,
             25.0,
-            \Carbon\Carbon::create(2026, 4, 15)
+            AttendanceWindow::endingAt(\Carbon\Carbon::create(2026, 4, 15))
         );
 
         $this->assertNull($nextMonthResult);
@@ -189,7 +190,7 @@ class ApproveFullPaymentActionTest extends TestCase
 
         $refrend = $this->makeDraftRefrend($user);
         $this->app->make(\App\Services\AttendancePenaltyService::class)
-            ->applyAbsencePenaltyIfDue($refrend, $user, 2026, 3);
+            ->applyAbsencePenaltyIfDue($refrend, $user, AttendanceWindow::endingAt(\Carbon\Carbon::create(2026, 3, 20)));
 
         $discount = $refrend->discounts()->where('discount_type', 'FALTA_INJUSTIFICADA')->first();
         $this->assertNotNull($discount, 'Precondition: FALTA_INJUSTIFICADA discount must exist before forgiveness.');
@@ -225,7 +226,7 @@ class ApproveFullPaymentActionTest extends TestCase
 
         $refrend = $this->makeDraftRefrend($user);
         $this->app->make(\App\Services\AttendancePenaltyService::class)
-            ->applyPenaltyIfDue($refrend, $user, 25.0, \Carbon\Carbon::create(2026, 3, 15));
+            ->applyPenaltyIfDue($refrend, $user, 25.0, AttendanceWindow::endingAt(\Carbon\Carbon::create(2026, 3, 15)));
 
         $result = $this->action->execute($refrend->fresh(), $this->admin->id);
 

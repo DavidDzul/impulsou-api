@@ -6,6 +6,7 @@ use App\Enums\DiscountType;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendDiscount;
+use App\Services\Scholarship\AttendanceWindow;
 use App\Services\Scholarship\RefrendAttendanceSummaryBuilder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -38,7 +39,17 @@ class RecalculateRefrendService
         $month         = $refrend->period_month;
         $referenceDate = Carbon::create($year, $month, 1);
 
-        return DB::transaction(function () use ($refrend, $profile, $user, $year, $month, $referenceDate) {
+        // Reference date of the attendance window: the original generation
+        // moment (reproducible). Advance-payment refrends keep their legacy
+        // reference (period 1st) and never get the absence penalty.
+        // created_via defaults to GENERATION in the DB; a model instance that
+        // was just created in-process may not carry the default yet.
+        $isGeneration = ($refrend->created_via ?? 'GENERATION') === 'GENERATION';
+        $window       = $isGeneration && $refrend->created_at !== null
+            ? AttendanceWindow::endingAt($refrend->created_at)
+            : AttendanceWindow::endingAt($referenceDate);
+
+        return DB::transaction(function () use ($refrend, $profile, $user, $referenceDate, $window, $isGeneration) {
             $old = $this->loggingService->snapshotRefrend($refrend);
 
             // 1. Refresh non-attendance snapshots. Vigencia (temporary increase
@@ -134,22 +145,29 @@ class RecalculateRefrendService
                 ->where('discount_type', DiscountType::RETARDOS->value)
                 ->delete();
 
-            // 3. Remove academic and absence discounts
+            // 3. Remove academic and automatic absence discounts. A FALTA row is
+            // automatic only when it owns consumption rows (cascade frees the
+            // absences); manual retentions have none and must survive.
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
-                ->whereIn('discount_type', [
-                    DiscountType::PROMEDIO_BAJO->value,
-                    DiscountType::FALTA_INJUSTIFICADA->value,
-                ])
+                ->where(function ($q) {
+                    $q->where('discount_type', DiscountType::PROMEDIO_BAJO->value)
+                        ->orWhere(function ($q) {
+                            $q->where('discount_type', DiscountType::FALTA_INJUSTIFICADA->value)
+                                ->whereHas('lateConsumptions');
+                        });
+                })
                 ->delete();
 
             // 4. Re-apply automatic discounts on a fresh instance
             $fresh = $refrend->fresh();
-            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $referenceDate);
-            $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $year, $month);
+            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $window);
+            if ($isGeneration) {
+                $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $window);
+            }
 
             // 4.5 Compute attendance snapshot AFTER penalties are re-applied so
             // late_unconsumed reflects the actual post-recalculation state.
-            $attendanceSummary = $this->attendanceSummaryBuilder->buildForPeriod($refrend->user_id, $year, $month);
+            $attendanceSummary = $this->attendanceSummaryBuilder->build($refrend->user_id, $window, $refrend->id);
             $fresh->update(['attendance_summary_snapshot' => $attendanceSummary]);
 
             // 5. Recalculate final amount from all remaining discounts

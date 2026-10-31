@@ -59,4 +59,16 @@ class Attendance extends Model
             )
             ->whereHas('class', fn($q) => $q->whereBetween('date', [$start, $end]));
     }
+
+    // Faltas injustificadas (ABSENT) no consumidas dentro de un rango de fechas
+    public function scopeUnconsumedAbsencesInRange($query, string $start, string $end)
+    {
+        return $query
+            ->where('status', 'ABSENT')
+            ->whereNotExists(fn($q) =>
+                $q->from('scholarship_late_consumptions')
+                  ->whereColumn('scholarship_late_consumptions.attendance_id', 'attendances.id')
+            )
+            ->whereHas('class', fn($q) => $q->whereBetween('date', [$start, $end]));
+    }
 }

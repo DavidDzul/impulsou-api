@@ -38,6 +38,12 @@ class ClearRefrendResolutionActionTest extends TestCase
         $this->actingAs($this->admin);
     }
 
+    protected function tearDown(): void
+    {
+        \Carbon\Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private function makeBecario(): User
@@ -429,6 +435,8 @@ class ClearRefrendResolutionActionTest extends TestCase
     /** @test */
     public function recreates_retardos_discount_when_still_earned(): void
     {
+        // Recalculation evaluates the semester window ending at created_at.
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::create(2026, 3, 20, 10));
         $user = $this->makeBecario();
         $this->makeProfile($user);
         $generation = $this->makeGeneration();
@@ -452,6 +460,8 @@ class ClearRefrendResolutionActionTest extends TestCase
     /** @test */
     public function recreates_falta_injustificada_discount_when_still_earned(): void
     {
+        // Recalculation evaluates the semester window ending at created_at.
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::create(2026, 3, 20, 10));
         $user = $this->makeBecario();
         $this->makeProfile($user);
         $generation = $this->makeGeneration();

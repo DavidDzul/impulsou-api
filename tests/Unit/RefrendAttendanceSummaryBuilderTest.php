@@ -90,22 +90,46 @@ class RefrendAttendanceSummaryBuilderTest extends TestCase
         ]);
         // Consumes the two oldest unjustified lates (Feb 5 and Feb 6).
         $this->app->make(AttendancePenaltyService::class)
-            ->applyPenaltyIfDue($refrend, $user, 25.0, Carbon::create(2026, 3, 15));
+            ->applyPenaltyIfDue($refrend, $user, 25.0, AttendanceWindow::endingAt(Carbon::create(2026, 3, 15)));
 
         $summary = (new RefrendAttendanceSummaryBuilder())->build(
             $user->id,
-            new AttendanceWindow('2026-01-01', '2026-03-20'),
-            '2026-03-01'
+            new AttendanceWindow('2026-01-01', '2026-03-20')
         );
 
+        // month_absent now counts unconsumed ABSENT over the whole window
+        // (Jan 12 and Mar 3), not only the refrend month.
         $this->assertSame([
             'present'         => 1,
             'late'            => 4,
             'absent'          => 3,
             'late_unconsumed' => 1,
             'total'           => 8,
-            'month_absent'    => 1,
+            'month_absent'    => 2,
         ], $summary);
+    }
+
+    public function test_month_absent_keeps_counting_absences_consumed_by_the_given_refrend(): void
+    {
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'campus' => 'MERIDA', 'active' => true]);
+        $this->seedScenario($user);
+        $other = ScholarshipRefrend::create([
+            'user_id' => $user->id, 'period_year' => 2026, 'period_month' => 2,
+            'refrend_type' => RefrendType::NORMAL->value, 'status' => RefrendStatus::DRAFT->value,
+            'workflow_status' => 'DRAFT', 'base_amount' => 1000, 'discount_percentage' => 0,
+            'discount_amount' => 0, 'final_amount' => 1000, 'amount_pending_from_previous' => 0,
+            'snapshot_name' => 'Test', 'snapshot_gross_amount' => 1000, 'snapshot_monto_apoyo' => 0,
+            'snapshot_campus' => 'MERIDA', 'snapshot_scholarship_type' => ScholarshipType::IU->value,
+        ]);
+        $window = new AttendanceWindow('2026-01-01', '2026-03-20');
+        $this->app->make(AttendancePenaltyService::class)->applyAbsencePenaltyIfDue($other, $user, $window);
+
+        $builder = new RefrendAttendanceSummaryBuilder();
+
+        // Consumed absences no longer count for a refrend that did not consume them...
+        $this->assertSame(0, $builder->build($user->id, $window)['month_absent']);
+        // ...but still count for the refrend that did.
+        $this->assertSame(2, $builder->build($user->id, $window, $other->id)['month_absent']);
     }
 
     public function test_summary_is_zeroed_when_user_has_no_attendance(): void
@@ -114,8 +138,7 @@ class RefrendAttendanceSummaryBuilderTest extends TestCase
 
         $summary = (new RefrendAttendanceSummaryBuilder())->build(
             $user->id,
-            new AttendanceWindow('2026-08-01', '2026-10-29'),
-            '2026-10-01'
+            new AttendanceWindow('2026-08-01', '2026-10-29')
         );
 
         $this->assertSame([

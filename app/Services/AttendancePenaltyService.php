@@ -8,62 +8,32 @@ use App\Models\ScholarshipRefrendDiscount;
 use App\Models\ScholarshipLateConsumption;
 use App\Models\User;
 use App\Enums\DiscountType;
-use Carbon\Carbon;
+use App\Services\Scholarship\AttendanceWindow;
 use Illuminate\Support\Collection;
 
 class AttendancePenaltyService
 {
-    private const SEMESTER_ONE_START = 1;  // Enero
-    private const SEMESTER_ONE_END   = 7;  // Julio
-    private const SEMESTER_TWO_START = 8;  // Agosto
-    private const SEMESTER_TWO_END   = 12; // Diciembre
-    private const LATES_FOR_PENALTY  = 2;
+    private const LATES_FOR_PENALTY = 2;
 
     /**
-     * Retorna el rango de fechas del semestre actual.
-     * Semestre 1: Enero – Julio
-     * Semestre 2: Agosto – Diciembre
-     */
-    public function getCurrentSemesterBounds(?Carbon $referenceDate = null): array
-    {
-        $date = $referenceDate ?? Carbon::now();
-        $year  = $date->year;
-        $month = $date->month;
-
-        if ($month >= self::SEMESTER_TWO_START) {
-            return [
-                'start' => Carbon::create($year, self::SEMESTER_TWO_START, 1)->startOfDay()->toDateString(),
-                'end'   => Carbon::create($year, self::SEMESTER_TWO_END, 31)->endOfDay()->toDateString(),
-            ];
-        }
-
-        return [
-            'start' => Carbon::create($year, self::SEMESTER_ONE_START, 1)->startOfDay()->toDateString(),
-            'end'   => Carbon::create($year, self::SEMESTER_ONE_END, 31)->endOfDay()->toDateString(),
-        ];
-    }
-
-    /**
-     * Retorna los retardos sin justificar y sin consumir del becario dentro del semestre actual.
+     * Retorna los retardos sin justificar y sin consumir del becario dentro de la ventana.
      * Usa classes.date como referencia temporal (no attendances.created_at).
      */
-    public function getUnconsumedLatesForUser(User $user, ?Carbon $referenceDate = null): Collection
+    public function getUnconsumedLatesForUser(User $user, AttendanceWindow $window): Collection
     {
-        ['start' => $start, 'end' => $end] = $this->getCurrentSemesterBounds($referenceDate);
-
         return Attendance::with('class')
             ->where('user_id', $user->id)
-            ->unconsumedLatesInRange($start, $end)
+            ->unconsumedLatesInRange($window->start, $window->end)
             ->orderBy('id')
             ->get();
     }
 
     /**
-     * Cuenta los retardos sin consumir del becario en el semestre actual.
+     * Cuenta los retardos sin consumir del becario dentro de la ventana.
      */
-    public function countUnconsumedLates(User $user, ?Carbon $referenceDate = null): int
+    public function countUnconsumedLates(User $user, AttendanceWindow $window): int
     {
-        return $this->getUnconsumedLatesForUser($user, $referenceDate)->count();
+        return $this->getUnconsumedLatesForUser($user, $window)->count();
     }
 
     /**
@@ -74,10 +44,10 @@ class AttendancePenaltyService
     public function applyPenaltyIfDue(
         ScholarshipRefrend $refrend,
         User $user,
-        float $penaltyPercentage = 25.0,
-        ?Carbon $referenceDate = null
+        float $penaltyPercentage,
+        AttendanceWindow $window
     ): ?ScholarshipRefrendDiscount {
-        $unconsumedLates = $this->getUnconsumedLatesForUser($user, $referenceDate);
+        $unconsumedLates = $this->getUnconsumedLatesForUser($user, $window);
 
         if ($unconsumedLates->count() < self::LATES_FOR_PENALTY) {
             return null;
@@ -92,60 +62,60 @@ class AttendancePenaltyService
             'description'            => 'Suspensión del mes por 2 retardos semestrales acumulados sin justificar.',
         ]);
 
-        foreach ($toConsume as $attendance) {
+        $this->consume($discount, $toConsume);
+
+        return $discount;
+    }
+
+    /**
+     * Faltas injustificadas (ABSENT) del becario sin consumir dentro de la ventana.
+     */
+    public function getUnconsumedAbsences(User $user, AttendanceWindow $window): Collection
+    {
+        return Attendance::with('class')
+            ->where('user_id', $user->id)
+            ->unconsumedAbsencesInRange($window->start, $window->end)
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Aplica UNA suspensión 100% si hay al menos una falta injustificada sin
+     * consumir en la ventana, y consume TODAS esas faltas con ese descuento.
+     * Retorna el discount creado o null si no aplica.
+     */
+    public function applyAbsencePenaltyIfDue(
+        ScholarshipRefrend $refrend,
+        User $user,
+        AttendanceWindow $window
+    ): ?ScholarshipRefrendDiscount {
+        $absences = $this->getUnconsumedAbsences($user, $window);
+
+        if ($absences->isEmpty()) {
+            return null;
+        }
+
+        $discount = ScholarshipRefrendDiscount::create([
+            'scholarship_refrend_id' => $refrend->id,
+            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
+            'discount_percentage'    => 100.0,
+            'description'            => 'Suspensión del mes por falta injustificada en el semestre.',
+        ]);
+
+        $this->consume($discount, $absences);
+
+        return $discount;
+    }
+
+    private function consume(ScholarshipRefrendDiscount $discount, Collection $attendances): void
+    {
+        foreach ($attendances as $attendance) {
             ScholarshipLateConsumption::create([
                 'scholarship_refrend_discount_id' => $discount->id,
                 'attendance_id'                   => $attendance->id,
                 'created_at'                      => now(),
             ]);
         }
-
-        return $discount;
-    }
-
-    /**
-     * Detecta faltas injustificadas del becario en el periodo mensual indicado.
-     */
-    public function getUnjustifiedAbsencesInPeriod(
-        User $user,
-        int $year,
-        int $month
-    ): Collection {
-        $start = Carbon::create($year, $month, 1)->toDateString();
-        $today = Carbon::today()->toDateString();
-
-        return Attendance::with('class')
-            ->where('user_id', $user->id)
-            ->where('status', 'ABSENT')
-            ->whereHas('class', fn($q) => $q
-                ->where('date', '>=', $start)
-                ->where('date', '<=', $today)
-            )
-            ->get();
-    }
-
-    /**
-     * Aplica suspensión 100% si el becario tuvo al menos una falta injustificada
-     * en el mes del refrendo. Retorna el discount creado o null si no aplica.
-     */
-    public function applyAbsencePenaltyIfDue(
-        ScholarshipRefrend $refrend,
-        User $user,
-        int $year,
-        int $month
-    ): ?ScholarshipRefrendDiscount {
-        $absences = $this->getUnjustifiedAbsencesInPeriod($user, $year, $month);
-
-        if ($absences->isEmpty()) {
-            return null;
-        }
-
-        return ScholarshipRefrendDiscount::create([
-            'scholarship_refrend_id' => $refrend->id,
-            'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
-            'discount_percentage'    => 100.0,
-            'description'            => 'Suspensión del mes por falta injustificada en el periodo.',
-        ]);
     }
 
     /**

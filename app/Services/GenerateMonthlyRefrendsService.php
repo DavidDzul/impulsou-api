@@ -11,6 +11,7 @@ use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
+use App\Services\Scholarship\AttendanceWindow;
 use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleTerminationCanceller;
@@ -330,11 +331,13 @@ class GenerateMonthlyRefrendsService
 
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
-        $attendanceSummary = $this->attendanceSummaryBuilder->buildForPeriod(
-            $profile->user_id,
-            $year,
-            $month
-        );
+        // Window: semester start -> generation day for regular generation.
+        // The advance-payment path keeps its legacy reference (period 1st):
+        // it never penalizes absences and its period is always in the future.
+        $window = $createdVia === 'GENERATION'
+            ? AttendanceWindow::endingAt(now())
+            : AttendanceWindow::endingAt($referenceDate);
+        $attendanceSummary = $this->attendanceSummaryBuilder->build($profile->user_id, $window);
 
         $hasProfileDiscount = isset($snapshot['snapshot_discount_percentage'])
             && $snapshot['snapshot_discount_percentage'] !== null
@@ -365,7 +368,7 @@ class GenerateMonthlyRefrendsService
             $incidentDescription = implode(', ', $parts) . '.';
         }
 
-        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
+        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $window, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
             // Global lock order (see BecarioLockOrder): the automatic egreso
             // graduates the becario (users update) and cancels withholdings /
             // advances, so lock the users row FIRST, before the egreso refrend
@@ -431,8 +434,10 @@ class GenerateMonthlyRefrendsService
 
             if (!$isEgreso) {
                 // Evaluar penalizaciones automáticas de asistencia
-                $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $referenceDate);
-                $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $year, $month);
+                $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $window);
+                if ($createdVia === 'GENERATION') {
+                    $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $window);
+                }
             }
 
             // Recalcular montos finales

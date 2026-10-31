@@ -11,29 +11,13 @@ use Illuminate\Support\Facades\DB;
 class RefrendAttendanceSummaryBuilder
 {
     /**
-     * Legacy adapter (behavior-preserving): window = semester of the refrend
-     * period up to today, month_absent counted from the period's first day.
-     * Replaced by reference-date windows in the next slice.
-     */
-    public function buildForPeriod(int $userId, int $year, int $month): array
-    {
-        $semesterStartMonth = $month <= 7 ? 1 : 8;
-        $start = sprintf('%04d-%02d-01', $year, $semesterStartMonth);
-
-        return $this->build(
-            $userId,
-            new AttendanceWindow($start, now()->toDateString()),
-            sprintf('%04d-%02d-01', $year, $month)
-        );
-    }
-
-    /**
-     * @param string|null $monthAbsentFrom Y-m-d lower bound for month_absent;
-     *                                     defaults to the window start.
+     * month_absent = ABSENT inside the window that are still unconsumed, or
+     * consumed by a discount of $refrendId (so the number is the same before
+     * the refrend exists and after its penalties were applied).
      *
      * @return array{present: int, late: int, absent: int, late_unconsumed: int, total: int, month_absent: int}
      */
-    public function build(int $userId, AttendanceWindow $window, ?string $monthAbsentFrom = null): array
+    public function build(int $userId, AttendanceWindow $window, ?int $refrendId = null): array
     {
         $rows = DB::table('attendances')
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
@@ -71,8 +55,28 @@ class RefrendAttendanceSummaryBuilder
             ->join('classes', 'attendances.class_id', '=', 'classes.id')
             ->where('attendances.user_id', $userId)
             ->where('attendances.status', 'ABSENT')
-            ->where('classes.date', '>=', $monthAbsentFrom ?? $window->start)
+            ->where('classes.date', '>=', $window->start)
             ->where('classes.date', '<=', $window->end)
+            ->where(function ($q) use ($refrendId) {
+                $q->whereNotExists(function ($sub) {
+                    $sub->from('scholarship_late_consumptions')
+                        ->whereColumn('scholarship_late_consumptions.attendance_id', 'attendances.id');
+                });
+
+                if ($refrendId !== null) {
+                    $q->orWhereExists(function ($sub) use ($refrendId) {
+                        $sub->from('scholarship_late_consumptions')
+                            ->join(
+                                'scholarship_refrend_discounts',
+                                'scholarship_refrend_discounts.id',
+                                '=',
+                                'scholarship_late_consumptions.scholarship_refrend_discount_id'
+                            )
+                            ->whereColumn('scholarship_late_consumptions.attendance_id', 'attendances.id')
+                            ->where('scholarship_refrend_discounts.scholarship_refrend_id', $refrendId);
+                    });
+                }
+            })
             ->count();
 
         return [
