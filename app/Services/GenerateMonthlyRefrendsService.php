@@ -192,11 +192,11 @@ class GenerateMonthlyRefrendsService
         $this->assertConfigSet($profile);
         $this->assertReticulaSet($profile);
 
-        // Validar que el periodo no sea futuro y esté dentro del rango de la
-        // retícula. generateForUser() keeps ZERO new parameters and cannot be
-        // opted out of the future-period guard — the only sanctioned bypass
+        // Validar que el periodo no pase del mes siguiente y esté dentro del
+        // rango de la retícula. generateForUser() keeps ZERO new parameters and
+        // cannot be opted out of the period cap — the only sanctioned bypass
         // is the separately named generateFutureForAdvance() below.
-        $this->assertPeriodNotInFuture($year, $month);
+        $this->assertPeriodNotBeyondNextMonth($year, $month);
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
         return $this->createRefrendForPeriod($profile, $year, $month, 'GENERATION');
@@ -506,27 +506,35 @@ class GenerateMonthlyRefrendsService
         );
     }
 
+    private const MONTH_NAMES_ES = [
+        1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril', 5 => 'mayo', 6 => 'junio',
+        7 => 'julio', 8 => 'agosto', 9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre',
+    ];
+
     /**
-     * Valida que el periodo (año/mes) NO sea futuro respecto al mes en curso.
-     * Restored, committed guard — the sanctioned exception is
+     * Valida que el periodo (año/mes) no sea posterior al mes siguiente al mes
+     * en curso (mes en curso + 1 permitido, con cambio de año diciembre ->
+     * enero). The sanctioned way to go further ahead is
      * generateFutureForAdvance(), which uses the inverse assertPeriodIsFuture()
      * instead. No other call site may bypass this.
      */
-    private function assertPeriodNotInFuture(int $year, int $month): void
+    private function assertPeriodNotBeyondNextMonth(int $year, int $month): void
     {
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
-        $currentMonthStart = Carbon::now()->startOfMonth();
+        $maxAllowed  = Carbon::now()->startOfMonth()->addMonthNoOverflow();
 
-        if ($periodStart->gt($currentMonthStart)) {
-            throw new \DomainException(
-                "No se puede generar el refrendo de {$month}/{$year} porque ese periodo aún no ha comenzado."
-            );
+        if ($periodStart->gt($maxAllowed)) {
+            throw new \DomainException(sprintf(
+                'Solo puedes generar el refrendo hasta el mes siguiente (%s %d).',
+                self::MONTH_NAMES_ES[$maxAllowed->month],
+                $maxAllowed->year
+            ));
         }
     }
 
     /**
      * Valida que el periodo (año/mes) SEA estrictamente futuro respecto al
-     * mes en curso. Inverso de assertPeriodNotInFuture(); usado únicamente
+     * mes en curso. Inverso de assertPeriodNotBeyondNextMonth(); usado únicamente
      * por generateFutureForAdvance().
      */
     private function assertPeriodIsFuture(int $year, int $month): void
