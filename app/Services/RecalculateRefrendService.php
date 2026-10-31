@@ -146,14 +146,14 @@ class RecalculateRefrendService
                 ->delete();
 
             // 3. Remove academic and automatic absence discounts. A FALTA row is
-            // automatic only when it owns consumption rows (cascade frees the
-            // absences); manual retentions have none and must survive.
+            // automatic only when flagged is_automatic (set by the penalty
+            // service, backfilled for legacy rows); manual retentions stay.
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
                 ->where(function ($q) {
                     $q->where('discount_type', DiscountType::PROMEDIO_BAJO->value)
                         ->orWhere(function ($q) {
                             $q->where('discount_type', DiscountType::FALTA_INJUSTIFICADA->value)
-                                ->whereHas('lateConsumptions');
+                                ->where('is_automatic', true);
                         });
                 })
                 ->delete();

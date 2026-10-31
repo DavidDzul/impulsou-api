@@ -60,6 +60,7 @@ class AttendancePenaltyService
             'discount_type'          => DiscountType::RETARDOS->value,
             'discount_percentage'    => $penaltyPercentage,
             'description'            => 'Suspensión del mes por 2 retardos semestrales acumulados sin justificar.',
+            'is_automatic'           => true,
         ]);
 
         $this->consume($discount, $toConsume);
@@ -100,6 +101,7 @@ class AttendancePenaltyService
             'discount_type'          => DiscountType::FALTA_INJUSTIFICADA->value,
             'discount_percentage'    => 100.0,
             'description'            => 'Suspensión del mes por falta injustificada en el semestre.',
+            'is_automatic'           => true,
         ]);
 
         $this->consume($discount, $absences);
