@@ -92,6 +92,25 @@ class ScholarshipRefrendAttendanceSummaryWindowTest extends TestCase
     }
 
     /** @test */
+    public function records_expose_check_in_and_check_out_times(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 10, 29, 10));
+        $present = $this->attend('2026-10-20', 'PRESENT');
+        $present->update(['check_in' => '08:05', 'check_out' => '09:00']);
+        $absence = $this->attend('2026-10-21', 'ABSENT');
+
+        $data = $this->summary(2026, 11);
+
+        $withTimes = collect($data['records'])->firstWhere('id', $present->id);
+        $this->assertSame('08:05', substr((string) $withTimes['check_in'], 0, 5));
+        $this->assertSame('09:00', substr((string) $withTimes['check_out'], 0, 5));
+        $noTimes = collect($data['records'])->firstWhere('id', $absence->id);
+        $this->assertArrayHasKey('check_in', $noTimes);
+        $this->assertNull($noTimes['check_in']);
+        $this->assertNull($noTimes['check_out']);
+    }
+
+    /** @test */
     public function an_existing_refrend_uses_its_created_at_as_reference_date(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 29, 10));
