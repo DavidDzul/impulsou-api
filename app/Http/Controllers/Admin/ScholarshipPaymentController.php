@@ -21,6 +21,7 @@ use App\Services\Scholarship\GenerationPaymentReport;
 use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendAmountBreakdown;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
+use App\Support\Banking\BatchBank;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -534,11 +535,21 @@ class ScholarshipPaymentController extends Controller
             ], 422);
         }
 
-        $validator   = app(BankDataValidator::class);
-        $invalidRows = [];
+        $validator       = app(BankDataValidator::class);
+        $invalidRows     = [];
+        $withoutBatchBank = [];
 
         foreach ($rows as $row) {
             $reasons = $validator->validate($row['account_number'], $row['rfc'], $row['total_to_pay']);
+
+            // sdd/catalogo-bancos R6: the file is BBVA-only. A historical paid
+            // row whose becario has no bank, or another bank, must never be
+            // dispersed silently as a BBVA account.
+            $bankReason = self::batchBankReason($row['bank_code'] ?? null);
+            if ($bankReason !== null) {
+                array_unshift($reasons, $bankReason);
+                $withoutBatchBank[] = $row['snapshot_name'];
+            }
 
             if (!empty($reasons)) {
                 $invalidRows[] = [
@@ -552,13 +563,30 @@ class ScholarshipPaymentController extends Controller
         }
 
         if (!empty($invalidRows)) {
+            $msg = empty($withoutBatchBank)
+                ? 'El lote tiene becarios con datos bancarios inválidos.'
+                : 'El lote tiene becarios sin banco BBVA asignado: ' . implode(', ', $withoutBatchBank)
+                    . '. Asígnales BBVA en sus datos de pago o págalos por transferencia a otros bancos.';
+
             return response()->json([
                 'res'  => false,
-                'msg'  => 'El lote tiene becarios con datos bancarios inválidos.',
+                'msg'  => $msg,
                 'data' => ['invalid_rows' => $invalidRows],
             ], 422);
         }
 
         return $rows;
+    }
+
+    /** @return array{code: string, message: string}|null */
+    private static function batchBankReason(?string $bankCode): ?array
+    {
+        if ($bankCode === BatchBank::CODE) {
+            return null;
+        }
+
+        return $bankCode === null
+            ? ['code' => 'MISSING_BANK', 'message' => 'Falta seleccionar banco']
+            : ['code' => 'BANK_NOT_IN_BATCH', 'message' => 'El banco no se paga en el lote BBVA'];
     }
 }

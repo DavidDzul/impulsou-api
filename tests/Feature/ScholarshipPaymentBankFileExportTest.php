@@ -83,6 +83,7 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         if ($paymentDataOverrides !== null) {
             ScholarshipPaymentData::create(array_merge([
                 'user_id'        => $user->id,
+                'bank_id'        => \App\Models\Bank::where('code', '012')->value('id'),
                 'bank_name'      => 'BBVA',
                 'account_number' => '0123456789',
                 'curp'           => 'CURP010101HDFXXX01',
@@ -322,6 +323,51 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         // start of a fixed-width record (which would begin with 9 digits).
         $this->assertIsArray($response->json());
         $this->assertNull($response->json('data.count'));
+    }
+
+    /** @test */
+    public function export_returns_422_naming_a_historical_paid_becario_without_bank(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            ['refrendOverrides' => ['snapshot_name' => 'Becario Bueno']],
+            [
+                'refrendOverrides'     => ['snapshot_name' => 'Becario Sin Banco'],
+                'paymentDataOverrides' => ['bank_id' => null],
+            ],
+        ]);
+
+        foreach ([$this->exportUrl($batch->id), $this->summaryUrl($batch->id)] as $url) {
+            $response = $this->actingAs($this->rootAdmin)->getJson($url);
+
+            $response->assertStatus(422);
+            $this->assertStringContainsString('Becario Sin Banco', $response->json('msg'));
+            $this->assertStringContainsString('BBVA', $response->json('msg'));
+            $invalidRows = $response->json('data.invalid_rows');
+            $this->assertCount(1, $invalidRows);
+            $this->assertSame('Becario Sin Banco', $invalidRows[0]['snapshot_name']);
+            $this->assertContains('MISSING_BANK', array_column($invalidRows[0]['reasons'], 'code'));
+        }
+    }
+
+    /** @test */
+    public function export_returns_422_for_a_historical_paid_becario_with_a_non_bbva_bank(): void
+    {
+        $batch = $this->makeLegacyPaidBatch([
+            [
+                'refrendOverrides'     => ['snapshot_name' => 'Becario Banorte'],
+                'paymentDataOverrides' => [
+                    'bank_id'        => \App\Models\Bank::where('code', '072')->value('id'),
+                    'account_number' => '072000000000000009',
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->rootAdmin)->getJson($this->exportUrl($batch->id));
+
+        $response->assertStatus(422);
+        $invalidRows = $response->json('data.invalid_rows');
+        $this->assertSame('Becario Banorte', $invalidRows[0]['snapshot_name']);
+        $this->assertContains('BANK_NOT_IN_BATCH', array_column($invalidRows[0]['reasons'], 'code'));
     }
 
     /** @test */
