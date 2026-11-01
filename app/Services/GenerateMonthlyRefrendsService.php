@@ -11,9 +11,11 @@ use App\Exceptions\ScholarshipCycleClosedException;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\User;
+use App\Services\Scholarship\AttendanceWindow;
 use App\Services\Scholarship\BecarioLockOrder;
 use App\Services\Scholarship\CutAnchor;
 use App\Services\Scholarship\CycleTerminationCanceller;
+use App\Services\Scholarship\RefrendAttendanceSummaryBuilder;
 use App\Enums\WithholdingCancellationReason;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -28,13 +30,16 @@ class GenerateMonthlyRefrendsService
     private AttendancePenaltyService $penaltyService;
     private GraduateBecarioAction $graduateBecario;
     private CycleTerminationCanceller $terminationCanceller;
+    private RefrendAttendanceSummaryBuilder $attendanceSummaryBuilder;
 
     public function __construct(
         ScholarshipCalculationService $calculationService,
         AttendancePenaltyService $penaltyService,
         GraduateBecarioAction $graduateBecario,
-        CycleTerminationCanceller $terminationCanceller
+        CycleTerminationCanceller $terminationCanceller,
+        RefrendAttendanceSummaryBuilder $attendanceSummaryBuilder
     ) {
+        $this->attendanceSummaryBuilder = $attendanceSummaryBuilder;
         $this->calculationService   = $calculationService;
         $this->penaltyService       = $penaltyService;
         $this->graduateBecario      = $graduateBecario;
@@ -187,11 +192,11 @@ class GenerateMonthlyRefrendsService
         $this->assertConfigSet($profile);
         $this->assertReticulaSet($profile);
 
-        // Validar que el periodo no sea futuro y esté dentro del rango de la
-        // retícula. generateForUser() keeps ZERO new parameters and cannot be
-        // opted out of the future-period guard — the only sanctioned bypass
+        // Validar que el periodo no pase del mes siguiente y esté dentro del
+        // rango de la retícula. generateForUser() keeps ZERO new parameters and
+        // cannot be opted out of the period cap — the only sanctioned bypass
         // is the separately named generateFutureForAdvance() below.
-        $this->assertPeriodNotInFuture($year, $month);
+        $this->assertPeriodNotBeyondNextMonth($year, $month);
         $this->assertPeriodWithinReticula($profile, $year, $month);
 
         return $this->createRefrendForPeriod($profile, $year, $month, 'GENERATION');
@@ -326,11 +331,13 @@ class GenerateMonthlyRefrendsService
 
         // Freeze academic snapshot at generation time
         $lastGrade       = $this->getLastSemesterGrade($profile->user_id);
-        $attendanceSummary = $this->getAttendanceSummaryForPeriod(
-            $profile->user_id,
-            $year,
-            $month
-        );
+        // Window: semester start -> generation day for regular generation.
+        // The advance-payment path keeps its legacy reference (period 1st):
+        // it never penalizes absences and its period is always in the future.
+        $window = $createdVia === 'GENERATION'
+            ? AttendanceWindow::endingAt(now())
+            : AttendanceWindow::endingAt($referenceDate);
+        $attendanceSummary = $this->attendanceSummaryBuilder->build($profile->user_id, $window);
 
         $hasProfileDiscount = isset($snapshot['snapshot_discount_percentage'])
             && $snapshot['snapshot_discount_percentage'] !== null
@@ -361,7 +368,7 @@ class GenerateMonthlyRefrendsService
             $incidentDescription = implode(', ', $parts) . '.';
         }
 
-        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $referenceDate, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
+        return DB::transaction(function () use ($profile, $year, $month, $createdVia, $snapshot, $window, $lastGrade, $attendanceSummary, $initialWorkflowStatus, $incidentDescription, $hasProfileDiscount, $isEgreso) {
             // Global lock order (see BecarioLockOrder): the automatic egreso
             // graduates the becario (users update) and cancels withholdings /
             // advances, so lock the users row FIRST, before the egreso refrend
@@ -427,8 +434,10 @@ class GenerateMonthlyRefrendsService
 
             if (!$isEgreso) {
                 // Evaluar penalizaciones automáticas de asistencia
-                $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $referenceDate);
-                $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $year, $month);
+                $this->penaltyService->applyPenaltyIfDue($refrend, $user, 100.0, $window);
+                if ($createdVia === 'GENERATION') {
+                    $this->penaltyService->applyAbsencePenaltyIfDue($refrend, $user, $window);
+                }
             }
 
             // Recalcular montos finales
@@ -497,27 +506,35 @@ class GenerateMonthlyRefrendsService
         );
     }
 
+    private const MONTH_NAMES_ES = [
+        1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril', 5 => 'mayo', 6 => 'junio',
+        7 => 'julio', 8 => 'agosto', 9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre',
+    ];
+
     /**
-     * Valida que el periodo (año/mes) NO sea futuro respecto al mes en curso.
-     * Restored, committed guard — the sanctioned exception is
+     * Valida que el periodo (año/mes) no sea posterior al mes siguiente al mes
+     * en curso (mes en curso + 1 permitido, con cambio de año diciembre ->
+     * enero). The sanctioned way to go further ahead is
      * generateFutureForAdvance(), which uses the inverse assertPeriodIsFuture()
      * instead. No other call site may bypass this.
      */
-    private function assertPeriodNotInFuture(int $year, int $month): void
+    private function assertPeriodNotBeyondNextMonth(int $year, int $month): void
     {
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
-        $currentMonthStart = Carbon::now()->startOfMonth();
+        $maxAllowed  = Carbon::now()->startOfMonth()->addMonthNoOverflow();
 
-        if ($periodStart->gt($currentMonthStart)) {
-            throw new \DomainException(
-                "No se puede generar el refrendo de {$month}/{$year} porque ese periodo aún no ha comenzado."
-            );
+        if ($periodStart->gt($maxAllowed)) {
+            throw new \DomainException(sprintf(
+                'Solo puedes generar el refrendo hasta el mes siguiente (%s %d).',
+                self::MONTH_NAMES_ES[$maxAllowed->month],
+                $maxAllowed->year
+            ));
         }
     }
 
     /**
      * Valida que el periodo (año/mes) SEA estrictamente futuro respecto al
-     * mes en curso. Inverso de assertPeriodNotInFuture(); usado únicamente
+     * mes en curso. Inverso de assertPeriodNotBeyondNextMonth(); usado únicamente
      * por generateFutureForAdvance().
      */
     private function assertPeriodIsFuture(int $year, int $month): void
@@ -575,78 +592,5 @@ class GenerateMonthlyRefrendsService
         return $row !== null ? (float) $row : null;
     }
 
-    /**
-     * Builds an attendance summary snapshot for the given period.
-     * Frozen at generation time — only updated on explicit recalculate.
-     *
-     * @return array{present: int, late: int, absent: int, late_unconsumed: int, total: int, month_absent: int}
-     */
-    private function getAttendanceSummaryForPeriod(
-        int $userId,
-        int $year,
-        int $month
-    ): array {
-        $start = $month <= 7
-            ? Carbon::create($year, 1, 1)->toDateString()
-            : Carbon::create($year, 8, 1)->toDateString();
-
-        $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
-        $periodMonthStart = "{$year}-{$monthPadded}-01";
-        // Bound parameter instead of DB::raw('CURDATE()') — CURDATE() is MySQL-only
-        // syntax and errors ("no such function: CURDATE") against the SQLite
-        // in-memory connection used by the test suite (phpunit.xml). Same semantics
-        // in production (MySQL): "today", computed once so all three queries below
-        // agree even across a midnight rollover during a slow request.
-        $today = now()->toDateString();
-
-        $rows = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->where('attendances.user_id', $userId)
-            ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', $today)
-            ->selectRaw('attendances.status, COUNT(*) as cnt')
-            ->groupBy('attendances.status')
-            ->get();
-
-        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_unjustified' => 0];
-
-        foreach ($rows as $row) {
-            $cnt = (int) $row->cnt;
-            match ($row->status) {
-                'PRESENT'           => $summary['present'] += $cnt,
-                'LATE'              => [$summary['late'] += $cnt, $summary['late_unjustified'] += $cnt],
-                'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
-                'ABSENT'            => $summary['absent'] += $cnt,
-                'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
-                default             => null,
-            };
-        }
-
-        $lateConsumed = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->join('scholarship_late_consumptions', 'scholarship_late_consumptions.attendance_id', '=', 'attendances.id')
-            ->where('attendances.user_id', $userId)
-            ->where('attendances.status', 'LATE')
-            ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', $today)
-            ->count();
-
-        $monthAbsent = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->where('attendances.user_id', $userId)
-            ->where('attendances.status', 'ABSENT')
-            ->where('classes.date', '>=', $periodMonthStart)
-            ->where('classes.date', '<=', $today)
-            ->count();
-
-        return [
-            'present'         => $summary['present'],
-            'late'            => $summary['late'],
-            'absent'          => $summary['absent'],
-            'late_unconsumed' => max(0, $summary['late_unjustified'] - $lateConsumed),
-            'total'           => $summary['present'] + $summary['late'] + $summary['absent'],
-            'month_absent'    => (int) $monthAbsent,
-        ];
-    }
 
 }

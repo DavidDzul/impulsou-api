@@ -81,14 +81,14 @@ class GenerateMonthlyRefrendsServiceFailureReportingTest extends TestCase
     /** @test */
     public function a_future_period_is_counted_as_error_with_a_failure_entry(): void
     {
-        // assertPeriodNotInFuture() throws a plain \DomainException (not the
-        // reticula one) — must stay classified as `errors`, matching the
+        // assertPeriodNotBeyondNextMonth() throws a plain \DomainException (not
+        // the reticula one) — must stay classified as `errors`, matching the
         // pre-existing FuturePeriodTest expectation of errors=1.
         $profile = $this->makeProfile();
 
-        $nextMonth = now()->addMonthNoOverflow();
+        $beyondNext = now()->startOfMonth()->addMonthsNoOverflow(2);
 
-        $stats = $this->service->generateForPeriod($nextMonth->year, $nextMonth->month, 'MERIDA', null);
+        $stats = $this->service->generateForPeriod($beyondNext->year, $beyondNext->month, 'MERIDA', null);
 
         $this->assertSame(0, $stats['created']);
         $this->assertSame(0, $stats['skipped_out_of_reticula']);

@@ -76,14 +76,64 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
     {
         $profile = $this->makeProfile();
 
-        $nextMonth = Carbon::now()->addMonthNoOverflow()->startOfMonth();
+        $beyondNext = Carbon::now()->startOfMonth()->addMonthsNoOverflow(2);
 
         $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage((string) $nextMonth->month);
+        $this->expectExceptionMessage('Solo puedes generar el refrendo hasta el mes siguiente');
 
-        // Exception is thrown by assertPeriodWithinReticula() BEFORE any
+        // Exception is thrown by the period guard BEFORE any
         // attendance query runs, so this is safe to call end-to-end.
-        $this->service->generateForUser($profile, $nextMonth->year, $nextMonth->month);
+        $this->service->generateForUser($profile, $beyondNext->year, $beyondNext->month);
+    }
+
+    /** @test */
+    public function next_month_is_generated_on_the_29th_and_beyond_is_rejected_with_a_clear_message(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 10, 29, 10));
+        $profile = $this->makeProfile();
+
+        $november = $this->service->generateForUser($profile, 2026, 11);
+        $this->assertSame(11, $november->period_month);
+
+        try {
+            $this->service->generateForUser($profile, 2026, 12);
+            $this->fail('Expected a DomainException for a period beyond next month.');
+        } catch (\DomainException $e) {
+            $this->assertSame(
+                'Solo puedes generar el refrendo hasta el mes siguiente (noviembre 2026).',
+                $e->getMessage()
+            );
+        }
+
+        $this->assertTrue(
+            ScholarshipRefrend::where('user_id', $profile->user_id)
+                ->where('period_year', 2026)->where('period_month', 12)->doesntExist()
+        );
+    }
+
+    /** @test */
+    public function current_and_past_months_remain_allowed_on_the_29th(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 10, 29, 10));
+        $profile = $this->makeProfile();
+
+        $this->assertNotNull($this->service->generateForUser($profile, 2026, 10));
+        $this->assertNotNull($this->service->generateForUser($profile, 2026, 9));
+    }
+
+    /** @test */
+    public function december_allows_january_of_next_year_and_rejects_february(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 12, 15, 10));
+        $profile = $this->makeProfile();
+
+        $january = $this->service->generateForUser($profile, 2027, 1);
+        $this->assertSame(2027, $january->period_year);
+        $this->assertSame(1, $january->period_month);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('enero 2027');
+        $this->service->generateForUser($profile, 2027, 2);
     }
 
     /** @test */
@@ -116,22 +166,22 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
     // named, explicitly-future-only entry point. ──
 
     /** @test */
-    public function normal_generation_rejects_a_future_period(): void
+    public function normal_generation_rejects_a_period_beyond_next_month(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 9, 15));
         $profile = $this->makeProfile();
 
         try {
-            $this->service->generateForUser($profile, 2026, 10);
-            $this->fail('Expected a DomainException for a future period.');
+            $this->service->generateForUser($profile, 2026, 11);
+            $this->fail('Expected a DomainException for a period beyond next month.');
         } catch (\DomainException $e) {
-            $this->assertStringContainsString('10', $e->getMessage());
+            $this->assertStringContainsString('octubre 2026', $e->getMessage());
         }
 
         $this->assertTrue(
             ScholarshipRefrend::where('user_id', $profile->user_id)
                 ->where('period_year', 2026)
-                ->where('period_month', 10)
+                ->where('period_month', 11)
                 ->doesntExist(),
             'No refrend row should be left behind by a rejected future-period generation.'
         );
@@ -150,12 +200,12 @@ class GenerateMonthlyRefrendsServiceFuturePeriodTest extends TestCase
     }
 
     /** @test */
-    public function bulk_generation_counts_a_future_period_as_error_not_created(): void
+    public function bulk_generation_counts_a_period_beyond_next_month_as_error_not_created(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 9, 15));
         $this->makeProfile(['campus' => 'MERIDA']);
 
-        $stats = $this->service->generateForPeriod(2026, 10, 'MERIDA', null);
+        $stats = $this->service->generateForPeriod(2026, 11, 'MERIDA', null);
 
         $this->assertSame(0, $stats['created']);
         $this->assertSame(1, $stats['errors']);

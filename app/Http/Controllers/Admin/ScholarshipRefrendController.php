@@ -14,6 +14,7 @@ use App\Actions\Scholarship\DischargeScholarshipAction;
 use App\Actions\Scholarship\FlagRefrendIncidentAction;
 use App\Actions\Scholarship\ResolveAprobacionAction;
 use App\Actions\Scholarship\RevertAdvancePaymentAction;
+use App\Enums\RefrendType;
 use App\Exceptions\AdvancePaymentException;
 use App\Exceptions\Contracts\CarriesErrorPayload;
 use App\Http\Controllers\Controller;
@@ -27,6 +28,7 @@ use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendIncident;
 use App\Models\ScholarshipWithholding;
 use App\Services\AttendancePenaltyService;
+use App\Services\Scholarship\AttendanceWindow;
 use App\Services\GenerateMonthlyRefrendsService;
 use App\Services\RecalculateRefrendService;
 use App\Services\RefrendBulkQueryService;
@@ -248,18 +250,24 @@ class ScholarshipRefrendController extends Controller
         $year  = $data['year'];
         $month = $data['month'];
 
-        $referenceDate  = Carbon::create($year, $month, 1);
-        $semesterBounds = $this->penaltyService->getCurrentSemesterBounds($referenceDate);
+        // Same window as generation/recalculation: an existing NORMAL refrend
+        // for the period fixes the reference date at its creation moment;
+        // otherwise the window is what a refrend generated today would use.
+        $existing = ScholarshipRefrend::where('user_id', $userId)
+            ->where('period_year', $year)
+            ->where('period_month', $month)
+            ->where('refrend_type', RefrendType::NORMAL->value)
+            ->first();
+
+        $window = AttendanceWindow::endingAt($existing?->created_at ?? now());
+        $user   = \App\Models\User::findOrFail($userId);
 
         $attendances = Attendance::with('class')
             ->where('user_id', $userId)
-            ->whereHas('class', fn($q) => $q->whereBetween('date', [$semesterBounds['start'], $semesterBounds['end']]))
+            ->whereHas('class', fn($q) => $q->whereBetween('date', [$window->start, $window->end]))
             ->get();
 
-        $unconsumedLates = $this->penaltyService->getUnconsumedLatesForUser(
-            \App\Models\User::findOrFail($userId),
-            Carbon::create($year, $month, 1)
-        );
+        $unconsumedLates = $this->penaltyService->getUnconsumedLatesForUser($user, $window);
 
         $consumedSet = array_flip(
             ScholarshipLateConsumption::whereIn('attendance_id', $attendances->pluck('id')->all())
@@ -267,17 +275,25 @@ class ScholarshipRefrendController extends Controller
                 ->all()
         );
 
+        $absences          = $attendances->where('status', 'ABSENT');
+        $absenceConsumed   = $absences->filter(fn($a) => array_key_exists($a->id, $consumedSet))->count();
+        $lateConsumedCount = $attendances->where('status', 'LATE')
+            ->filter(fn($a) => array_key_exists($a->id, $consumedSet))
+            ->count();
+
         $summary = [
             'total'               => $attendances->count(),
             'present'             => $attendances->where('status', 'PRESENT')->count(),
             'late'                => $attendances->where('status', 'LATE')->count(),
             'late_justified'      => $attendances->where('status', 'JUSTIFIED_LATE')->count(),
-            'late_consumed'       => count($consumedSet),
+            'late_consumed'       => $lateConsumedCount,
             'late_unconsumed'     => $unconsumedLates->count(),
-            'absent_unjustified'  => $attendances->where('status', 'ABSENT')->count(),
+            'absent_unjustified'  => $absences->count(),
+            'absence_consumed'    => $absenceConsumed,
+            'absent_unconsumed'   => $absences->count() - $absenceConsumed,
             'absent_justified'    => $attendances->whereIn('status', ['JUSTIFIED', 'JUSTIFIED_ABSENCE'])->count(),
-            'semester_start'      => $semesterBounds['start'],
-            'semester_end'        => $semesterBounds['end'],
+            'semester_start'      => $window->start,
+            'semester_end'        => $window->end,
             'records'             => $attendances->map(fn($a) => [
                 'id'                    => $a->id,
                 'class_date'            => $a->class?->date,

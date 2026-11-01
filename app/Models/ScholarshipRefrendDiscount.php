@@ -19,9 +19,11 @@ class ScholarshipRefrendDiscount extends Model
         'discount_type',
         'discount_percentage',
         'description',
+        'is_automatic',
     ];
 
     protected $casts = [
+        'is_automatic'        => 'boolean',
         'discount_type'       => DiscountType::class,
         'discount_percentage' => 'decimal:2',
     ];

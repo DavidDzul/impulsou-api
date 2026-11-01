@@ -6,6 +6,8 @@ use App\Enums\DiscountType;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendDiscount;
+use App\Services\Scholarship\AttendanceWindow;
+use App\Services\Scholarship\RefrendAttendanceSummaryBuilder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -14,7 +16,8 @@ class RecalculateRefrendService
     public function __construct(
         private ScholarshipCalculationService $calculationService,
         private AttendancePenaltyService $penaltyService,
-        private ScholarshipLoggingService $loggingService
+        private ScholarshipLoggingService $loggingService,
+        private RefrendAttendanceSummaryBuilder $attendanceSummaryBuilder
     ) {}
 
     /**
@@ -36,7 +39,17 @@ class RecalculateRefrendService
         $month         = $refrend->period_month;
         $referenceDate = Carbon::create($year, $month, 1);
 
-        return DB::transaction(function () use ($refrend, $profile, $user, $year, $month, $referenceDate) {
+        // Reference date of the attendance window: the original generation
+        // moment (reproducible). Advance-payment refrends keep their legacy
+        // reference (period 1st) and never get the absence penalty.
+        // created_via defaults to GENERATION in the DB; a model instance that
+        // was just created in-process may not carry the default yet.
+        $isGeneration = ($refrend->created_via ?? 'GENERATION') === 'GENERATION';
+        $window       = $isGeneration && $refrend->created_at !== null
+            ? AttendanceWindow::endingAt($refrend->created_at)
+            : AttendanceWindow::endingAt($referenceDate);
+
+        return DB::transaction(function () use ($refrend, $profile, $user, $referenceDate, $window, $isGeneration) {
             $old = $this->loggingService->snapshotRefrend($refrend);
 
             // 1. Refresh non-attendance snapshots. Vigencia (temporary increase
@@ -132,22 +145,29 @@ class RecalculateRefrendService
                 ->where('discount_type', DiscountType::RETARDOS->value)
                 ->delete();
 
-            // 3. Remove academic and absence discounts
+            // 3. Remove academic and automatic absence discounts. A FALTA row is
+            // automatic only when flagged is_automatic (set by the penalty
+            // service, backfilled for legacy rows); manual retentions stay.
             ScholarshipRefrendDiscount::where('scholarship_refrend_id', $refrend->id)
-                ->whereIn('discount_type', [
-                    DiscountType::PROMEDIO_BAJO->value,
-                    DiscountType::FALTA_INJUSTIFICADA->value,
-                ])
+                ->where(function ($q) {
+                    $q->where('discount_type', DiscountType::PROMEDIO_BAJO->value)
+                        ->orWhere(function ($q) {
+                            $q->where('discount_type', DiscountType::FALTA_INJUSTIFICADA->value)
+                                ->where('is_automatic', true);
+                        });
+                })
                 ->delete();
 
             // 4. Re-apply automatic discounts on a fresh instance
             $fresh = $refrend->fresh();
-            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $referenceDate);
-            $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $year, $month);
+            $this->penaltyService->applyPenaltyIfDue($fresh, $user, 100.0, $window);
+            if ($isGeneration) {
+                $this->penaltyService->applyAbsencePenaltyIfDue($fresh, $user, $window);
+            }
 
             // 4.5 Compute attendance snapshot AFTER penalties are re-applied so
             // late_unconsumed reflects the actual post-recalculation state.
-            $attendanceSummary = $this->getAttendanceSummaryForPeriod($refrend->user_id, $year, $month);
+            $attendanceSummary = $this->attendanceSummaryBuilder->build($refrend->user_id, $window, $refrend->id);
             $fresh->update(['attendance_summary_snapshot' => $attendanceSummary]);
 
             // 5. Recalculate final amount from all remaining discounts
@@ -173,70 +193,5 @@ class RecalculateRefrendService
             ->value('grade');
 
         return $row !== null ? (float) $row : null;
-    }
-
-    private function getAttendanceSummaryForPeriod(int $userId, int $year, int $month): array
-    {
-        $start = $month <= 7
-            ? Carbon::create($year, 1, 1)->toDateString()
-            : Carbon::create($year, 8, 1)->toDateString();
-
-        $monthPadded      = str_pad((string) $month, 2, '0', STR_PAD_LEFT);
-        $periodMonthStart = "{$year}-{$monthPadded}-01";
-        // Bound parameter instead of DB::raw('CURDATE()') — CURDATE() is MySQL-only
-        // syntax and errors ("no such function: CURDATE") against the SQLite
-        // in-memory connection used by the test suite (phpunit.xml). Same semantics
-        // in production (MySQL): "today", computed once so all three queries below
-        // agree even across a midnight rollover during a slow request.
-        $today = now()->toDateString();
-
-        $rows = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->where('attendances.user_id', $userId)
-            ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', $today)
-            ->selectRaw('attendances.status, COUNT(*) as cnt')
-            ->groupBy('attendances.status')
-            ->get();
-
-        $summary = ['present' => 0, 'late' => 0, 'absent' => 0, 'late_unjustified' => 0];
-
-        foreach ($rows as $row) {
-            $cnt = (int) $row->cnt;
-            match ($row->status) {
-                'PRESENT'           => $summary['present'] += $cnt,
-                'LATE'              => [$summary['late'] += $cnt, $summary['late_unjustified'] += $cnt],
-                'JUSTIFIED_LATE'    => $summary['late'] += $cnt,
-                'ABSENT'            => $summary['absent'] += $cnt,
-                'JUSTIFIED_ABSENCE' => $summary['absent'] += $cnt,
-                default             => null,
-            };
-        }
-
-        $lateConsumed = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->join('scholarship_late_consumptions', 'scholarship_late_consumptions.attendance_id', '=', 'attendances.id')
-            ->where('attendances.user_id', $userId)
-            ->where('attendances.status', 'LATE')
-            ->where('classes.date', '>=', $start)
-            ->where('classes.date', '<=', $today)
-            ->count();
-
-        $monthAbsent = DB::table('attendances')
-            ->join('classes', 'attendances.class_id', '=', 'classes.id')
-            ->where('attendances.user_id', $userId)
-            ->where('attendances.status', 'ABSENT')
-            ->where('classes.date', '>=', $periodMonthStart)
-            ->where('classes.date', '<=', $today)
-            ->count();
-
-        return [
-            'present'         => $summary['present'],
-            'late'            => $summary['late'],
-            'absent'          => $summary['absent'],
-            'late_unconsumed' => max(0, $summary['late_unjustified'] - $lateConsumed),
-            'total'           => $summary['present'] + $summary['late'] + $summary['absent'],
-            'month_absent'    => (int) $monthAbsent,
-        ];
     }
 }
