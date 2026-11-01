@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdministrationRoleController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\AttendanceController;
+use App\Http\Controllers\Admin\BankController;
 use App\Http\Controllers\Admin\VacantPositionController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Admin\AuthController;
@@ -275,6 +276,22 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_MANAGE_ROLES');
         Route::put('{id}/permissions', [AdministrationRoleController::class, 'syncPermissions'])
             ->middleware('permission:ADM_MANAGE_ROLES');
+    });
+
+    // ── Control: Bancos (administration-panel) ──────────────────────────────
+    // sdd/catalogo-bancos: bank catalog. Read/manage split; BBVA (012) is a
+    // locked system bank enforced in BankController.
+    Route::prefix('banks')->group(function () {
+        Route::get('/', [BankController::class, 'index'])
+            ->middleware('permission:ADM_READ_BANKS');
+        Route::post('/', [BankController::class, 'store'])
+            ->middleware('permission:ADM_MANAGE_BANKS');
+        Route::put('{bank}', [BankController::class, 'update'])
+            ->whereNumber('bank')
+            ->middleware('permission:ADM_MANAGE_BANKS');
+        Route::delete('{bank}', [BankController::class, 'destroy'])
+            ->whereNumber('bank')
+            ->middleware('permission:ADM_MANAGE_BANKS');
     });
 
     // ── Control: Accesos (administration-panel) ─────────────────────────────

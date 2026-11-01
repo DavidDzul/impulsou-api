@@ -50,13 +50,14 @@ class RoleSeederAdministrationTest extends TestCase
      * sdd/scholarship-telmex-iu-split (design D8) for
      * ADM_MANAGE_SCHOLARSHIP_SETTINGS, and by sdd/telmex-cobertura-iu
      * (PR3b) for ADM_READ_TELMEX_COVERAGE, ADM_MANAGE_TELMEX_COVERAGE and
-     * ADM_MANAGE_TELMEX_REPAYMENTS — the closed set is now these 15 ADM_*
+     * ADM_MANAGE_TELMEX_REPAYMENTS, and by sdd/catalogo-bancos (PR1) for
+     * ADM_READ_BANKS and ADM_MANAGE_BANKS — the closed set is now these 17 ADM_*
      * permissions specifically (still zero PS_* — covered by a separate
      * test below).
      *
      * @test
      */
-    public function seeder_grants_exactly_the_fifteen_expected_adm_permissions_to_root_administration(): void
+    public function seeder_grants_exactly_the_seventeen_expected_adm_permissions_to_root_administration(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -81,9 +82,11 @@ class RoleSeederAdministrationTest extends TestCase
                 'ADM_READ_TELMEX_COVERAGE',
                 'ADM_MANAGE_TELMEX_COVERAGE',
                 'ADM_MANAGE_TELMEX_REPAYMENTS',
+                'ADM_READ_BANKS',
+                'ADM_MANAGE_BANKS',
             ],
             $permissionNames,
-            'ROOT_ADMINISTRATION must hold exactly these fifteen ADM_* permissions and nothing else.'
+            'ROOT_ADMINISTRATION must hold exactly these seventeen ADM_* permissions and nothing else.'
         );
     }
 
