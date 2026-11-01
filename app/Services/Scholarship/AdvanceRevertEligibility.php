@@ -2,7 +2,6 @@
 
 namespace App\Services\Scholarship;
 
-use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Exceptions\AdvancePaymentException;
 use App\Models\ScholarshipAdjustment;
@@ -41,7 +40,7 @@ class AdvanceRevertEligibility
     public static function isOriginPaid(ScholarshipRefrend $origin): bool
     {
         return $origin->payment_batch_id !== null
-            || $origin->paid_payment_method === PaymentMethod::CHEQUE
+            || $origin->paid_payment_method?->isManual() === true
             || $origin->status === RefrendStatus::PAID;
     }
 

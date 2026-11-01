@@ -508,6 +508,11 @@ class AdvanceRevertEligibilityTest extends TestCase
         $cheque->paid_payment_method = PaymentMethod::CHEQUE;
         $this->assertTrue(AdvanceRevertEligibility::isOriginPaid($cheque));
 
+        $manualTransfer = new ScholarshipRefrend();
+        $manualTransfer->status              = RefrendStatus::DRAFT;
+        $manualTransfer->paid_payment_method = PaymentMethod::MANUAL_TRANSFER;
+        $this->assertTrue(AdvanceRevertEligibility::isOriginPaid($manualTransfer));
+
         $batched = new ScholarshipRefrend();
         $batched->status           = RefrendStatus::DRAFT;
         $batched->payment_batch_id = 7;

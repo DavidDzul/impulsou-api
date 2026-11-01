@@ -627,6 +627,15 @@ class RefrendBulkQueryServiceTest extends TestCase
     }
 
     /** @test */
+    public function a_manual_transfer_row_stamped_cert_unid_stays_eligible_after_the_flag_flips_off(): void
+    {
+        $refrend = $this->makeChequePaid('CERT_UNID', ['paid_payment_method' => 'MANUAL_TRANSFER']);
+        $this->seedProfile($refrend->user_id, false);
+
+        $this->assertTrue($this->eligibleFor($refrend));
+    }
+
+    /** @test */
     public function a_cheque_row_stamped_normal_stays_not_eligible_after_the_flag_flips_on(): void
     {
         $refrend = $this->makeChequePaid('NORMAL');
