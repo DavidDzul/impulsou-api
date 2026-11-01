@@ -286,10 +286,11 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
 
     // ── Control: Bancos (administration-panel) ──────────────────────────────
     // sdd/catalogo-bancos: bank catalog. Read/manage split; BBVA (012) is a
-    // locked system bank enforced in BankController.
+    // locked system bank enforced in BankController. GET also allows the payment-data
+    // permissions because PaymentDataDialog loads the catalog; writes stay MANAGE only.
     Route::prefix('banks')->group(function () {
         Route::get('/', [BankController::class, 'index'])
-            ->middleware('permission:ADM_READ_BANKS');
+            ->middleware('permission:ADM_READ_BANKS|ADM_READ_PAYMENT_DATA|ADM_EDIT_PAYMENT_DATA');
         Route::post('/', [BankController::class, 'store'])
             ->middleware('permission:ADM_MANAGE_BANKS');
         Route::put('{bank}', [BankController::class, 'update'])

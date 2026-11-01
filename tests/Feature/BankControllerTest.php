@@ -53,6 +53,20 @@ class BankControllerTest extends TestCase
         $this->assertSame('Banorte', Bank::where('code', '072')->value('name'));
     }
 
+    /** @test */
+    public function index_allows_payment_data_permissions_but_writes_stay_manage_only(): void
+    {
+        foreach (['ADM_READ_PAYMENT_DATA', 'ADM_EDIT_PAYMENT_DATA'] as $permission) {
+            $user = $this->noPermUser();
+            $user->givePermissionTo(Permission::where('name', $permission)->firstOrFail());
+
+            $this->actingAs($user)->getJson('/api/admin/banks')->assertStatus(200);
+            $this->actingAs($user)
+                ->postJson('/api/admin/banks', ['code' => '999', 'name' => 'Nuevo'])
+                ->assertStatus(403);
+        }
+    }
+
     // ── index ────────────────────────────────────────────────────────────
 
     /** @test */
