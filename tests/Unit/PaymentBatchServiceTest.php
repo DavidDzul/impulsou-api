@@ -61,6 +61,7 @@ class PaymentBatchServiceTest extends TestCase
         if ($withPaymentData) {
             ScholarshipPaymentData::create([
                 'user_id'        => $user->id,
+                'bank_id'        => \App\Models\Bank::where('code', '012')->value('id'),
                 'bank_name'      => 'BBVA',
                 'account_number' => '0123456789',
                 'curp'           => 'CURP010101HDFXXX01',
@@ -191,6 +192,7 @@ class PaymentBatchServiceTest extends TestCase
         $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'campus' => self::CAMPUS, 'active' => true]);
         ScholarshipPaymentData::create([
             'user_id'        => $user->id,
+            'bank_id'        => \App\Models\Bank::where('code', '012')->value('id'),
             'bank_name'      => 'BBVA',
             'account_number' => '0123456789',
             'curp'           => 'CURP010101HDFXXX01',

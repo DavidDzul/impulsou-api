@@ -9,6 +9,7 @@ use App\Enums\ScholarshipType;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
+use App\Support\Banking\BatchBank;
 use App\Support\Scholarship\PaymentAmountFloor;
 use App\Support\Scholarship\PaymentBatchSegmentPolicy;
 use App\Support\Scholarship\RefrendPayableTotal;
@@ -164,6 +165,7 @@ class PaymentBatchService
         $query = DB::table('scholarship_refrends as r')
             ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
             ->leftJoin('scholarship_payment_data as spd', 'spd.user_id', '=', 'r.user_id')
+            ->leftJoin('banks as b', 'b.id', '=', 'spd.bank_id')
             ->where('r.snapshot_campus', $campus)
             ->where('r.period_year', $periodYear)
             ->where('r.period_month', $periodMonth);
@@ -255,6 +257,8 @@ class PaymentBatchService
                 // effective payment method of the row.
                 'spd.id as spd_id',
                 'spd.payment_method as spd_payment_method',
+                // sdd/catalogo-bancos: Banxico code decides the channel.
+                'b.code as bank_code',
                 'spd.cheque_beneficiary',
                 'r.paid_payment_method',
                 'r.cheque_number',
@@ -340,7 +344,8 @@ class PaymentBatchService
                 $hasPaymentData,
                 $row->account_number,
                 $row->rfc,
-                $method
+                $method,
+                $row->bank_code
             );
 
             // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
@@ -361,6 +366,7 @@ class PaymentBatchService
                 // sdd/pago-cheque (spec R2.1): effective method + cheque data.
                 'payment_method'            => $method->value,
                 'paid_payment_method'       => $row->paid_payment_method,
+                'bank_code'                 => $row->bank_code,
                 'cheque_beneficiary'        => $row->cheque_beneficiary,
                 'cheque_number'             => $row->cheque_number,
                 'cheque_delivered_at'       => $row->cheque_delivered_at,
@@ -507,12 +513,14 @@ class PaymentBatchService
         $rows = $batch->refrends()
             ->leftJoin('users as u', 'u.id', '=', 'scholarship_refrends.user_id')
             ->leftJoin('scholarship_payment_data as spd', 'spd.user_id', '=', 'scholarship_refrends.user_id')
+            ->leftJoin('banks as b', 'b.id', '=', 'spd.bank_id')
             ->where(function ($where) {
-                // sdd/pago-cheque D12: defense in depth. Cheque rows never
-                // carry a payment_batch_id, so this should never filter
-                // anything, but the bank file must never list a cheque.
+                // sdd/pago-cheque D12: defense in depth. Manual rows (cheque,
+                // other-bank transfer) never carry a payment_batch_id, so this
+                // should never filter anything, but the bank file must never
+                // list them.
                 $where->whereNull('scholarship_refrends.paid_payment_method')
-                    ->orWhere('scholarship_refrends.paid_payment_method', '!=', PaymentMethod::CHEQUE->value);
+                    ->orWhereNotIn('scholarship_refrends.paid_payment_method', PaymentMethod::manualValues());
             })
             ->orderBy('scholarship_refrends.snapshot_name')
             ->get([
@@ -536,6 +544,9 @@ class PaymentBatchService
                 'scholarship_refrends.snapshot_scholarship_type',
                 'spd.account_number',
                 'spd.rfc',
+                // sdd/catalogo-bancos: lets the export gate reject paid rows
+                // whose becario has no bank or a non-BBVA bank.
+                'b.code as bank_code',
             ]);
 
         // Filter B (design D4): excluded BEFORE map(), so the row never
@@ -554,6 +565,7 @@ class PaymentBatchService
                 'snapshot_name'  => $row->snapshot_name,
                 'rfc'            => $row->rfc,
                 'account_number' => $row->account_number,
+                'bank_code'      => $row->bank_code,
                 // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
                 // design D2), applied AFTER Filter B's reject() above, which
                 // still evaluates the raw (unfloored) total.
@@ -586,22 +598,28 @@ class PaymentBatchService
             return PaymentMethod::TRANSFER;
         }
 
-        return PaymentMethod::tryFrom((string) $row->spd_payment_method)
+        // Pending row: the channel follows the current method and bank
+        // (sdd/catalogo-bancos R6). No spd means TRANSFER.
+        $method = PaymentMethod::tryFrom((string) $row->spd_payment_method)
             ?? PaymentMethod::TRANSFER;
+
+        return BatchBank::channelFor($method, $row->bank_code);
     }
 
     /**
      * Splits rows() output by effective method, preserving order.
      *
      * @param array<int, array<string, mixed>> $rows
-     * @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>} [transfer, cheque]
+     * @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>, 2: array<int, array<string, mixed>>} [transfer, cheque, manual_transfer]
      */
     public function partitionByMethod(array $rows): array
     {
-        $cheque   = array_values(array_filter($rows, fn (array $r) => $r['payment_method'] === PaymentMethod::CHEQUE->value));
-        $transfer = array_values(array_filter($rows, fn (array $r) => $r['payment_method'] !== PaymentMethod::CHEQUE->value));
+        $by = fn (PaymentMethod $method) => array_values(array_filter(
+            $rows,
+            fn (array $r) => $r['payment_method'] === $method->value
+        ));
 
-        return [$transfer, $cheque];
+        return [$by(PaymentMethod::TRANSFER), $by(PaymentMethod::CHEQUE), $by(PaymentMethod::MANUAL_TRANSFER)];
     }
 
     /**
