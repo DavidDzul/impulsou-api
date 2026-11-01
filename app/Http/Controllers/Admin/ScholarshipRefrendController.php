@@ -299,6 +299,8 @@ class ScholarshipRefrendController extends Controller
                 'class_date'            => $a->class?->date,
                 'class_name'            => $a->class?->name,
                 'status'                => $a->status,
+                'check_in'              => $a->check_in,
+                'check_out'             => $a->check_out,
                 'observations'          => $a->observations,
                 'late_penalty_consumed' => array_key_exists($a->id, $consumedSet),
             ])->sortBy('class_date')->values(),
