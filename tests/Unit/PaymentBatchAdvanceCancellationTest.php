@@ -64,6 +64,7 @@ class PaymentBatchAdvanceCancellationTest extends TestCase
 
         ScholarshipPaymentData::create([
             'user_id'        => $user->id,
+            'bank_id'        => \App\Models\Bank::where('code', '012')->value('id'),
             'bank_name'      => 'BBVA',
             'account_number' => '0123456789',
             'curp'           => 'CURP010101HDFXXX01',

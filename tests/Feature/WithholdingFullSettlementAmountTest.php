@@ -314,6 +314,7 @@ class WithholdingFullSettlementAmountTest extends TestCase
         // stricter than the old inline query, intentional per design.
         ScholarshipPaymentData::create([
             'user_id'        => $refrend->user_id,
+            'bank_id'        => \App\Models\Bank::where('code', '012')->value('id'),
             'bank_name'      => 'BBVA',
             'account_number' => '0123456789',
             'curp'           => 'CURP010101HDFXXX01',
