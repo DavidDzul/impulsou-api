@@ -110,6 +110,9 @@ class ScholarshipRefrend extends Model
         'cheque_number',
         'cheque_delivered_at',
         'cheque_notes',
+        'transfer_reference',
+        'transfer_paid_at',
+        'transfer_notes',
     ];
 
     protected $casts = [
@@ -141,6 +144,7 @@ class ScholarshipRefrend extends Model
         'paid_payment_method'          => PaymentMethod::class,
         'paid_batch_type'              => PaymentBatchType::class,
         'cheque_delivered_at'          => 'date',
+        'transfer_paid_at'            => 'date',
     ];
 
     protected $appends = ['total_to_pay'];

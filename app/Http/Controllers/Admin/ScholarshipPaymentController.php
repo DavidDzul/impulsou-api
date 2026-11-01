@@ -4,11 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Scholarship\BulkPayAction;
 use App\Actions\Scholarship\MarkChequePaidAction;
+use App\Actions\Scholarship\MarkManualTransferPaidAction;
 use App\Actions\Scholarship\RevertChequePaymentAction;
+use App\Actions\Scholarship\RevertManualPaymentAction;
 use App\Enums\PaymentBatchType;
-use App\Exceptions\ChequePaymentException;
+use App\Enums\PaymentMethod;
+use App\Exceptions\ManualPaymentException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MarkChequePaidRequest;
+use App\Http\Requests\MarkManualTransferPaidRequest;
 use App\Http\Requests\RevertChequePaymentRequest;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
@@ -82,7 +86,7 @@ class ScholarshipPaymentController extends Controller
         // sdd/pago-cheque D9: split right after rows(). Everything below
         // (summary, batch block) only ever sees TRANSFER rows, so a cheque
         // can never block, inflate or mark the transfer batch as paid.
-        [$rows, $chequeRows] = $service->partitionByMethod($rows);
+        [$rows, $chequeRows, $manualRows] = $service->partitionByMethod($rows);
         $summary             = $service->summary($rows);
 
         return response()->json([
@@ -92,6 +96,8 @@ class ScholarshipPaymentController extends Controller
                 'summary'        => $summary,
                 'cheque_rows'    => $chequeRows,
                 'cheque_summary' => $service->chequeSummary($chequeRows),
+                'manual_transfer_rows'    => $manualRows,
+                'manual_transfer_summary' => $service->manualTransferSummary($manualRows),
                 'batch'          => $this->batchBlock($rows),
                 'batch_type'     => $batchType->value,
             ],
@@ -195,11 +201,56 @@ class ScholarshipPaymentController extends Controller
             );
         } catch (ModelNotFoundException) {
             return $this->refrendNotFound();
-        } catch (ChequePaymentException $e) {
+        } catch (ManualPaymentException $e) {
             return $this->chequeError($e);
         }
 
         return response()->json(['res' => true, 'data' => $this->chequePayload($paid)]);
+    }
+
+    /**
+     * sdd/catalogo-bancos R7: marks ONE other-bank transfer refrend as paid.
+     * Guards live in MarkManualTransferPaidAction.
+     */
+    public function markManualTransferPaid(MarkManualTransferPaidRequest $request, int $refrend): JsonResponse
+    {
+        $data = $request->validated();
+
+        try {
+            $paid = app(MarkManualTransferPaidAction::class)->execute(
+                $refrend,
+                (int) auth()->id(),
+                $data['transfer_reference'],
+                $data['transfer_paid_at'] ?? null,
+                $data['transfer_notes'] ?? null
+            );
+        } catch (ModelNotFoundException) {
+            return $this->refrendNotFound();
+        } catch (ManualPaymentException $e) {
+            return $this->chequeError($e);
+        }
+
+        return response()->json(['res' => true, 'data' => $this->manualTransferPayload($paid)]);
+    }
+
+    /**
+     * sdd/catalogo-bancos R7: reverts ONE other-bank transfer payment.
+     */
+    public function revertManualTransferPayment(RevertChequePaymentRequest $request, int $refrend): JsonResponse
+    {
+        try {
+            $reverted = app(RevertManualPaymentAction::class)->execute(
+                $refrend,
+                $request->validated()['reason'],
+                PaymentMethod::MANUAL_TRANSFER
+            );
+        } catch (ModelNotFoundException) {
+            return $this->refrendNotFound();
+        } catch (ManualPaymentException $e) {
+            return $this->chequeError($e);
+        }
+
+        return response()->json(['res' => true, 'data' => $this->manualTransferPayload($reverted)]);
     }
 
     /**
@@ -216,7 +267,7 @@ class ScholarshipPaymentController extends Controller
             );
         } catch (ModelNotFoundException) {
             return $this->refrendNotFound();
-        } catch (ChequePaymentException $e) {
+        } catch (ManualPaymentException $e) {
             return $this->chequeError($e);
         }
 
@@ -237,7 +288,7 @@ class ScholarshipPaymentController extends Controller
         ], 404);
     }
 
-    private function chequeError(ChequePaymentException $e): JsonResponse
+    private function chequeError(ManualPaymentException $e): JsonResponse
     {
         return response()->json([
             'res'  => false,
@@ -245,6 +296,20 @@ class ScholarshipPaymentController extends Controller
             'code' => $e->code(),
             'data' => $e->payload(),
         ], $e->httpStatus());
+    }
+
+    private function manualTransferPayload(ScholarshipRefrend $refrend): array
+    {
+        return [
+            'refrend_id'          => $refrend->id,
+            'status'              => $refrend->status->value,
+            'workflow_status'     => $refrend->workflow_status,
+            'paid_payment_method' => $refrend->paid_payment_method?->value,
+            'transfer_reference'  => $refrend->transfer_reference,
+            'transfer_paid_at'    => $refrend->transfer_paid_at?->toDateString(),
+            'transfer_notes'      => $refrend->transfer_notes,
+            'locked_at'           => $refrend->locked_at?->toISOString(),
+        ];
     }
 
     private function chequePayload(ScholarshipRefrend $refrend): array

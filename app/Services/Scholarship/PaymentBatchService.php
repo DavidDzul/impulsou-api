@@ -264,6 +264,9 @@ class PaymentBatchService
                 'r.cheque_number',
                 'r.cheque_delivered_at',
                 'r.cheque_notes',
+                'r.transfer_reference',
+                'r.transfer_paid_at',
+                'r.transfer_notes',
                 // base_amount/snapshot_monto_apoyo (sdd/pagos-batch-sede-totals,
                 // design D9): raw pass-throughs feeding summary()'s type-
                 // partitioned money totals. r.snapshot_scholarship_type is
@@ -371,6 +374,9 @@ class PaymentBatchService
                 'cheque_number'             => $row->cheque_number,
                 'cheque_delivered_at'       => $row->cheque_delivered_at,
                 'cheque_notes'              => $row->cheque_notes,
+                'transfer_reference'        => $row->transfer_reference,
+                'transfer_paid_at'          => $row->transfer_paid_at,
+                'transfer_notes'            => $row->transfer_notes,
                 // status (sdd/pagos-por-generacion-estado-pago, design D2):
                 // raw pass-through of the already-SELECTed r.status column.
                 // DB::table() bypasses the enum cast, so this arrives as a
@@ -629,6 +635,26 @@ class PaymentBatchService
      * @return array{total: int, ready: int, paid: int, blocking: int, ready_amount: string, paid_amount: string}
      */
     public function chequeSummary(array $chequeRows): array
+    {
+        return $this->manualPaymentSummary($chequeRows);
+    }
+
+    /**
+     * Same counts and money for the other-bank transfer section.
+     *
+     * @param array<int, array<string, mixed>> $manualRows
+     * @return array{total: int, ready: int, paid: int, blocking: int, ready_amount: string, paid_amount: string}
+     */
+    public function manualTransferSummary(array $manualRows): array
+    {
+        return $this->manualPaymentSummary($manualRows);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $chequeRows
+     * @return array{total: int, ready: int, paid: int, blocking: int, ready_amount: string, paid_amount: string}
+     */
+    private function manualPaymentSummary(array $chequeRows): array
     {
         $paid  = array_filter($chequeRows, fn (array $r) => $r['status'] === RefrendStatus::PAID->value);
         $ready = array_filter($chequeRows, fn (array $r) => $r['is_payable'] && !in_array($r, $paid, true));

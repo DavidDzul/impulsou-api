@@ -256,6 +256,12 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::post('{refrend}/cheque-payment/revert', [ScholarshipPaymentController::class, 'revertChequePayment'])
             ->whereNumber('refrend')
             ->middleware('permission:ADM_PROCESS_PAYMENTS');
+        Route::post('{refrend}/manual-transfer-payment', [ScholarshipPaymentController::class, 'markManualTransferPaid'])
+            ->whereNumber('refrend')
+            ->middleware('permission:ADM_PROCESS_PAYMENTS');
+        Route::post('{refrend}/manual-transfer-payment/revert', [ScholarshipPaymentController::class, 'revertManualTransferPayment'])
+            ->whereNumber('refrend')
+            ->middleware('permission:ADM_PROCESS_PAYMENTS');
         Route::get('{refrend}/document', [ScholarshipPaymentController::class, 'document'])
             ->middleware('permission:ADM_READ_PAYMENTS');
     });

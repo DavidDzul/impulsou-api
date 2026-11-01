@@ -771,6 +771,8 @@ class PaymentBatchServiceTest extends TestCase
             // sdd/pago-cheque PR2: effective method + cheque data.
             'payment_method', 'paid_payment_method', 'bank_code', 'cheque_beneficiary',
             'cheque_number', 'cheque_delivered_at', 'cheque_notes',
+            // sdd/catalogo-bancos R7: other-bank transfer data.
+            'transfer_reference', 'transfer_paid_at', 'transfer_notes',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }
