@@ -34,7 +34,7 @@ class UpdateScholarshipPaymentDataRequest extends FormRequest
             'payment_method' => ['sometimes', 'required', Rule::in(PaymentMethod::values())],
             // Presence for TRANSFER depends on the stored row, so it is
             // enforced in withValidator() (sdd/pago-cheque R1.3).
-            'bank_name'      => 'sometimes|nullable|string|max:100',
+            'bank_id'        => 'sometimes|nullable|integer|exists:banks,id',
             'account_number' => 'sometimes|nullable|string|max:20',
             'cheque_beneficiary' => 'sometimes|nullable|string|max:150',
             'curp'           => ['sometimes', 'required', new Curp()],
@@ -51,15 +51,9 @@ class UpdateScholarshipPaymentDataRequest extends FormRequest
                 return;
             }
 
-            // A TRANSFER row must end up with bank data: the sent value
-            // wins, otherwise the stored one must exist (CHEQUE -> TRANSFER).
-            foreach (['bank_name', 'account_number'] as $field) {
-                $value = $this->has($field) ? $this->input($field) : $this->existing()?->{$field};
-
-                if ($value === null || $value === '') {
-                    $validator->errors()->add($field, $this->transferRequiredMessages()[$field]);
-                }
-            }
+            // A TRANSFER row must end up with a bank and account: the sent
+            // value wins, otherwise the stored one (CHEQUE -> TRANSFER).
+            $this->validateTransferBank($validator, $this->existing());
         });
     }
 

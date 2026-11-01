@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\PaymentMethod;
+use App\Models\Bank;
 use App\Models\ScholarshipPaymentData;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -20,6 +21,8 @@ class ScholarshipPaymentDataFactory extends Factory
     {
         return [
             'user_id'        => User::factory(),
+            // BBVA is the seeded system bank (sdd/catalogo-bancos).
+            'bank_id'        => fn () => Bank::where('code', Bank::BATCH_BANK_CODE)->value('id'),
             'bank_name'      => 'BBVA',
             'account_number' => '012345678901234567',
             'curp'           => 'ABCD010101HDFRRL09',
@@ -34,6 +37,7 @@ class ScholarshipPaymentDataFactory extends Factory
     {
         return $this->state(fn () => [
             'payment_method'     => PaymentMethod::CHEQUE->value,
+            'bank_id'            => null,
             'bank_name'          => null,
             'account_number'     => null,
             'cheque_beneficiary' => $beneficiary,

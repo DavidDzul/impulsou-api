@@ -7,7 +7,6 @@ use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -249,12 +248,6 @@ class BankControllerTest extends TestCase
     /** @test */
     public function destroy_deactivates_instead_of_deleting_when_referenced_by_payment_data(): void
     {
-        // bank_id on scholarship_payment_data lands in the next PR of the chain;
-        // until then nothing can reference a bank.
-        if (!Schema::hasColumn('scholarship_payment_data', 'bank_id')) {
-            $this->markTestSkipped('scholarship_payment_data.bank_id not available yet.');
-        }
-
         $bank = Bank::where('code', '072')->firstOrFail();
         $user = User::factory()->create();
         DB::table('scholarship_payment_data')->insert([

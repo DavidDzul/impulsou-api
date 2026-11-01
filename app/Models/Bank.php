@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Bank catalog entry. `code` is the 3-digit Banxico code (CLABE prefix).
@@ -24,16 +23,9 @@ class Bank extends Model
         'is_system' => 'boolean',
     ];
 
-    /**
-     * True when any payment data points at this bank. Guarded by hasColumn so
-     * the catalog works before scholarship_payment_data.bank_id exists.
-     */
+    /** True when any payment data points at this bank. */
     public function isReferenced(): bool
     {
-        if (!Schema::hasColumn('scholarship_payment_data', 'bank_id')) {
-            return false;
-        }
-
         return ScholarshipPaymentData::where('bank_id', $this->id)->exists();
     }
 }

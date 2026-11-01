@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Bank;
 use App\Models\ScholarshipPaymentData;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
@@ -34,6 +35,11 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
             'active'    => true,
         ]);
         $this->rootAdmin->assignRole('ROOT_ADMINISTRATION');
+    }
+
+    private function bbvaId(): int
+    {
+        return (int) Bank::where('code', '012')->value('id');
     }
 
     private function becario(): User
@@ -81,8 +87,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($noPermUser)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'ABCD010101HDFRRL09',
         ]);
 
@@ -98,7 +104,7 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($noPermUser)->putJson(
             "/api/admin/scholarship-payment-data/{$becario->id}",
-            ['bank_name' => 'Santander']
+            ['rfc' => null]
         );
 
         $response->assertStatus(403);
@@ -113,8 +119,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($readOnlyUser)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'ABCD010101HDFRRL09',
         ]);
 
@@ -181,8 +187,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'ABCD010101HDFRRL09',
         ]);
 
@@ -202,8 +208,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'ABCD010101HDFRRL09',
         ]);
 
@@ -221,7 +227,7 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['bank_name', 'account_number', 'curp']);
+        $response->assertJsonValidationErrors(['bank_id', 'account_number', 'curp']);
     }
 
     /** @test */
@@ -231,8 +237,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'too-short',
         ]);
 
@@ -247,8 +253,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'ABCD010101HDFRRL09',
             'rfc'            => 'bad',
         ]);
@@ -265,8 +271,8 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($this->rootAdmin)->postJson('/api/admin/scholarship-payment-data', [
             'user_id'        => $becario->id,
-            'bank_name'      => 'BBVA',
-            'account_number' => '012345678901234567',
+            'bank_id'        => $this->bbvaId(),
+            'account_number' => '1234567890',
             'curp'           => 'ABCD010101HDFRRL09',
         ]);
 
@@ -289,7 +295,7 @@ class ScholarshipPaymentDataEndpointTest extends TestCase
 
         $response = $this->actingAs($this->rootAdmin)->putJson(
             "/api/admin/scholarship-payment-data/{$becario->id}",
-            ['bank_name' => 'Santander']
+            ['bank_id' => Bank::where('code', '014')->value('id'), 'account_number' => '014180000000000000']
         );
 
         $response->assertStatus(200);
