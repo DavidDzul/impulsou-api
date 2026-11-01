@@ -8,11 +8,11 @@ use PHPUnit\Framework\TestCase;
 class PaymentMethodTest extends TestCase
 {
     /** @test */
-    public function it_exposes_transfer_and_cheque_values(): void
+    public function it_exposes_all_values_including_snapshot_only_manual_transfer(): void
     {
         $this->assertSame('TRANSFER', PaymentMethod::TRANSFER->value);
         $this->assertSame('CHEQUE', PaymentMethod::CHEQUE->value);
-        $this->assertSame(['TRANSFER', 'CHEQUE'], PaymentMethod::values());
+        $this->assertSame(['TRANSFER', 'CHEQUE', 'MANUAL_TRANSFER'], PaymentMethod::values());
     }
 
     /** @test */

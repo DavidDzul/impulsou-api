@@ -31,7 +31,7 @@ class UpdateScholarshipPaymentDataRequest extends FormRequest
             // only when present, and it may not be empty when it is".
             // `user_id` is intentionally absent — it is never part of the
             // update payload (route-bound via {userId}).
-            'payment_method' => ['sometimes', 'required', Rule::in(PaymentMethod::values())],
+            'payment_method' => ['sometimes', 'required', Rule::in(PaymentMethod::selectableValues())],
             // Presence for TRANSFER depends on the stored row, so it is
             // enforced in withValidator() (sdd/pago-cheque R1.3).
             'bank_id'        => 'sometimes|nullable|integer|exists:banks,id',

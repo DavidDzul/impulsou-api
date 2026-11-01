@@ -35,7 +35,7 @@ class StoreScholarshipPaymentDataRequest extends FormRequest
             // DB-level unique index — a duplicate submit gets a clean 422
             // instead of a DB fatal error (spec R7 "single account" scenario).
             'user_id'        => 'required|integer|exists:users,id|unique:scholarship_payment_data,user_id',
-            'payment_method' => ['required', Rule::in(PaymentMethod::values())],
+            'payment_method' => ['required', Rule::in(PaymentMethod::selectableValues())],
             // Bank data is mandatory only for TRANSFER (spec R1.3).
             // bank_id presence/activity and the account format are checked in
             // withValidator() because they depend on the selected bank.
