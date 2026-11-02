@@ -2,14 +2,10 @@
 
 namespace App\Actions\Scholarship;
 
-use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
-use App\Enums\RefrendStatus;
 use App\Exceptions\ChequePaymentException;
 use App\Models\ScholarshipPaymentData;
-use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
-use App\Services\Scholarship\PaymentReadinessEvaluator;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
 
@@ -25,22 +21,19 @@ use Illuminate\Support\Facades\DB;
  * blocked), then
  * PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also enforces
  * Filter A / Telmex candidacy); finally the cheque number must not belong to
- * another cheque-paid refrend (422 CHEQUE_NUMBER_TAKEN).
+ * another cheque-paid refrend (422 CHEQUE_NUMBER_TAKEN). The shared guards
+ * live in ManualPaymentGuards (sdd/catalogo-bancos).
  */
 class MarkChequePaidAction
 {
     /**
      * Statuses a cheque can be registered from — exactly the set
      * RevertChequePaymentAction can restore, so mark/revert round-trip.
-     *
-     * Approval only moves workflow_status to LISTO_PARA_PAGO and leaves status
-     * DRAFT (WITHHELD for RETENIDA). Approval readiness is enforced by
-     * PaymentReadinessEvaluator (workflow LISTO_PARA_PAGO).
      */
-    public const PAYABLE_STATUSES = [RefrendStatus::DRAFT, RefrendStatus::WITHHELD];
+    public const PAYABLE_STATUSES = ManualPaymentGuards::PAYABLE_STATUSES;
 
     public function __construct(
-        private PaymentReadinessEvaluator $evaluator,
+        private ManualPaymentGuards $guards,
         private ScholarshipLoggingService $logging
     ) {
     }
@@ -59,13 +52,7 @@ class MarkChequePaidAction
         $chequeNumber = trim($chequeNumber);
 
         return DB::transaction(function () use ($refrendId, $userId, $chequeNumber, $deliveredAt, $notes) {
-            $refrend = ScholarshipRefrend::with('user')->lockForUpdate()->findOrFail($refrendId);
-
-            if ($refrend->status === RefrendStatus::PAID
-                || $refrend->locked_at !== null
-                || $refrend->payment_batch_id !== null) {
-                throw ChequePaymentException::alreadyPaid();
-            }
+            $refrend = $this->guards->lockUnpaid($refrendId, ChequePaymentException::class);
 
             $paymentData = ScholarshipPaymentData::where('user_id', $refrend->user_id)->first();
 
@@ -73,30 +60,14 @@ class MarkChequePaidAction
                 throw ChequePaymentException::notChequeMethod();
             }
 
-            if (in_array($refrend->resolution_type, ScholarshipRefrend::NON_CANDIDATE_RESOLUTIONS, true)) {
-                throw ChequePaymentException::notPayable([
-                    ['code' => 'NOT_BATCH_CANDIDATE', 'message' => 'El refrendo no es candidato a pago'],
-                ]);
-            }
-
-            if (!in_array($refrend->status, self::PAYABLE_STATUSES, true)) {
-                throw ChequePaymentException::notPayable([
-                    ['code' => 'INVALID_STATUS', 'message' => 'El refrendo no está autorizado para pago'],
-                ]);
-            }
-
-            $evaluation = $this->evaluator->evaluate(
+            $this->guards->assertPayable(
                 $refrend,
-                !empty($refrend->user?->enrollment),
-                true,
+                $paymentData,
+                PaymentMethod::CHEQUE,
                 null,
-                $paymentData->rfc,
-                PaymentMethod::CHEQUE
+                null,
+                ChequePaymentException::class
             );
-
-            if (!$evaluation['is_payable']) {
-                throw ChequePaymentException::notPayable($evaluation['blocking_reasons']);
-            }
 
             // A cheque number identifies ONE currently cheque-paid refrend
             // (trimmed, case-insensitive). A revert clears cheque_number, so
@@ -113,20 +84,13 @@ class MarkChequePaidAction
                 throw ChequePaymentException::chequeNumberTaken();
             }
 
-            // Freeze the segment at payment time (sdd/cert-unid-historial R2):
-            // a later flag flip must not move this paid cheque between tabs.
-            $isCertUnid = (bool) ScholarshipProfile::where('user_id', $refrend->user_id)
-                ->value('is_cert_unid');
-
             $old = $this->logging->snapshotRefrend($refrend);
 
-            $refrend->update([
-                'status'              => RefrendStatus::PAID->value,
-                'workflow_status'     => 'CLOSED',
-                'locked_at'           => now(),
-                'locked_by_id'        => $userId,
-                'paid_payment_method' => PaymentMethod::CHEQUE->value,
-                'paid_batch_type'     => PaymentBatchType::forCertUnidFlag($isCertUnid)->value,
+            $refrend->update($this->guards->closeAttributes(
+                $userId,
+                PaymentMethod::CHEQUE,
+                $this->guards->frozenBatchType($refrend)
+            ) + [
                 'cheque_number'       => $chequeNumber,
                 'cheque_delivered_at' => $deliveredAt ?? now()->toDateString(),
                 'cheque_notes'        => $notes,
@@ -136,7 +100,7 @@ class MarkChequePaidAction
 
             $this->logging->log(
                 $refrend,
-                'CHEQUE_PAID',
+                PaymentMethod::CHEQUE->paidLogAction(),
                 $old,
                 $this->logging->snapshotRefrend($refrend) + [
                     'paid_payment_method' => PaymentMethod::CHEQUE->value,

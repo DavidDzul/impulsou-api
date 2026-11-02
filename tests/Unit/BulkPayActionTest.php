@@ -66,6 +66,7 @@ class BulkPayActionTest extends TestCase
         if ($withPaymentData) {
             ScholarshipPaymentData::create([
                 'user_id'        => $user->id,
+                'bank_id'        => \App\Models\Bank::where('code', '012')->value('id'),
                 'bank_name'      => 'BBVA',
                 'account_number' => $accountNumber,
                 'curp'           => 'CURP010101HDFXXX01',
@@ -406,5 +407,48 @@ class BulkPayActionTest extends TestCase
         $this->action->execute([$refrend->id], $this->admin->id);
 
         $this->assertSame(PaymentMethod::TRANSFER, $refrend->fresh()->paid_payment_method);
+    }
+
+    // -- sdd/catalogo-bancos PR3 ------------------------------------------
+
+    /** @test */
+    public function skips_a_transfer_becario_without_bank_and_pays_the_rest(): void
+    {
+        $ok     = $this->makePayableRefrend();
+        $noBank = $this->makePayableRefrend(withPaymentData: false);
+        ScholarshipPaymentData::factory()->create([
+            'user_id' => $noBank->user_id, 'bank_id' => null, 'bank_name' => null, 'account_number' => '0123456789',
+        ]);
+
+        $result = $this->action->execute([$ok->id, $noBank->id], $this->admin->id);
+
+        $this->assertSame(1, $result['paid']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame($noBank->id, $result['errors'][0]['id']);
+        $this->assertStringContainsString('Falta seleccionar banco', $result['errors'][0]['reason']);
+        $this->assertSame(RefrendStatus::PAID, $ok->fresh()->status);
+        $this->assertSame(RefrendStatus::DRAFT, $noBank->fresh()->status);
+        $this->assertNull($noBank->fresh()->locked_at);
+    }
+
+    /** @test */
+    public function skips_a_non_bbva_transfer_becario_as_a_manual_transfer(): void
+    {
+        $ok    = $this->makePayableRefrend();
+        $other = $this->makePayableRefrend(withPaymentData: false);
+        ScholarshipPaymentData::factory()->create([
+            'user_id'        => $other->user_id,
+            'bank_id'        => \App\Models\Bank::where('code', '072')->value('id'),
+            'bank_name'      => 'Banorte',
+            'account_number' => '072000000000000009',
+        ]);
+
+        $result = $this->action->execute([$ok->id, $other->id], $this->admin->id);
+
+        $this->assertSame(1, $result['paid']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame('Transferencia a otro banco: se registra manualmente', $result['errors'][0]['reason']);
+        $this->assertSame(RefrendStatus::DRAFT, $other->fresh()->status);
+        $this->assertNull($other->fresh()->payment_batch_id);
     }
 }

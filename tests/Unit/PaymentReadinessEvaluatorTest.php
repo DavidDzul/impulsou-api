@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Enums\PaymentMethod;
 use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\PaymentReadinessEvaluator;
+use App\Support\Banking\BatchBank;
 use Tests\TestCase;
 
 /**
@@ -57,7 +58,15 @@ class PaymentReadinessEvaluatorTest extends TestCase
         ?string $accountNumber = self::VALID_ACCOUNT_NUMBER,
         ?string $rfc = self::VALID_RFC
     ): array {
-        return $this->evaluator->evaluate($row, $hasEnrollment, $hasPaymentData, $accountNumber, $rfc);
+        return $this->evaluator->evaluate(
+            $row,
+            $hasEnrollment,
+            $hasPaymentData,
+            $accountNumber,
+            $rfc,
+            PaymentMethod::TRANSFER,
+            BatchBank::CODE
+        );
     }
 
     /** @test */
@@ -622,5 +631,78 @@ class PaymentReadinessEvaluatorTest extends TestCase
         $result = $this->evaluator->evaluate($this->makeRow(), true, true, null, null);
 
         $this->assertFalse($result['is_payable']);
+    }
+
+    /** @test */
+    public function transfer_without_bank_is_blocked_as_missing_bank(): void
+    {
+        $result = $this->evaluator->evaluate(
+            $this->makeRow(), true, true, self::VALID_ACCOUNT_NUMBER, self::VALID_RFC, PaymentMethod::TRANSFER, null
+        );
+
+        $this->assertFalse($result['is_payable']);
+        $this->assertContains(
+            ['code' => 'MISSING_BANK', 'message' => 'Falta seleccionar banco'],
+            $result['blocking_reasons']
+        );
+    }
+
+    /** @test */
+    public function missing_bank_is_not_reported_when_there_is_no_payment_data_at_all(): void
+    {
+        $result = $this->evaluator->evaluate($this->makeRow(), true, false, null, null, PaymentMethod::TRANSFER, null);
+
+        $codes = array_column($result['blocking_reasons'], 'code');
+        $this->assertContains('MISSING_PAYMENT_DATA', $codes);
+        $this->assertNotContains('MISSING_BANK', $codes);
+    }
+
+    /** @test */
+    public function transfer_to_a_non_bbva_bank_is_not_batch_payable(): void
+    {
+        $result = $this->evaluator->evaluate(
+            $this->makeRow(), true, true, '072000000000000009', self::VALID_RFC, PaymentMethod::TRANSFER, '072'
+        );
+
+        $this->assertFalse($result['is_payable']);
+        $this->assertContains('BANK_NOT_IN_BATCH', array_column($result['blocking_reasons'], 'code'));
+    }
+
+    /** @test */
+    public function manual_transfer_with_valid_clabe_matching_the_bank_is_payable_without_rfc(): void
+    {
+        $result = $this->evaluator->evaluate(
+            $this->makeRow(), true, true, '072000000000000009', null, PaymentMethod::MANUAL_TRANSFER, '072'
+        );
+
+        $this->assertTrue($result['is_payable']);
+        $this->assertSame([], $result['blocking_reasons']);
+    }
+
+    /** @test */
+    public function manual_transfer_with_a_10_digit_account_has_an_invalid_clabe(): void
+    {
+        $result = $this->evaluator->evaluate(
+            $this->makeRow(), true, true, '1234567890', null, PaymentMethod::MANUAL_TRANSFER, '072'
+        );
+
+        $this->assertFalse($result['is_payable']);
+        $this->assertContains(
+            ['code' => 'INVALID_CLABE', 'message' => 'La CLABE no es válida'],
+            $result['blocking_reasons']
+        );
+    }
+
+    /** @test */
+    public function manual_transfer_with_a_clabe_of_another_bank_is_a_mismatch(): void
+    {
+        // Valid CLABE of bank 072 attached to bank 014.
+        $result = $this->evaluator->evaluate(
+            $this->makeRow(), true, true, '072000000000000009', null, PaymentMethod::MANUAL_TRANSFER, '014'
+        );
+
+        $codes = array_column($result['blocking_reasons'], 'code');
+        $this->assertContains('CLABE_BANK_MISMATCH', $codes);
+        $this->assertNotContains('INVALID_CLABE', $codes);
     }
 }

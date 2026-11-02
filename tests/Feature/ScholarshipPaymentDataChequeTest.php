@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Bank;
 use App\Models\ScholarshipPaymentData;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
@@ -30,6 +31,11 @@ class ScholarshipPaymentDataChequeTest extends TestCase
         $this->admin->assignRole('ROOT_ADMINISTRATION');
     }
 
+    private function bbvaId(): int
+    {
+        return (int) Bank::where('code', '012')->value('id');
+    }
+
     private function becario(): User
     {
         return User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
@@ -56,7 +62,7 @@ class ScholarshipPaymentDataChequeTest extends TestCase
 
         $response->assertStatus(422);
         $errors = $response->json('errors');
-        $this->assertSame('El banco es obligatorio para transferencias.', $errors['bank_name'][0]);
+        $this->assertSame('El banco es obligatorio para transferencias.', $errors['bank_id'][0]);
         $this->assertSame('El número de cuenta es obligatorio para transferencias.', $errors['account_number'][0]);
     }
 
@@ -70,7 +76,7 @@ class ScholarshipPaymentDataChequeTest extends TestCase
 
         $response->assertStatus(422);
         $errors = $response->json('errors');
-        $this->assertSame('El banco es obligatorio para transferencias.', $errors['bank_name'][0]);
+        $this->assertSame('El banco es obligatorio para transferencias.', $errors['bank_id'][0]);
         $this->assertSame('El número de cuenta es obligatorio para transferencias.', $errors['account_number'][0]);
     }
 
@@ -102,8 +108,8 @@ class ScholarshipPaymentDataChequeTest extends TestCase
         $becario = $this->becario();
 
         $this->store([
-            'user_id' => $becario->id, 'bank_name' => 'BBVA',
-            'account_number' => '012345678901234567', 'curp' => self::CURP,
+            'user_id' => $becario->id, 'bank_id' => $this->bbvaId(),
+            'account_number' => '1234567890', 'curp' => self::CURP,
         ])->assertStatus(201)->assertJsonPath('data.payment_method', 'TRANSFER');
     }
 
@@ -112,10 +118,10 @@ class ScholarshipPaymentDataChequeTest extends TestCase
     {
         $becario = $this->becario();
 
-        $this->store(['user_id' => $becario->id, 'payment_method' => 'TRANSFER', 'account_number' => '012345678901234567', 'curp' => self::CURP])
-            ->assertStatus(422)->assertJsonValidationErrors('bank_name');
+        $this->store(['user_id' => $becario->id, 'payment_method' => 'TRANSFER', 'account_number' => '1234567890', 'curp' => self::CURP])
+            ->assertStatus(422)->assertJsonValidationErrors('bank_id');
 
-        $this->store(['user_id' => $becario->id, 'payment_method' => 'TRANSFER', 'bank_name' => 'BBVA', 'curp' => self::CURP])
+        $this->store(['user_id' => $becario->id, 'payment_method' => 'TRANSFER', 'bank_id' => $this->bbvaId(), 'curp' => self::CURP])
             ->assertStatus(422)->assertJsonValidationErrors('account_number');
     }
 
@@ -162,7 +168,7 @@ class ScholarshipPaymentDataChequeTest extends TestCase
 
         $this->store([
             'user_id' => $becario->id, 'payment_method' => 'TRANSFER', 'curp' => self::CURP,
-            'bank_name' => 'BBVA', 'account_number' => '012345678901234567', 'cheque_beneficiary' => 'Madre',
+            'bank_id' => $this->bbvaId(), 'account_number' => '1234567890', 'cheque_beneficiary' => 'Madre',
         ])->assertStatus(201)->assertJsonPath('data.cheque_beneficiary', null);
     }
 
@@ -186,9 +192,9 @@ class ScholarshipPaymentDataChequeTest extends TestCase
         ScholarshipPaymentData::factory()->cheque('Madre')->create(['user_id' => $becario->id]);
 
         $this->update($becario, ['payment_method' => 'TRANSFER'])
-            ->assertStatus(422)->assertJsonValidationErrors(['bank_name', 'account_number']);
+            ->assertStatus(422)->assertJsonValidationErrors(['bank_id', 'account_number']);
 
-        $this->update($becario, ['payment_method' => 'TRANSFER', 'bank_name' => 'BBVA', 'account_number' => '012345678901234567'])
+        $this->update($becario, ['payment_method' => 'TRANSFER', 'bank_id' => $this->bbvaId(), 'account_number' => '1234567890'])
             ->assertStatus(200)
             ->assertJson(['data' => ['payment_method' => 'TRANSFER', 'bank_name' => 'BBVA', 'cheque_beneficiary' => null]]);
     }
@@ -229,8 +235,8 @@ class ScholarshipPaymentDataChequeTest extends TestCase
         $becario = $this->becario();
         ScholarshipPaymentData::factory()->create(['user_id' => $becario->id]);
 
-        $this->update($becario, ['bank_name' => ''])
-            ->assertStatus(422)->assertJsonValidationErrors('bank_name');
+        $this->update($becario, ['bank_id' => null])
+            ->assertStatus(422)->assertJsonValidationErrors('bank_id');
     }
 
     // -- show ----------------------------------------------------------

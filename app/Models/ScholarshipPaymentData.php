@@ -27,12 +27,18 @@ class ScholarshipPaymentData extends Model
     protected $fillable = [
         'user_id',
         'payment_method',
+        'bank_id',
         'bank_name',
         'account_number',
         'curp',
         'rfc',
         'cheque_beneficiary',
     ];
+
+    public function bank(): BelongsTo
+    {
+        return $this->belongsTo(Bank::class, 'bank_id');
+    }
 
     public function user(): BelongsTo
     {

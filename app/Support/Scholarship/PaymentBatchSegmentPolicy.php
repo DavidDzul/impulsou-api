@@ -31,7 +31,7 @@ use Illuminate\Database\Query\Builder;
  * becarios and a mid-month flag correction is followed until payment. A PAID
  * row is a candidate for `$type` only when its frozen type matches,
  * regardless of what the flag says NOW. A legacy cheque row with no stamp,
- * or a stale stamp whose paid_payment_method is not CHEQUE, yields NULL and
+ * or a stale stamp whose paid_payment_method is not a manual method (CHEQUE / MANUAL_TRANSFER), yields NULL and
  * falls back to the current flag.
  *
  * Joins added here (not `whereExists` subqueries): `scholarship_profiles
@@ -70,8 +70,8 @@ final class PaymentBatchSegmentPolicy
     {
         return [
             "(CASE WHEN {$alias}.payment_batch_id IS NOT NULL THEN pb.batch_type"
-            . " WHEN {$alias}.paid_payment_method = ? THEN {$alias}.paid_batch_type END)",
-            [PaymentMethod::CHEQUE->value],
+            . " WHEN {$alias}.paid_payment_method IN (?, ?) THEN {$alias}.paid_batch_type END)",
+            PaymentMethod::manualValues(),
         ];
     }
 }

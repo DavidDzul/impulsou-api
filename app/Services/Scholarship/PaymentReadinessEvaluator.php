@@ -3,6 +3,8 @@
 namespace App\Services\Scholarship;
 
 use App\Enums\PaymentMethod;
+use App\Support\Banking\BatchBank;
+use App\Support\Banking\Clabe;
 use App\Support\Scholarship\RefrendPayableTotal;
 use App\Support\Scholarship\TelmexPaymentPolicy;
 use BackedEnum;
@@ -49,6 +51,11 @@ class PaymentReadinessEvaluator
      *                                    runs the bank checks (fails closed).
      *                                    CHEQUE skips BankDataValidator only;
      *                                    every other rule still applies.
+     * @param string|null $bankCode sdd/catalogo-bancos: Banxico code of the
+     *                              becario's bank. TRANSFER requires the batch
+     *                              bank (BBVA, 012); null fails closed as
+     *                              MISSING_BANK. MANUAL_TRANSFER requires a
+     *                              valid CLABE that matches this code.
      * @return array{is_payable: bool, blocking_reasons: array<int, array{code: string, message: string}>}
      */
     public function evaluate(
@@ -57,7 +64,8 @@ class PaymentReadinessEvaluator
         bool $hasPaymentData,
         ?string $accountNumber,
         ?string $rfc,
-        PaymentMethod $paymentMethod = PaymentMethod::TRANSFER
+        PaymentMethod $paymentMethod = PaymentMethod::TRANSFER,
+        ?string $bankCode = null
     ): array {
         $reasons = [];
 
@@ -127,6 +135,27 @@ class PaymentReadinessEvaluator
             ];
         }
 
+        if ($paymentMethod === PaymentMethod::MANUAL_TRANSFER) {
+            // Paid manually outside the bank file: only the CLABE matters.
+            array_push($reasons, ...$this->manualTransferReasons($accountNumber, $bankCode));
+
+            return [
+                'is_payable'       => empty($reasons),
+                'blocking_reasons' => $reasons,
+            ];
+        }
+
+        // Batch (TRANSFER) channel: the becario must have a bank, and it must
+        // be the batch bank. Skipped without payment data, which already
+        // blocks as MISSING_PAYMENT_DATA.
+        if ($hasPaymentData) {
+            if ($bankCode === null) {
+                $reasons[] = ['code' => 'MISSING_BANK', 'message' => 'Falta seleccionar banco'];
+            } elseif ($bankCode !== BatchBank::CODE) {
+                $reasons[] = ['code' => 'BANK_NOT_IN_BATCH', 'message' => 'El banco no se paga en el lote BBVA'];
+            }
+        }
+
         foreach ($this->bankDataValidator->validate($accountNumber, $rfc, $payableTotal) as $bankDataReason) {
             if ($bankDataReason['code'] === 'NOTHING_TO_PAY') {
                 continue;
@@ -139,6 +168,22 @@ class PaymentReadinessEvaluator
             'is_payable'       => empty($reasons),
             'blocking_reasons' => $reasons,
         ];
+    }
+
+    /**
+     * @return array<int, array{code: string, message: string}>
+     */
+    private function manualTransferReasons(?string $accountNumber, ?string $bankCode): array
+    {
+        if (!Clabe::isValid($accountNumber)) {
+            return [['code' => 'INVALID_CLABE', 'message' => 'La CLABE no es válida']];
+        }
+
+        if ($bankCode !== null && Clabe::bankCode($accountNumber) !== $bankCode) {
+            return [['code' => 'CLABE_BANK_MISMATCH', 'message' => 'La CLABE no corresponde al banco seleccionado']];
+        }
+
+        return [];
     }
 
     /**

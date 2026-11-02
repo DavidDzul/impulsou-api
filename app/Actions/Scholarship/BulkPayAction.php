@@ -9,6 +9,7 @@ use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
 use App\Services\Scholarship\PaymentReadinessEvaluator;
 use App\Services\ScholarshipLoggingService;
+use App\Support\Banking\BatchBank;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -59,6 +60,7 @@ class BulkPayAction
             // feed PaymentReadinessEvaluator's now-required bank-data check
             // (sdd/becario-payment-bank-file-export/design D2).
             $paymentDataByUserId = ScholarshipPaymentData::whereIn('user_id', $refrends->pluck('user_id'))
+                ->with('bank')
                 ->get()
                 ->keyBy('user_id');
 
@@ -67,15 +69,24 @@ class BulkPayAction
                 $paymentData    = $paymentDataByUserId->get($refrend->user_id);
                 $hasPaymentData = $paymentData !== null;
 
-                // sdd/pago-cheque D11: cheques are registered manually per
-                // refrend, never through a transfer payment run. Checked
-                // here (not in the evaluator) because cheque rows ARE
-                // payable for the mark-cheque-paid flow.
-                if ($paymentData?->payment_method === PaymentMethod::CHEQUE) {
+                $bankCode = $paymentData?->bank?->code;
+
+                // sdd/pago-cheque D11 + sdd/catalogo-bancos R6: manual
+                // channels (cheque, transfer to a non-BBVA bank) are
+                // registered per refrend, never through a transfer payment
+                // run. Checked here (not in the evaluator) because those
+                // rows ARE payable for their manual-mark flows.
+                $channel = $paymentData !== null
+                    ? BatchBank::channelFor($paymentData->payment_method ?? PaymentMethod::TRANSFER, $bankCode)
+                    : PaymentMethod::TRANSFER;
+
+                if ($channel->isManual()) {
                     $skipped++;
                     $errors[] = [
                         'id'     => $refrend->id,
-                        'reason' => 'Pago por cheque: se registra manualmente',
+                        'reason' => $channel === PaymentMethod::CHEQUE
+                            ? 'Pago por cheque: se registra manualmente'
+                            : 'Transferencia a otro banco: se registra manualmente',
                     ];
                     continue;
                 }
@@ -86,7 +97,8 @@ class BulkPayAction
                     $hasPaymentData,
                     $paymentData?->account_number,
                     $paymentData?->rfc,
-                    PaymentMethod::TRANSFER
+                    PaymentMethod::TRANSFER,
+                    $bankCode
                 );
 
                 if (!$evaluation['is_payable']) {

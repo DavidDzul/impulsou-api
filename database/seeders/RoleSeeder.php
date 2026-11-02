@@ -154,5 +154,10 @@ class RoleSeeder extends Seeder
         Permission::updateOrCreate(['name' => 'ADM_READ_TELMEX_COVERAGE'], ['type' => 'ADMINISTRATION', 'module' => 'Becas Telmex', 'description' => 'Ver el listado y detalle de coberturas Telmex'])->syncRoles([$rootAdministrationRole]);
         Permission::updateOrCreate(['name' => 'ADM_MANAGE_TELMEX_COVERAGE'], ['type' => 'ADMINISTRATION', 'module' => 'Becas Telmex', 'description' => 'Activar, finalizar, cancelar y reactivar una cobertura Telmex'])->syncRoles([$rootAdministrationRole]);
         Permission::updateOrCreate(['name' => 'ADM_MANAGE_TELMEX_REPAYMENTS'], ['type' => 'ADMINISTRATION', 'module' => 'Becas Telmex', 'description' => 'Registrar y revertir abonos de una cobertura Telmex'])->syncRoles([$rootAdministrationRole]);
+
+        // sdd/catalogo-bancos PR1: Control > Bancos catalog. Read/manage split,
+        // granted only to ROOT_ADMINISTRATION, same updateOrCreate rationale as above.
+        Permission::updateOrCreate(['name' => 'ADM_READ_BANKS'], ['type' => 'ADMINISTRATION', 'module' => 'Bancos', 'description' => 'Ver el catálogo de bancos'])->syncRoles([$rootAdministrationRole]);
+        Permission::updateOrCreate(['name' => 'ADM_MANAGE_BANKS'], ['type' => 'ADMINISTRATION', 'module' => 'Bancos', 'description' => 'Crear, editar, desactivar y eliminar bancos del catálogo'])->syncRoles([$rootAdministrationRole]);
     }
 }

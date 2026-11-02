@@ -29,7 +29,7 @@ class ScholarshipPaymentDataModelTest extends TestCase
     public function fillable_covers_the_data_columns_and_user_id(): void
     {
         $this->assertEqualsCanonicalizing(
-            ['user_id', 'payment_method', 'bank_name', 'account_number', 'curp', 'rfc', 'cheque_beneficiary'],
+            ['user_id', 'payment_method', 'bank_id', 'bank_name', 'account_number', 'curp', 'rfc', 'cheque_beneficiary'],
             (new ScholarshipPaymentData())->getFillable()
         );
     }

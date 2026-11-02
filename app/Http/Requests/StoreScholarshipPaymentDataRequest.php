@@ -8,6 +8,7 @@ use App\Rules\Curp;
 use App\Rules\Rfc;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreScholarshipPaymentDataRequest extends FormRequest
 {
@@ -34,10 +35,12 @@ class StoreScholarshipPaymentDataRequest extends FormRequest
             // DB-level unique index — a duplicate submit gets a clean 422
             // instead of a DB fatal error (spec R7 "single account" scenario).
             'user_id'        => 'required|integer|exists:users,id|unique:scholarship_payment_data,user_id',
-            'payment_method' => ['required', Rule::in(PaymentMethod::values())],
+            'payment_method' => ['required', Rule::in(PaymentMethod::selectableValues())],
             // Bank data is mandatory only for TRANSFER (spec R1.3).
-            'bank_name'      => 'required_if:payment_method,TRANSFER|nullable|string|max:100',
-            'account_number' => 'required_if:payment_method,TRANSFER|nullable|string|max:20',
+            // bank_id presence/activity and the account format are checked in
+            // withValidator() because they depend on the selected bank.
+            'bank_id'        => 'nullable|integer|exists:banks,id',
+            'account_number' => 'nullable|string|max:20',
             'cheque_beneficiary' => 'nullable|string|max:150',
             // Curp/Rfc are classic Illuminate\Contracts\Validation\Rule
             // instances (Laravel 8.83 has no invokable-rule support — see
@@ -48,14 +51,13 @@ class StoreScholarshipPaymentDataRequest extends FormRequest
         ];
     }
 
-    public function messages(): array
+    public function withValidator(Validator $validator): void
     {
-        $messages = $this->transferRequiredMessages();
-
-        return [
-            'bank_name.required_if'      => $messages['bank_name'],
-            'account_number.required_if' => $messages['account_number'],
-        ];
+        $validator->after(function (Validator $validator) {
+            if ($this->input('payment_method') === PaymentMethod::TRANSFER->value) {
+                $this->validateTransferBank($validator, null);
+            }
+        });
     }
 
     /**
