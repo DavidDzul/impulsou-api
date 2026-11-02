@@ -31,6 +31,12 @@ class ClabeTest extends TestCase
     }
 
     /** @test */
+    public function it_rejects_a_trailing_newline(): void
+    {
+        $this->assertFalse(Clabe::isValid("012180000112345671\n"));
+    }
+
+    /** @test */
     public function it_extracts_the_bank_code_prefix(): void
     {
         $this->assertSame('012', Clabe::bankCode('012180000112345671'));

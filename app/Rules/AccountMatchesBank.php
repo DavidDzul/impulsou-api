@@ -28,7 +28,7 @@ class AccountMatchesBank implements Rule
         if ($this->bank->code === Bank::BATCH_BANK_CODE) {
             $this->message = 'La cuenta debe tener 9 o 10 dígitos.';
 
-            return preg_match('/^\d{9,10}$/', $account) === 1;
+            return preg_match('/^\d{9,10}\z/', $account) === 1;
         }
 
         if (!Clabe::isValid($account)) {

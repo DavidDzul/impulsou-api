@@ -44,6 +44,16 @@ class AccountMatchesBankTest extends TestCase
     }
 
     /** @test */
+    public function a_trailing_newline_is_rejected(): void
+    {
+        $bbva = new AccountMatchesBank($this->bank('012', 'BBVA'));
+        $this->assertFalse($bbva->passes('account_number', "1234567890\n"));
+
+        $other = new AccountMatchesBank($this->bank('072', 'Banorte'));
+        $this->assertFalse($other->passes('account_number', "072000000000000009\n"));
+    }
+
+    /** @test */
     public function non_string_values_fail(): void
     {
         $rule = new AccountMatchesBank($this->bank('012', 'BBVA'));

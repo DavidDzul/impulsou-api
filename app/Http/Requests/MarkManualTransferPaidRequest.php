@@ -28,7 +28,7 @@ class MarkManualTransferPaidRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'transfer_reference.required'     => 'La referencia de la transferencia es obligatoria.',
+            'transfer_reference.required'     => 'El folio de la transferencia es obligatorio.',
             'transfer_paid_at.before_or_equal' => 'La fecha de pago no puede ser futura.',
         ];
     }

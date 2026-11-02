@@ -12,7 +12,7 @@ final class Clabe
 
     public static function isValid(?string $value): bool
     {
-        if ($value === null || !preg_match('/^\d{18}$/', $value)) {
+        if ($value === null || !preg_match('/^\d{18}\z/', $value)) {
             return false;
         }
 

@@ -135,8 +135,26 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
 
         $this->markPaid($refrend, ['transfer_reference' => '   '])
             ->assertStatus(422)
-            ->assertJsonValidationErrors('transfer_reference');
+            ->assertJsonValidationErrors('transfer_reference')
+            ->assertJsonPath('errors.transfer_reference.0', 'El folio de la transferencia es obligatorio.');
         $this->assertSame('DRAFT', $refrend->fresh()->status->value);
+    }
+
+    /** @test */
+    public function revert_fails_without_mutating_when_the_paid_log_is_missing(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->markPaid($refrend)->assertOk();
+        ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)
+            ->where('action', 'MANUAL_TRANSFER_PAID')->delete();
+
+        $this->revert($refrend)->assertStatus(422)->assertJsonPath('code', 'TRANSFER_LOG_MISSING');
+
+        $fresh = $refrend->fresh();
+        $this->assertSame('PAID', $fresh->status->value);
+        $this->assertSame('CLOSED', $fresh->workflow_status);
+        $this->assertSame('REF-1', $fresh->transfer_reference);
+        $this->assertSame(0, ScholarshipRefrendLog::where('action', 'MANUAL_TRANSFER_REVERTED')->count());
     }
 
     /** @test */
