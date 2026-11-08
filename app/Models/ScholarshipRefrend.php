@@ -7,6 +7,7 @@ use App\Enums\PaymentMethod;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
 use App\Enums\ScholarshipType;
+use App\Support\Scholarship\RefrendNetComponents;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -166,6 +167,18 @@ class ScholarshipRefrend extends Model
             '.',
             ''
         );
+    }
+
+    /**
+     * sdd/descuento-beca-apoyo: net Beca/Apoyo/... split of total_to_pay.
+     * Deliberately NOT in $appends (other serializations must not change);
+     * ScholarshipRefrendController::forUser appends it explicitly.
+     *
+     * @return array<string,mixed>
+     */
+    public function getNetBreakdownAttribute(): array
+    {
+        return RefrendNetComponents::of($this, $this->total_to_pay)->toArray();
     }
 
     // Relations

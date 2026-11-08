@@ -8,6 +8,7 @@ use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Services\Scholarship\AdvanceRevertEligibility;
 use App\Services\Scholarship\PayableWithholdingWindow;
 use App\Support\Scholarship\PaymentBatchSegmentPolicy;
+use App\Support\Scholarship\RefrendNetComponents;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -327,6 +328,11 @@ class RefrendBulkQueryService
                 'created_at'               => $r->created_at,
                 'updated_at'               => $r->updated_at,
             ];
+
+            // sdd/descuento-beca-apoyo: net Beca/Apoyo/... split of the
+            // DISPLAYED (unfloored) total_to_pay. Reads columns already
+            // selected above, so it adds no queries.
+            $refrend['net_breakdown'] = RefrendNetComponents::of($r, $refrend['total_to_pay'])->toArray();
 
             return [
                 'refrend'                       => $refrend,
