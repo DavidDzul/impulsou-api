@@ -691,6 +691,13 @@ class PaymentBatchServiceTest extends TestCase
             'telmex_coverage_amount' => '0.00',
             'total_amount'           => '2300.01',
             'difference_amount'      => '1699.99',
+            // sdd/descuento-beca-apoyo: additive net keys. Σ == total_amount.
+            'net_beca_amount'               => '2300.01',
+            'net_apoyo_amount'              => '0.00',
+            'net_pago_iu_amount'            => '0.00',
+            'net_temporary_increase_amount' => '0.00',
+            'net_telmex_coverage_amount'    => '0.00',
+            'pending_and_advance_amount'    => '0.00',
         ], $summary);
     }
 
@@ -755,6 +762,8 @@ class PaymentBatchServiceTest extends TestCase
             // sdd/pagos-batch-sede-totals, design D9 (Part 2 — PR3): raw
             // pass-through type-partition fields, purely informational.
             'snapshot_scholarship_type', 'base_amount', 'snapshot_monto_apoyo',
+            // sdd/descuento-beca-apoyo: additive per-row net split.
+            'net_breakdown',
             // sdd/lotes-pago-generacion-desglose, design Interfaces: raw
             // pass-through breakdown fields for the Lotes de pago table.
             // Purely informational — MUST NOT be read by

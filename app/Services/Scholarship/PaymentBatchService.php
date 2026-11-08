@@ -11,6 +11,7 @@ use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Support\Banking\BatchBank;
 use App\Support\Scholarship\PaymentAmountFloor;
+use App\Support\Scholarship\RefrendNetComponents;
 use App\Support\Scholarship\PaymentBatchSegmentPolicy;
 use App\Support\Scholarship\RefrendPayableTotal;
 use App\Support\Scholarship\TelmexPaymentPolicy;
@@ -490,6 +491,12 @@ class PaymentBatchService
                 'snapshot_telmex_coverage_id'      => $row->snapshot_telmex_coverage_id,
                 'snapshot_telmex_covered_amount'   => $row->snapshot_telmex_covered_amount,
                 'telmex_covered'                   => $row->snapshot_telmex_coverage_id !== null,
+                // net_breakdown (sdd/descuento-beca-apoyo, design rev 2): the
+                // month payable split into component nets, built from the
+                // DISPLAYED (floored) total so the bank-file cent lands in the
+                // month split. Additive and informational; paidRows() and
+                // every amount above are untouched.
+                'net_breakdown'                    => RefrendNetComponents::of($row, $totalToPay)->toArray(),
             ];
         })->values()->all();
     }
@@ -739,7 +746,7 @@ class PaymentBatchService
                 '.',
                 ''
             ),
-        ];
+        ] + $this->netSummaryKeys($readyRows);
     }
 
     /**
@@ -850,6 +857,42 @@ class PaymentBatchService
                 '.',
                 ''
             ),
+        ] + $this->netSummaryKeys($counted);
+    }
+
+    /**
+     * Net money keys (sdd/descuento-beca-apoyo): sums of each row's
+     * net_breakdown in integer cents, NEVER a re-split of the batch total, so
+     * net_beca + net_apoyo + net_pago_iu + net_temporary_increase
+     * + net_telmex_coverage + pending_and_advance == total_amount exactly.
+     * `pending_and_advance_amount` is the same ledger-backed value
+     * generationSummary() already reports from the nominal columns.
+     *
+     * @param array<int, array<string, mixed>> $rows rows() entries (with net_breakdown)
+     * @return array<string, string>
+     */
+    private function netSummaryKeys(array $rows): array
+    {
+        $sums = [
+            'beca' => 0, 'apoyo' => 0, 'pago_iu' => 0, 'temporary_increase' => 0,
+            'telmex_coverage' => 0, 'pending_and_advance' => 0,
+        ];
+
+        foreach ($rows as $row) {
+            foreach ($sums as $key => $_) {
+                $sums[$key] += (int) round((float) $row['net_breakdown'][$key] * 100);
+            }
+        }
+
+        $money = static fn (int $cents): string => number_format($cents / 100, 2, '.', '');
+
+        return [
+            'net_beca_amount'               => $money($sums['beca']),
+            'net_apoyo_amount'              => $money($sums['apoyo']),
+            'net_pago_iu_amount'            => $money($sums['pago_iu']),
+            'net_temporary_increase_amount' => $money($sums['temporary_increase']),
+            'net_telmex_coverage_amount'    => $money($sums['telmex_coverage']),
+            'pending_and_advance_amount'    => $money($sums['pending_and_advance']),
         ];
     }
 
