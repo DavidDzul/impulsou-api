@@ -188,8 +188,8 @@ class RefrendNetComponentsPropertyTest extends TestCase
                 $this->assertLessThanOrEqual($weight, abs(2 * ($net * $weight - $payable * $nominal[$key])), "$ctx $key share");
             }
 
-            // The last positive component can exceed nominal by the rounding of the others only.
-            $this->assertLessThanOrEqual($nominal[$key] + 1, $net, "$ctx $key <= nominal");
+            // No month component may exceed its own nominal (no manual override here).
+            $this->assertLessThanOrEqual($nominal[$key], $net, "$ctx $key <= nominal");
         }
     }
 

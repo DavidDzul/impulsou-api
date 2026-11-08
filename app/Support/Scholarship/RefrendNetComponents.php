@@ -26,6 +26,12 @@ use BackedEnum;
  *   the last positive-weight component absorbs the remainder, so the sum is
  *   exact. A negative remainder (defensive; not reachable with three
  *   components) is taken from the largest component.
+ * - No month net exceeds its own nominal while D <= W (the normal case): each
+ *   non-last share loses < 0.5 cent when rounded down, and there are at most
+ *   two non-last components, so the last stays below exact + 1 and, being an
+ *   integer, <= its nominal. Only a manual final_amount override that raises
+ *   the month payable above the discounted gross (D > W) can exceed nominal;
+ *   that case keeps the exact-sum invariant and is deliberately not clamped.
  * - The bank-file 0.01 floor arrives inside the displayed total and lands in
  *   the month split (beca / pago_iu), never in pending_and_advance.
  *

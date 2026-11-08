@@ -366,6 +366,40 @@ class RefrendNetComponentsTest extends TestCase
         $this->assertSame('33.34', $b['apoyo']);
     }
 
+    /**
+     * Exhaustive lock: for every small weight triple and every payable D <= W
+     * no net exceeds its nominal and the sum is exact. Provable: each non-last
+     * share loses < 0.5 cent when rounded down, so the last (D - r1 - r2)
+     * is < exact + 1, hence <= nominal as an integer.
+     *
+     * @test
+     */
+    public function no_month_net_exceeds_its_nominal_for_any_small_weights(): void
+    {
+        for ($beca = 1; $beca <= 9; $beca++) {
+            for ($inc = 1; $inc <= 9; $inc++) {
+                for ($apoyo = 1; $apoyo <= 9; $apoyo++) {
+                    $weight = $beca + $inc + $apoyo;
+                    $row    = $this->row([
+                        'snapshot_gross_amount'              => number_format($weight / 100, 2, '.', ''),
+                        'snapshot_monto_apoyo'               => number_format($apoyo / 100, 2, '.', ''),
+                        'snapshot_temporary_increase_amount' => number_format($inc / 100, 2, '.', ''),
+                    ]);
+
+                    for ($payable = 1; $payable <= $weight; $payable++) {
+                        $b   = $this->net($row, number_format($payable / 100, 2, '.', ''));
+                        $ctx = "beca=$beca inc=$inc apoyo=$apoyo D=$payable";
+
+                        $this->assertLessThanOrEqual($beca, (int) round((float) $b['beca'] * 100), "$ctx beca");
+                        $this->assertLessThanOrEqual($inc, (int) round((float) $b['temporary_increase'] * 100), "$ctx inc");
+                        $this->assertLessThanOrEqual($apoyo, (int) round((float) $b['apoyo'] * 100), "$ctx apoyo");
+                        $this->assertSame($payable, $this->sumCents($b), "$ctx sum");
+                    }
+                }
+            }
+        }
+    }
+
     /** @test */
     public function the_increase_is_last_when_apoyo_is_zero(): void
     {
