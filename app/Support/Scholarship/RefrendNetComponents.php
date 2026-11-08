@@ -258,7 +258,7 @@ final class RefrendNetComponents
     }
 
     /** Unwraps the enum-cast (Eloquent) vs raw-string (DB::table) asymmetry. */
-    private static function type(object $row): string
+    public static function type(object $row): string
     {
         $type = $row->snapshot_scholarship_type ?? self::TYPE_IU;
 
