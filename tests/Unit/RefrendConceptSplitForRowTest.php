@@ -149,6 +149,25 @@ class RefrendConceptSplitForRowTest extends TestCase
         $this->assertSame([0, 0], $this->pair(RefrendConceptSplit::of(5, 5)->scaleTo(0)));
     }
 
+    // ── hasWeights ───────────────────────────────────────────────────────────
+
+    /** @test */
+    public function has_weights_is_true_for_nominal_beca_apoyo_or_pago_iu(): void
+    {
+        $this->assertTrue(RefrendConceptSplit::hasWeights($this->row()));
+        $this->assertTrue(RefrendConceptSplit::hasWeights($this->row([
+            'snapshot_scholarship_type' => 'TELMEX_IU', 'snapshot_gross_amount' => '100.00', 'snapshot_monto_apoyo' => '0.00',
+        ])));
+    }
+
+    /** @test */
+    public function has_weights_is_false_when_every_nominal_is_zero(): void
+    {
+        $this->assertFalse(RefrendConceptSplit::hasWeights($this->row([
+            'snapshot_gross_amount' => '0.00', 'snapshot_monto_apoyo' => '0.00', 'base_amount' => '0.00',
+        ])));
+    }
+
     // ── fallbackWeights ──────────────────────────────────────────────────────
 
     /** @test */

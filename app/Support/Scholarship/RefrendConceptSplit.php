@@ -135,6 +135,17 @@ final class RefrendConceptSplit
     }
 
     /**
+     * Whether a month of this refrend carries any Beca/Apoyo information at
+     * all (concept weights or a Pago IU nominal). A refrend without it can not
+     * weigh a ledger item, so the caller falls back to the current row (D5).
+     */
+    public static function hasWeights(object $row): bool
+    {
+        return self::conceptWeights($row)->totalCents() > 0
+            || RefrendNetComponents::ofMonth($row, 0)->cents()['nominal']['pago_iu'] > 0;
+    }
+
+    /**
      * Weights for a ledger item whose origin/child is missing or weightless
      * (D5): the row's own month split, else its concept weights, else empty
      * (proportional() then sends the amount to Beca).
