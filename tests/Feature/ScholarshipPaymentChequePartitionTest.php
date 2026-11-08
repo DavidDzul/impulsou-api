@@ -250,7 +250,7 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
         $summary->assertOk();
         $this->assertSame(1, $summary->json('data.count'));
 
-        $file = $this->actingAs($this->admin)->get("/api/admin/scholarship-payments/batches/{$batchId}/export");
+        $file = $this->actingAs($this->admin)->get("/api/admin/scholarship-payments/batches/{$batchId}/export/beca");
         $file->assertOk();
         $this->assertStringNotContainsString('CHEQUE PERSON', strtoupper($file->streamedContent()));
         $this->assertNotNull($transfer->fresh()->payment_batch_id);

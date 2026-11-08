@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BankFileConcept;
 use App\Enums\PaymentBatchType;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -191,9 +192,14 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         return "/api/admin/scholarship-payments/batches/{$batchId}/export/summary";
     }
 
-    private function exportUrl(int $batchId): string
+    /**
+     * sdd/archivo-pago-beca-apoyo: the combined `/export` is gone, one file
+     * per concept. The fixtures in this suite carry no snapshot_monto_apoyo,
+     * so their whole total is Beca and the `beca` file equals the old file.
+     */
+    private function exportUrl(int $batchId, string $concept = 'beca'): string
     {
-        return "/api/admin/scholarship-payments/batches/{$batchId}/export";
+        return "/api/admin/scholarship-payments/batches/{$batchId}/export/{$concept}";
     }
 
     // ── Permission gate (403) ──────────────────────────────────────────────
@@ -261,7 +267,7 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
 
         $this->assertSame($expected, $response->streamedContent());
 
-        $expectedFilename = BankPaymentFileName::forBatch($batch->fresh());
+        $expectedFilename = BankPaymentFileName::forBatch($batch->fresh(), BankFileConcept::BECA);
         $response->assertHeader('Content-Disposition', 'attachment; filename=' . $expectedFilename);
     }
 
@@ -290,7 +296,7 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
         }, 0.0);
 
         $this->assertSame(number_format($sumFromFile, 2, '.', ''), $summaryResponse->json('data.total_amount'));
-        $this->assertSame(BankPaymentFileName::forBatch($batch->fresh()), $summaryResponse->json('data.filename'));
+        $this->assertSame(BankPaymentFileName::forBatch($batch->fresh(), BankFileConcept::BECA), $summaryResponse->json('data.files.beca.filename'));
         // batch_type (sdd/pagos-lote-pago-adelantado, PR2): echoed in the
         // export pre-flight for display next to the export card.
         $this->assertSame(PaymentBatchType::NORMAL->value, $summaryResponse->json('data.batch_type'));
@@ -794,7 +800,7 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
             ->all();
 
         $summaryIndex  = array_search('api/admin/scholarship-payments/batches/{batch}/export/summary', $uris, true);
-        $exportIndex   = array_search('api/admin/scholarship-payments/batches/{batch}/export', $uris, true);
+        $exportIndex   = array_search('api/admin/scholarship-payments/batches/{batch}/export/{concept}', $uris, true);
         $documentIndex = array_search('api/admin/scholarship-payments/{refrend}/document', $uris, true);
 
         $this->assertNotFalse($summaryIndex, 'export/summary route must be registered');
@@ -803,5 +809,7 @@ class ScholarshipPaymentBankFileExportTest extends TestCase
 
         $this->assertLessThan($documentIndex, $summaryIndex);
         $this->assertLessThan($documentIndex, $exportIndex);
+        // `summary` must be registered before the `{concept}` wildcard.
+        $this->assertLessThan($exportIndex, $summaryIndex);
     }
 }

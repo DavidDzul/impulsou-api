@@ -764,6 +764,8 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_scholarship_type', 'base_amount', 'snapshot_monto_apoyo',
             // sdd/descuento-beca-apoyo: additive per-row net split.
             'net_breakdown',
+            // sdd/archivo-pago-beca-apoyo PR2: Beca / Apoyo split of the total.
+            'concept_split',
             // sdd/lotes-pago-generacion-desglose, design Interfaces: raw
             // pass-through breakdown fields for the Lotes de pago table.
             // Purely informational — MUST NOT be read by

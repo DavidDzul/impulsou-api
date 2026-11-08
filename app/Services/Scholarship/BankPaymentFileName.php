@@ -2,6 +2,7 @@
 
 namespace App\Services\Scholarship;
 
+use App\Enums\BankFileConcept;
 use App\Enums\PaymentBatchType;
 use App\Models\ScholarshipPaymentBatch;
 
@@ -31,8 +32,10 @@ use App\Models\ScholarshipPaymentBatch;
  */
 class BankPaymentFileName
 {
-    private const FORMAT_NORMAL = 'PAGO_%s_%04d%02d_%d.TXT';
-    private const FORMAT_TYPED  = 'PAGO_%s_%s_%04d%02d_%d.TXT';
+    // sdd/archivo-pago-beca-apoyo (R10): one file per concept, so the concept
+    // is the last segment (BECA / APOYO). The rest of the order is unchanged.
+    private const FORMAT_NORMAL = 'PAGO_%s_%04d%02d_%d_%s.TXT';
+    private const FORMAT_TYPED  = 'PAGO_%s_%s_%04d%02d_%d_%s.TXT';
 
     /** @var array<string, string> */
     private const ACCENT_MAP = [
@@ -40,7 +43,7 @@ class BankPaymentFileName
         'Ñ' => 'N', 'Ü' => 'U',
     ];
 
-    public static function forBatch(ScholarshipPaymentBatch $batch): string
+    public static function forBatch(ScholarshipPaymentBatch $batch, BankFileConcept $concept): string
     {
         $typeSlug = self::typeSlug($batch->batch_type);
 
@@ -50,7 +53,8 @@ class BankPaymentFileName
                 self::slugCampus($batch->campus),
                 $batch->period_year,
                 $batch->period_month,
-                $batch->id
+                $batch->id,
+                $concept->fileSuffix()
             );
         }
 
@@ -60,7 +64,8 @@ class BankPaymentFileName
             $typeSlug,
             $batch->period_year,
             $batch->period_month,
-            $batch->id
+            $batch->id,
+            $concept->fileSuffix()
         );
     }
 

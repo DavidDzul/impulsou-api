@@ -34,7 +34,7 @@ class PaymentBatchServiceNetBreakdownTest extends TestCase
         'pending_and_advance',
     ];
 
-    private const BASELINE_QUERIES = 3;
+    private const BASELINE_QUERIES = 5;
 
     private PaymentBatchService $service;
 

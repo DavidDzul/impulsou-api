@@ -11,6 +11,7 @@ use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
 use App\Support\Banking\BatchBank;
 use App\Support\Scholarship\PaymentAmountFloor;
+use App\Support\Scholarship\RefrendConceptSplit;
 use App\Support\Scholarship\RefrendNetComponents;
 use App\Support\Scholarship\PaymentBatchSegmentPolicy;
 use App\Support\Scholarship\RefrendPayableTotal;
@@ -38,8 +39,10 @@ use Illuminate\Support\Facades\DB;
  */
 class PaymentBatchService
 {
-    public function __construct(private PaymentReadinessEvaluator $evaluator)
-    {
+    public function __construct(
+        private PaymentReadinessEvaluator $evaluator,
+        private CarryoverConceptResolver $carryover,
+    ) {
     }
 
     /**
@@ -334,7 +337,11 @@ class PaymentBatchService
             ->get()
             ->keyBy('refrend_id');
 
-        return $refrends->map(function ($row) use ($refrendIdsWithIncidents, $advancePaidByRefrendId) {
+        // sdd/archivo-pago-beca-apoyo (R8, D12): Beca / Apoyo split of every
+        // row's payable. Batch-scoped: exactly 2 queries whatever the size.
+        $carryover = $this->carryover->forRows($refrends);
+
+        return $refrends->map(function ($row) use ($refrendIdsWithIncidents, $advancePaidByRefrendId, $carryover) {
             $advance = $advancePaidByRefrendId->get($row->refrend_id);
             $hasEnrollment  = $row->enrollment !== null && $row->enrollment !== '';
             // sdd/pago-cheque R2.2: a CHEQUE spd has no bank_name, so the
@@ -356,7 +363,8 @@ class PaymentBatchService
             // design D2): IU/TELMEX_IU rows at exactly total_to_pay == 0.00
             // floor to 0.01. Order-insensitive by construction — never
             // inverts the excluded_from_bank_file chip below (design R1).
-            $totalToPay = PaymentAmountFloor::apply($row->snapshot_scholarship_type, $this->totalToPay($row));
+            $rawTotal   = $this->totalToPay($row);
+            $totalToPay = PaymentAmountFloor::apply($row->snapshot_scholarship_type, $rawTotal);
 
             return [
                 'refrend_id'                => $row->refrend_id,
@@ -497,6 +505,10 @@ class PaymentBatchService
                 // month split. Additive and informational; paidRows() and
                 // every amount above are untouched.
                 'net_breakdown'                    => RefrendNetComponents::of($row, $totalToPay)->toArray(),
+                // concept_split (sdd/archivo-pago-beca-apoyo, R8): the same
+                // Beca / Apoyo split paidRows() sends to the bank files,
+                // beca + apoyo == total_to_pay. Display only.
+                'concept_split'                    => $this->conceptSplit($row, $rawTotal, $totalToPay, $carryover)->toArray(),
             ];
         })->values()->all();
     }
@@ -560,6 +572,16 @@ class PaymentBatchService
                 // sdd/catalogo-bancos: lets the export gate reject paid rows
                 // whose becario has no bank or a non-BBVA bank.
                 'b.code as bank_code',
+                // sdd/archivo-pago-beca-apoyo (R6): the snapshot columns the
+                // Beca/Apoyo split reads. Consumed internally only; none of
+                // them is emitted on the returned row (boundary-lock tests).
+                'scholarship_refrends.base_amount',
+                'scholarship_refrends.snapshot_gross_amount',
+                'scholarship_refrends.snapshot_monto_apoyo',
+                'scholarship_refrends.snapshot_temporary_increase_amount',
+                'scholarship_refrends.snapshot_telmex_coverage_id',
+                'scholarship_refrends.snapshot_telmex_covered_amount',
+                'scholarship_refrends.resolution_type',
             ]);
 
         // Filter B (design D4): excluded BEFORE map(), so the row never
@@ -567,23 +589,52 @@ class PaymentBatchService
         // BankDataValidator gate — that ordering is the entire point (a
         // TELMEX row with total_to_pay<=0 must silently vanish from the
         // export instead of 422-ing the whole batch).
-        return $rows
-            ->reject(fn ($row) => TelmexPaymentPolicy::isExcludedFromBankFile(
-                $row->snapshot_scholarship_type,
-                $this->totalToPay($row)
-            ))
-            ->map(fn ($row) => [
+        $payable = $rows->reject(fn ($row) => TelmexPaymentPolicy::isExcludedFromBankFile(
+            $row->snapshot_scholarship_type,
+            $this->totalToPay($row)
+        ))->values();
+
+        $carryover = $this->carryover->forRows($payable);
+
+        return $payable->map(function ($row) use ($carryover) {
+            $raw = $this->totalToPay($row);
+            // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
+            // design D2), applied AFTER Filter B's reject() above, which
+            // still evaluates the raw (unfloored) total.
+            $displayed = PaymentAmountFloor::apply($row->snapshot_scholarship_type, $raw);
+            $split     = $this->conceptSplit($row, $raw, $displayed, $carryover)->toArray();
+
+            return [
                 'refrend_id'     => $row->refrend_id,
                 'user_id'        => $row->user_id,
                 'snapshot_name'  => $row->snapshot_name,
                 'rfc'            => $row->rfc,
                 'account_number' => $row->account_number,
                 'bank_code'      => $row->bank_code,
-                // Shared payable-floor rule (sdd/bank-file-minimum-deposit,
-                // design D2), applied AFTER Filter B's reject() above, which
-                // still evaluates the raw (unfloored) total.
-                'total_to_pay'   => PaymentAmountFloor::apply($row->snapshot_scholarship_type, $this->totalToPay($row)),
-            ])->values()->all();
+                'total_to_pay'   => $displayed,
+                // sdd/archivo-pago-beca-apoyo (R1, R6): the two bank-file
+                // concepts. beca_amount + apoyo_amount == total_to_pay.
+                'beca_amount'    => $split['beca'],
+                'apoyo_amount'   => $split['apoyo'],
+            ];
+        })->all();
+    }
+
+    /**
+     * sdd/archivo-pago-beca-apoyo: Beca / Apoyo split of a row's payable.
+     * $raw is the total before the bank-file floor, $displayed after it;
+     * $carryover is CarryoverConceptResolver::forRows() for the whole batch.
+     *
+     * @param array<int, RefrendConceptSplit> $carryover
+     */
+    private function conceptSplit(object $row, string $raw, string $displayed, array $carryover): RefrendConceptSplit
+    {
+        return RefrendConceptSplit::forRow(
+            $row,
+            RefrendNetComponents::toCents($raw),
+            RefrendNetComponents::toCents($displayed),
+            $carryover[(int) $row->refrend_id] ?? RefrendConceptSplit::zero()
+        );
     }
 
     /**
@@ -673,13 +724,29 @@ class PaymentBatchService
             ''
         );
 
+        // sdd/archivo-pago-beca-apoyo (D12): per-concept sums, in cents so the
+        // two always add up to ready_amount / paid_amount.
+        $concept = fn (array $rows, string $key) => number_format(
+            array_sum(array_map(
+                fn (array $r) => RefrendNetComponents::toCents($r['concept_split'][$key] ?? 0),
+                $rows
+            )) / 100,
+            2,
+            '.',
+            ''
+        );
+
         return [
-            'total'        => count($chequeRows),
-            'ready'        => count($ready),
-            'paid'         => count($paid),
-            'blocking'     => count($chequeRows) - count($ready) - count($paid),
-            'ready_amount' => $sum($ready),
-            'paid_amount'  => $sum($paid),
+            'total'              => count($chequeRows),
+            'ready'              => count($ready),
+            'paid'               => count($paid),
+            'blocking'           => count($chequeRows) - count($ready) - count($paid),
+            'ready_amount'       => $sum($ready),
+            'paid_amount'        => $sum($paid),
+            'ready_beca_amount'  => $concept($ready, 'beca'),
+            'ready_apoyo_amount' => $concept($ready, 'apoyo'),
+            'paid_beca_amount'   => $concept($paid, 'beca'),
+            'paid_apoyo_amount'  => $concept($paid, 'apoyo'),
         ];
     }
 

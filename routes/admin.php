@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\BankFileConcept;
 use App\Http\Controllers\Admin\AdministrationRoleController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AreaController;
@@ -248,7 +249,12 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
             ->middleware('permission:ADM_READ_PAYMENTS');
         Route::get('batches/{batch}/export/summary', [ScholarshipPaymentController::class, 'exportSummary'])
             ->middleware('permission:ADM_EXPORT_PAYMENTS');
-        Route::get('batches/{batch}/export', [ScholarshipPaymentController::class, 'export'])
+        // sdd/archivo-pago-beca-apoyo (D2): one bank file per concept. The
+        // combined `batches/{batch}/export` is gone (404). Registered AFTER
+        // `export/summary` so the wildcard never swallows it (the beca|apoyo
+        // constraint also keeps `summary` out of {concept}; Laravel 8 has no whereIn).
+        Route::get('batches/{batch}/export/{concept}', [ScholarshipPaymentController::class, 'export'])
+            ->where('concept', implode('|', BankFileConcept::slugs()))
             ->middleware('permission:ADM_EXPORT_PAYMENTS');
         Route::post('{refrend}/cheque-payment', [ScholarshipPaymentController::class, 'markChequePaid'])
             ->whereNumber('refrend')
