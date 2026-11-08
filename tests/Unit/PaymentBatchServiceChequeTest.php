@@ -197,6 +197,11 @@ class PaymentBatchServiceChequeTest extends TestCase
             'blocking'      => 1,
             'ready_amount'  => '1500.00',
             'paid_amount'   => '250.00',
+            // sdd/archivo-pago-beca-apoyo PR2: per-concept sums (no apoyo in this fixture).
+            'ready_beca_amount'  => '1500.00',
+            'ready_apoyo_amount' => '0.00',
+            'paid_beca_amount'   => '250.00',
+            'paid_apoyo_amount'  => '0.00',
         ], $summary);
     }
 

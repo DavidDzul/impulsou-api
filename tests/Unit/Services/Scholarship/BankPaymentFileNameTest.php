@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Services\Scholarship;
 
+use App\Enums\BankFileConcept;
 use App\Enums\PaymentBatchType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Services\Scholarship\BankPaymentFileName;
@@ -39,9 +40,9 @@ class BankPaymentFileNameTest extends TestCase
             'period_month'  => 9,
         ]);
 
-        $filename = BankPaymentFileName::forBatch($batch);
+        $filename = BankPaymentFileName::forBatch($batch, BankFileConcept::BECA);
 
-        $this->assertSame('PAGO_MERIDA_202609_42.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_202609_42_BECA.TXT', $filename);
     }
 
     /** @test */
@@ -55,9 +56,9 @@ class BankPaymentFileNameTest extends TestCase
             'period_month'  => 5,
         ]);
 
-        $filename = BankPaymentFileName::forBatch($batch);
+        $filename = BankPaymentFileName::forBatch($batch, BankFileConcept::BECA);
 
-        $this->assertSame('PAGO_MERIDA_202605_1.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_202605_1_BECA.TXT', $filename);
     }
 
     /** @test */
@@ -71,9 +72,9 @@ class BankPaymentFileNameTest extends TestCase
             'period_month'  => 1,
         ]);
 
-        $filename = BankPaymentFileName::forBatch($batch);
+        $filename = BankPaymentFileName::forBatch($batch, BankFileConcept::BECA);
 
-        $this->assertSame('PAGO_CIUDAD_DE_MEXICO_202601_8.TXT', $filename);
+        $this->assertSame('PAGO_CIUDAD_DE_MEXICO_202601_8_BECA.TXT', $filename);
     }
 
     /** @test */
@@ -87,9 +88,9 @@ class BankPaymentFileNameTest extends TestCase
             'period_month'  => 1,
         ]);
 
-        $filename = BankPaymentFileName::forBatch($batch);
+        $filename = BankPaymentFileName::forBatch($batch, BankFileConcept::BECA);
 
-        $this->assertSame('PAGO_MERIDA_202601_9.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_202601_9_BECA.TXT', $filename);
     }
 
     /** @test */
@@ -112,8 +113,8 @@ class BankPaymentFileNameTest extends TestCase
         ]);
 
         $this->assertNotSame(
-            BankPaymentFileName::forBatch($batchA),
-            BankPaymentFileName::forBatch($batchB)
+            BankPaymentFileName::forBatch($batchA, BankFileConcept::BECA),
+            BankPaymentFileName::forBatch($batchB, BankFileConcept::BECA)
         );
     }
 
@@ -137,8 +138,8 @@ class BankPaymentFileNameTest extends TestCase
         ]);
 
         $this->assertNotSame(
-            BankPaymentFileName::forBatch($batchA),
-            BankPaymentFileName::forBatch($batchB)
+            BankPaymentFileName::forBatch($batchA, BankFileConcept::BECA),
+            BankPaymentFileName::forBatch($batchB, BankFileConcept::BECA)
         );
     }
 
@@ -162,9 +163,9 @@ class BankPaymentFileNameTest extends TestCase
             'batch_type'    => PaymentBatchType::NORMAL->value,
         ]);
 
-        $filename = BankPaymentFileName::forBatch($batch);
+        $filename = BankPaymentFileName::forBatch($batch, BankFileConcept::BECA);
 
-        $this->assertSame('PAGO_MERIDA_202609_42.TXT', $filename, 'NORMAL must never add a type segment — byte-identical to the pre-change filename.');
+        $this->assertSame('PAGO_MERIDA_202609_42_BECA.TXT', $filename, 'NORMAL must never add a type segment — same segment order as the pre-change filename (only the concept suffix is new).');
     }
 
     /** @test */
@@ -179,9 +180,31 @@ class BankPaymentFileNameTest extends TestCase
             'batch_type'    => PaymentBatchType::CERT_UNID->value,
         ]);
 
-        $filename = BankPaymentFileName::forBatch($batch);
+        $filename = BankPaymentFileName::forBatch($batch, BankFileConcept::BECA);
 
-        $this->assertSame('PAGO_MERIDA_CERTUNID_202609_42.TXT', $filename);
+        $this->assertSame('PAGO_MERIDA_CERTUNID_202609_42_BECA.TXT', $filename);
+    }
+
+    /** @test */
+    public function apoyo_filename_swaps_only_the_concept_suffix_for_both_batch_types(): void
+    {
+        $attributes = ['id' => 42, 'generation_id' => 5, 'campus' => 'MERIDA', 'period_year' => 2026, 'period_month' => 9];
+        $normal     = $this->makeBatch($attributes + ['batch_type' => PaymentBatchType::NORMAL->value]);
+        $certUnid   = $this->makeBatch($attributes + ['batch_type' => PaymentBatchType::CERT_UNID->value]);
+
+        $this->assertSame('PAGO_MERIDA_202609_42_APOYO.TXT', BankPaymentFileName::forBatch($normal, BankFileConcept::APOYO));
+        $this->assertSame('PAGO_MERIDA_CERTUNID_202609_42_APOYO.TXT', BankPaymentFileName::forBatch($certUnid, BankFileConcept::APOYO));
+    }
+
+    /** @test */
+    public function the_two_concepts_of_one_batch_never_collide(): void
+    {
+        $batch = $this->makeBatch(['id' => 7, 'generation_id' => 5, 'campus' => 'MERIDA', 'period_year' => 2026, 'period_month' => 9]);
+
+        $this->assertNotSame(
+            BankPaymentFileName::forBatch($batch, BankFileConcept::BECA),
+            BankPaymentFileName::forBatch($batch, BankFileConcept::APOYO)
+        );
     }
 
     /** @test */
@@ -205,8 +228,8 @@ class BankPaymentFileNameTest extends TestCase
         ]);
 
         $this->assertNotSame(
-            BankPaymentFileName::forBatch($normal),
-            BankPaymentFileName::forBatch($certUnid)
+            BankPaymentFileName::forBatch($normal, BankFileConcept::BECA),
+            BankPaymentFileName::forBatch($certUnid, BankFileConcept::BECA)
         );
     }
 }

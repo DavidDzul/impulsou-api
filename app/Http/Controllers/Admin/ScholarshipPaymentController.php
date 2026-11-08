@@ -7,6 +7,7 @@ use App\Actions\Scholarship\MarkChequePaidAction;
 use App\Actions\Scholarship\MarkManualTransferPaidAction;
 use App\Actions\Scholarship\RevertChequePaymentAction;
 use App\Actions\Scholarship\RevertManualPaymentAction;
+use App\Enums\BankFileConcept;
 use App\Enums\PaymentBatchType;
 use App\Enums\PaymentMethod;
 use App\Exceptions\ManualPaymentException;
@@ -26,6 +27,8 @@ use App\Services\Scholarship\PaymentBatchService;
 use App\Services\Scholarship\RefrendAmountBreakdown;
 use App\Services\Scholarship\RefrendRetentionBreakdown;
 use App\Support\Banking\BatchBank;
+use App\Support\Scholarship\BankFileConceptRows;
+use App\Support\Scholarship\RefrendNetComponents;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -523,18 +526,26 @@ class ScholarshipPaymentController extends Controller
             return $rows;
         }
 
-        $totalAmount = array_reduce(
-            $rows,
-            fn (float $carry, array $row) => $carry + (float) $row['total_to_pay'],
-            0.0
-        );
+        // sdd/archivo-pago-beca-apoyo (R11, D10): one entry per concept file.
+        // `count`/`total_amount` at the top level stay the combined figures
+        // for reconciliation; each file counts only its non-zero rows.
+        $files = [];
+        foreach (BankFileConcept::cases() as $concept) {
+            $conceptRows = BankFileConceptRows::for($rows, $concept);
+
+            $files[$concept->slug()] = [
+                'count'        => count($conceptRows),
+                'total_amount' => self::moneyTotal($conceptRows),
+                'filename'     => BankPaymentFileName::forBatch($batch, $concept),
+            ];
+        }
 
         return response()->json([
             'res'  => true,
             'data' => [
                 'count'        => count($rows),
-                'total_amount' => number_format($totalAmount, 2, '.', ''),
-                'filename'     => BankPaymentFileName::forBatch($batch),
+                'total_amount' => self::moneyTotal($rows),
+                'files'        => $files,
                 // batch_type (sdd/pagos-lote-pago-adelantado): echoed for
                 // display next to the export card. The column defaults to
                 // NORMAL at the DB level (migration 2026_10_12_100000) and
@@ -556,20 +567,37 @@ class ScholarshipPaymentController extends Controller
      * `Excel::download()`/`Pdf::download()` because neither can emit
      * fixed-width plain text — first plain-text download in this codebase.
      */
-    public function export(ScholarshipPaymentBatch $batch)
+    public function export(ScholarshipPaymentBatch $batch, string $concept)
     {
+        // sdd/archivo-pago-beca-apoyo (R9, R10, D2): one file per concept.
+        // The route's whereIn() only lets beca|apoyo through, so the enum
+        // always resolves here.
+        $bankConcept = BankFileConcept::fromSlug($concept);
+        abort_if($bankConcept === null, 404);
+
+        // The gate validates the FULL batch (both concepts) BEFORE the
+        // concept filter, so one bad bank record blocks both files (D11).
         $rows = $this->paidAndBankValidatedRows($batch);
 
         if ($rows instanceof JsonResponse) {
             return $rows;
         }
 
+        $conceptRows = BankFileConceptRows::for($rows, $bankConcept);
+
+        if (empty($conceptRows)) {
+            return response()->json([
+                'res' => false,
+                'msg' => "El lote no tiene montos de {$bankConcept->slug()} a dispersar.",
+            ], 422);
+        }
+
         $serializer = app(BankPaymentFileSerializer::class);
-        $filename   = BankPaymentFileName::forBatch($batch);
+        $filename   = BankPaymentFileName::forBatch($batch, $bankConcept);
 
         return response()->streamDownload(
-            function () use ($serializer, $rows) {
-                echo $serializer->serialize($rows);
+            function () use ($serializer, $conceptRows) {
+                echo $serializer->serialize($conceptRows);
             },
             $filename,
             ['Content-Type' => 'text/plain']
@@ -641,6 +669,22 @@ class ScholarshipPaymentController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Exact sum of `total_to_pay` as a 2-decimal string (integer cents, no
+     * float drift).
+     *
+     * @param array<int, array<string, mixed>> $rows
+     */
+    private static function moneyTotal(array $rows): string
+    {
+        $cents = array_sum(array_map(
+            fn (array $row) => RefrendNetComponents::toCents($row['total_to_pay']),
+            $rows
+        ));
+
+        return number_format($cents / 100, 2, '.', '');
     }
 
     /** @return array{code: string, message: string}|null */
