@@ -639,6 +639,15 @@ class ScholarshipPaymentControllerTest extends TestCase
         $this->assertSame('50.00', $b['advance_payment_amount']);
         $this->assertSame('1020.00', $b['final_amount']);
         $this->assertSame('1170.00', $b['total_to_pay']);
+
+        // sdd/descuento-beca-apoyo: additive net split of the same total.
+        $net = $b['net_breakdown'];
+        $this->assertSame('1170.00', $net['total']);
+        $this->assertSame('150.00', $net['pending_and_advance']);
+        $this->assertSame('1000.00', $net['beca']);
+        $this->assertSame('20.00', $net['apoyo']);
+        $this->assertSame('1000.00', $net['nominal']['beca']);
+        $this->assertSame('20.00', $net['nominal']['apoyo']);
     }
 
     // ── document(): retentions (sdd/withholding-detail-display, PR2) ───────────

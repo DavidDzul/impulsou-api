@@ -88,7 +88,8 @@ class ScholarshipRefrendController extends Controller
             ->where('user_id', $userId)
             ->orderByDesc('period_year')
             ->orderByDesc('period_month')
-            ->get();
+            ->get()
+            ->each->append('net_breakdown');
 
         return response()->json(['res' => true, 'data' => $refrends]);
     }

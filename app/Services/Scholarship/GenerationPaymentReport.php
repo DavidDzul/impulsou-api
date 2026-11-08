@@ -111,6 +111,10 @@ class GenerationPaymentReport
             'pending_and_advance' => self::money($pendingAndAdvance),
             'total_to_pay'        => self::money($total),
             'state'               => self::STATE_BY_GROUP[$this->batches->partitionGroup($row)],
+            // sdd/descuento-beca-apoyo: net split built by rows(). `discounts`
+            // above stays informational (nominal - net) and is NOT a term of
+            // the net sum.
+            'net_breakdown'       => $row['net_breakdown'],
         ];
     }
 
@@ -154,6 +158,21 @@ class GenerationPaymentReport
                     'pending_and_advance' => '0.00',
                     'total_to_pay'        => '0.00',
                     'state'               => self::STATE_NO_IU_PAYMENT,
+                    'net_breakdown'       => [
+                        'beca'                => '0.00',
+                        'apoyo'               => '0.00',
+                        'pago_iu'             => '0.00',
+                        'temporary_increase'  => '0.00',
+                        'telmex_coverage'     => '0.00',
+                        'pending_and_advance' => '0.00',
+                        'total'               => '0.00',
+                        'nominal'             => [
+                            'beca'               => '0.00',
+                            'apoyo'              => '0.00',
+                            'pago_iu'            => '0.00',
+                            'temporary_increase' => '0.00',
+                        ],
+                    ],
                 ];
             })
             ->all();

@@ -4,6 +4,7 @@ namespace App\Services\Scholarship;
 
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
+use App\Support\Scholarship\RefrendNetComponents;
 
 /**
  * READ-side "Desglose de monto" of the payment document. Pure read, no
@@ -53,11 +54,11 @@ class RefrendAmountBreakdown
 
         $type              = $refrend->snapshot_scholarship_type?->value;
         $isEgresoReticula  = $refrend->resolution_type === ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA;
-        $isCycleCut        = in_array($refrend->resolution_type, ScholarshipRefrend::CYCLE_CUT_RESOLUTIONS, true);
 
         // Covered Telmex money ACTUALLY included in final_amount: none of the
         // $0 terminal paths (cycle cuts, cascade close, automatic egreso) add it.
-        $covered = ($isEgresoReticula || $isCycleCut) ? 0.0 : $refrend->coveredPayableAmount();
+        // Single source of truth shared with the net split (RefrendNetComponents).
+        $covered = RefrendNetComponents::coveredIncludedCents($refrend) / 100;
 
         // The automatic egreso refrend is forced to $0 without a stored
         // discount (discount_amount stays 0): report the whole due amount as
@@ -88,6 +89,9 @@ class RefrendAmountBreakdown
             'amount_pending_from_previous'  => $refrend->amount_pending_from_previous,
             'advance_payment_amount'        => $this->money($refrend->advance_payment_amount),
             'total_to_pay'                  => $refrend->total_to_pay,
+            // sdd/descuento-beca-apoyo: net split of the document's own
+            // (UNFLOORED) total_to_pay. Additive; every line above is unchanged.
+            'net_breakdown'                 => RefrendNetComponents::of($refrend, $refrend->total_to_pay)->toArray(),
         ];
     }
 

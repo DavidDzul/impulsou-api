@@ -686,6 +686,79 @@ class GenerationPaymentRowsTest extends TestCase
         $this->assertArrayHasKey('telmex_without_iu_payment', $summary);
     }
 
+    // ── sdd/descuento-beca-apoyo: net_breakdown pass-through ────────────────
+
+    /** @test */
+    public function rows_carry_the_net_breakdown_and_discounts_stay_the_nominal_minus_net_residual(): void
+    {
+        $iu     = $this->makeIuWithEverything();
+        $telmex = $this->makeTelmexIuWithCoverage();
+
+        $data = $this->fetch();
+        $c    = fn ($v) => (int) round((float) $v * 100);
+
+        foreach ([$iu, $telmex] as $refrend) {
+            $row = $this->rowFor($data, $refrend->id);
+            $net = $row['net_breakdown'];
+
+            $this->assertSame($row['total_to_pay'], $net['total']);
+            $this->assertSame(
+                $c($row['total_to_pay']),
+                $c($net['beca']) + $c($net['apoyo']) + $c($net['pago_iu']) + $c($net['temporary_increase'])
+                    + $c($net['telmex_coverage']) + $c($net['pending_and_advance'])
+            );
+            // Descuentos is informational: sum(nominal - net) and not part of the row sum.
+            $this->assertSame(
+                $c($row['discounts']),
+                $c($net['nominal']['beca']) - $c($net['beca'])
+                    + $c($net['nominal']['apoyo']) - $c($net['apoyo'])
+                    + $c($net['nominal']['pago_iu']) - $c($net['pago_iu'])
+                    + $c($net['nominal']['temporary_increase']) - $c($net['temporary_increase'])
+            );
+        }
+
+        $net = $this->rowFor($data, $iu->id)['net_breakdown'];
+        $this->assertSame('2060.00', $net['total']);
+        $this->assertSame('1716.67', $net['beca']);
+        $this->assertSame('257.50', $net['temporary_increase']);
+        $this->assertSame('85.83', $net['apoyo']);
+        $this->assertSame('0.00', $net['pending_and_advance']);
+    }
+
+    /** @test */
+    public function no_iu_payment_rows_carry_an_all_zero_net_breakdown(): void
+    {
+        $telmex = $this->makePureTelmex('Nada Debe');
+
+        $row = $this->rowFor($this->fetch(), $telmex->id);
+
+        $this->assertSame([
+            'beca' => '0.00', 'apoyo' => '0.00', 'pago_iu' => '0.00', 'temporary_increase' => '0.00',
+            'telmex_coverage' => '0.00', 'pending_and_advance' => '0.00', 'total' => '0.00',
+            'nominal' => ['beca' => '0.00', 'apoyo' => '0.00', 'pago_iu' => '0.00', 'temporary_increase' => '0.00'],
+        ], $row['net_breakdown']);
+    }
+
+    /** @test */
+    public function the_generation_summary_exposes_net_keys_that_add_up_to_total_amount(): void
+    {
+        $this->makeIuWithEverything();
+        $this->makeTelmexIuWithCoverage();
+        $this->makeTelmexWithIncrease();
+        $this->makeRefrend(['snapshot_name' => 'Con Pendiente', 'amount_pending_from_previous' => 75.25]);
+
+        $summary = $this->fetch()['summary'];
+        $c       = fn ($v) => (int) round((float) $v * 100);
+
+        $this->assertSame('75.25', $summary['pending_and_advance_amount']);
+        $this->assertSame(
+            $c($summary['total_amount']),
+            $c($summary['net_beca_amount']) + $c($summary['net_apoyo_amount']) + $c($summary['net_pago_iu_amount'])
+                + $c($summary['net_temporary_increase_amount']) + $c($summary['net_telmex_coverage_amount'])
+                + $c($summary['pending_and_advance_amount'])
+        );
+    }
+
     /** @test */
     public function an_empty_period_returns_empty_rows_and_zero_new_summary_figures(): void
     {

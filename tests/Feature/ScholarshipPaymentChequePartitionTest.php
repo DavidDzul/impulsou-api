@@ -123,6 +123,29 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
     }
 
     /** @test */
+    public function index_payload_carries_net_breakdown_on_every_section_and_net_summary_keys(): void
+    {
+        $this->makeRefrend(PaymentMethod::TRANSFER, ['amount_pending_from_previous' => 25.00], 'T1');
+        $this->makeRefrend(PaymentMethod::CHEQUE, [], 'C1');
+
+        $response = $this->index()->assertOk();
+
+        $transfer = $response->json('data.rows.0');
+        $cheque   = $response->json('data.cheque_rows.0');
+
+        $this->assertSame('1025.00', $transfer['total_to_pay']);
+        $this->assertSame('1025.00', $transfer['net_breakdown']['total']);
+        $this->assertSame('25.00', $transfer['net_breakdown']['pending_and_advance']);
+        $this->assertSame('1000.00', $cheque['total_to_pay']);
+        $this->assertSame('1000.00', $cheque['net_breakdown']['beca']);
+
+        $summary = $response->json('data.summary');
+        $this->assertSame('1000.00', $summary['net_beca_amount']);
+        $this->assertSame('25.00', $summary['pending_and_advance_amount']);
+        $this->assertSame('1025.00', $summary['total_amount']);
+    }
+
+    /** @test */
     public function paid_cheque_does_not_block_summary_or_mark_the_transfer_batch_as_paid(): void
     {
         $this->makeRefrend(PaymentMethod::TRANSFER, [], 'T1');

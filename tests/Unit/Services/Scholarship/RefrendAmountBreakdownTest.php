@@ -552,4 +552,86 @@ class RefrendAmountBreakdownTest extends TestCase
 
         $this->assertEquals(0, $this->f($b['advance_payment_amount']));
     }
+
+    // ── sdd/descuento-beca-apoyo: net_breakdown ──────────────────────────
+
+    private function netSumCents(array $net): int
+    {
+        $c = fn (string $k) => (int) round((float) $net[$k] * 100);
+
+        return $c('beca') + $c('apoyo') + $c('pago_iu') + $c('temporary_increase')
+            + $c('telmex_coverage') + $c('pending_and_advance');
+    }
+
+    /** @test */
+    public function net_breakdown_splits_the_month_and_keeps_pending_and_advance_apart(): void
+    {
+        $refrend = $this->generate($this->makeProfile(['monto_apoyo' => 100]));
+        $refrend->update(['amount_pending_from_previous' => 450, 'advance_payment_amount' => 300]);
+
+        $b   = $this->breakdownFor($refrend);
+        $net = $b['net_breakdown'];
+
+        $this->assertSame('1850.00', $b['total_to_pay']);
+        $this->assertSame($b['total_to_pay'], $net['total']);
+        $this->assertSame('750.00', $net['pending_and_advance']);
+        $this->assertSame('1100.00', number_format(
+            ((int) round((float) $net['beca'] * 100) + (int) round((float) $net['apoyo'] * 100)) / 100,
+            2,
+            '.',
+            ''
+        ));
+        $this->assertSame('1000.00', $net['nominal']['beca']);
+        $this->assertSame('100.00', $net['nominal']['apoyo']);
+        $this->assertSame((int) round((float) $b['total_to_pay'] * 100), $this->netSumCents($net));
+        $this->assertReconciles($b);
+    }
+
+    /** @test */
+    public function net_breakdown_total_is_unfloored_in_the_document(): void
+    {
+        $b = $this->resolvedIu('SIN_PAGO');
+
+        $this->assertSame('0.00', $b['total_to_pay']);
+        $this->assertSame('0.00', $b['net_breakdown']['total']);
+        $this->assertSame(0, $this->netSumCents($b['net_breakdown']));
+    }
+
+    /** @test */
+    public function net_breakdown_reports_the_telmex_coverage_actually_included(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'monthly_amount'   => 800,
+        ]);
+        $this->withCoverage($profile, ScholarshipType::TELMEX_IU->value);
+        $refrend = $this->generate($profile);
+
+        $b = $this->breakdownFor($refrend);
+
+        $this->assertSame($b['telmex_covered_amount'], $b['net_breakdown']['telmex_coverage']);
+        $this->assertSame($b['total_to_pay'], $b['net_breakdown']['total']);
+        $this->assertSame((int) round((float) $b['total_to_pay'] * 100), $this->netSumCents($b['net_breakdown']));
+    }
+
+    /** @test */
+    public function net_breakdown_drops_the_coverage_for_the_automatic_egreso_refrend(): void
+    {
+        $profile = $this->makeProfile([
+            'scholarship_type' => ScholarshipType::TELMEX_IU->value,
+            'monthly_amount'   => 800,
+        ]);
+        $this->withCoverage($profile, ScholarshipType::TELMEX_IU->value);
+        // The automatic egreso refrend is forced to $0 and never adds the coverage.
+        $refrend = $this->generate($profile);
+        $refrend->update([
+            'resolution_type' => ScholarshipRefrend::RESOLUTION_EGRESO_RETICULA,
+            'final_amount'    => 0,
+        ]);
+
+        $net = $this->breakdownFor($refrend)['net_breakdown'];
+
+        $this->assertSame('0.00', $net['telmex_coverage']);
+        $this->assertSame(0, $this->netSumCents($net));
+    }
 }
