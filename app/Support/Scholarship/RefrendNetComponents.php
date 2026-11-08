@@ -69,11 +69,29 @@ final class RefrendNetComponents
      */
     public static function of(object $row, string|float $displayedTotal): self
     {
-        $total             = self::cents($displayedTotal);
-        $pendingAndAdvance = max(0, self::cents($row->amount_pending_from_previous ?? 0))
-            + max(0, self::cents($row->advance_payment_amount ?? 0));
+        $total             = self::toCents($displayedTotal);
+        $pendingAndAdvance = max(0, self::toCents($row->amount_pending_from_previous ?? 0))
+            + max(0, self::toCents($row->advance_payment_amount ?? 0));
 
-        $month   = max(0, $total - $pendingAndAdvance);
+        return self::build($row, max(0, $total - $pendingAndAdvance), $pendingAndAdvance, $total);
+    }
+
+    /**
+     * The same month split for an arbitrary month amount in cents, WITHOUT any
+     * carryover: the row's pending/advance columns are ignored (so
+     * pending_and_advance is 0 and total == monthCents). Used by the
+     * Beca/Apoyo bank-file split to weigh a ledger item by the month of the
+     * refrend it came from.
+     */
+    public static function ofMonth(object $row, int $monthCents): self
+    {
+        $month = max(0, $monthCents);
+
+        return self::build($row, $month, 0, $month);
+    }
+
+    private static function build(object $row, int $month, int $pendingAndAdvance, int $total): self
+    {
         $covered = min(self::coveredIncludedCents($row), $month);
         $nominal = self::nominalCents($row);
 
@@ -84,6 +102,30 @@ final class RefrendNetComponents
             $pendingAndAdvance,
             $total,
         );
+    }
+
+    /**
+     * Integer-cents twin of toArray() (same keys, same values, no formatting).
+     *
+     * @return array<string,mixed>
+     */
+    public function cents(): array
+    {
+        return [
+            'beca'                => $this->nets['beca'],
+            'apoyo'               => $this->nets['apoyo'],
+            'pago_iu'             => $this->nets['pago_iu'],
+            'temporary_increase'  => $this->nets['temporary_increase'],
+            'telmex_coverage'     => $this->telmexCoverage,
+            'pending_and_advance' => $this->pendingAndAdvance,
+            'total'               => $this->total,
+            'nominal'             => [
+                'beca'               => $this->nominal['beca'],
+                'apoyo'              => $this->nominal['apoyo'],
+                'pago_iu'            => $this->nominal['pago_iu'],
+                'temporary_increase' => $this->nominal['temporary_increase'],
+            ],
+        ];
     }
 
     /**
@@ -104,7 +146,7 @@ final class RefrendNetComponents
             return 0;
         }
 
-        return max(0, self::cents($row->snapshot_telmex_covered_amount ?? 0));
+        return max(0, self::toCents($row->snapshot_telmex_covered_amount ?? 0));
     }
 
     /**
@@ -138,9 +180,9 @@ final class RefrendNetComponents
      */
     private static function nominalCents(object $row): array
     {
-        $gross    = self::cents($row->snapshot_gross_amount ?? $row->base_amount ?? 0);
-        $increase = max(0, self::cents($row->snapshot_temporary_increase_amount ?? 0));
-        $apoyo    = max(0, self::cents($row->snapshot_monto_apoyo ?? 0));
+        $gross    = self::toCents($row->snapshot_gross_amount ?? $row->base_amount ?? 0);
+        $increase = max(0, self::toCents($row->snapshot_temporary_increase_amount ?? 0));
+        $apoyo    = max(0, self::toCents($row->snapshot_monto_apoyo ?? 0));
 
         $nominal = array_fill_keys(self::ORDER, 0);
 
@@ -223,7 +265,7 @@ final class RefrendNetComponents
         return $type instanceof BackedEnum ? (string) $type->value : (string) $type;
     }
 
-    private static function cents(mixed $value): int
+    public static function toCents(mixed $value): int
     {
         return (int) round((float) $value * 100);
     }
