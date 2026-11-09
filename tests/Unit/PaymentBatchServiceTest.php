@@ -682,6 +682,10 @@ class PaymentBatchServiceTest extends TestCase
             'total'                  => 4,
             'ready'                  => 4,
             'blocking'               => 0,
+            // sdd/lote-pagado-resumen: explicit counts/basis keys; unpaid
+            // period => ready basis, nothing paid yet.
+            'paid'                   => 0,
+            'basis'                  => 'ready',
             'beca_amount'            => '4000.00',
             'apoyo_amount'           => '0.00',
             'pago_iu_amount'         => '0.00',

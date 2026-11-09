@@ -90,7 +90,9 @@ class ScholarshipPaymentController extends Controller
         // (summary, batch block) only ever sees TRANSFER rows, so a cheque
         // can never block, inflate or mark the transfer batch as paid.
         [$rows, $chequeRows, $manualRows] = $service->partitionByMethod($rows);
-        $summary             = $service->summary($rows);
+        $batch               = $this->batchBlock($rows);
+        // Paid batch: the cards show what was paid in it (summary.basis = 'paid').
+        $summary             = $service->summary($rows, $batch['is_paid'] ? $batch['batch_id'] : null);
 
         return response()->json([
             'res'  => true,
@@ -101,7 +103,7 @@ class ScholarshipPaymentController extends Controller
                 'cheque_summary' => $service->chequeSummary($chequeRows),
                 'manual_transfer_rows'    => $manualRows,
                 'manual_transfer_summary' => $service->manualTransferSummary($manualRows),
-                'batch'          => $this->batchBlock($rows),
+                'batch'          => $batch,
                 'batch_type'     => $batchType->value,
             ],
         ]);
