@@ -786,16 +786,43 @@ class PaymentBatchService
      *     difference_amount: string,
      * }
      */
-    public function summary(array $rows): array
+    public function summary(array $rows, ?int $paidBatchId = null): array
     {
         $readyRows = array_values(array_filter($rows, fn (array $row) => $row['is_payable']));
 
-        $totals = $this->moneyTotals($readyRows);
+        // sdd/lote-pagado-resumen: once the batch is paid every transfer row
+        // is ALREADY_PAID (not payable), so the ready basis would zero every
+        // money key. With $paidBatchId the money keys are computed over the
+        // rows paid IN that batch instead — the exact set the bank files
+        // carry: payment_batch_id == batch AND not excluded from the bank
+        // file (Telmex Filter B). rows() already applied the 0.01 floor and
+        // the same totalToPay() formula as paidRows(), so
+        // total_amount == exportSummary().total_amount.
+        // `basis` ('ready'|'paid') labels which set the money keys cover and
+        // `paid` counts the paid-basis rows (0 on the ready basis).
+        // total/ready/blocking keep counting every row, unchanged.
+        $basisRows = $readyRows;
+        $paidCount = 0;
+        $basis     = 'ready';
+
+        if ($paidBatchId !== null) {
+            $basisRows = array_values(array_filter(
+                $rows,
+                fn (array $row) => (int) ($row['payment_batch_id'] ?? 0) === $paidBatchId
+                    && ! $row['excluded_from_bank_file']
+            ));
+            $paidCount = count($basisRows);
+            $basis     = 'paid';
+        }
+
+        $totals = $this->moneyTotals($basisRows);
 
         return [
             'total'                   => count($rows),
             'ready'                   => count($readyRows),
             'blocking'                => count($rows) - count($readyRows),
+            'paid'                    => $paidCount,
+            'basis'                   => $basis,
             'beca_amount'             => number_format($totals['beca'], 2, '.', ''),
             'apoyo_amount'            => number_format($totals['apoyo'], 2, '.', ''),
             'pago_iu_amount'          => number_format($totals['pago_iu'], 2, '.', ''),
@@ -813,7 +840,7 @@ class PaymentBatchService
                 '.',
                 ''
             ),
-        ] + $this->netSummaryKeys($readyRows);
+        ] + $this->netSummaryKeys($basisRows);
     }
 
     /**
