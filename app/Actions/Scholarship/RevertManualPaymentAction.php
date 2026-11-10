@@ -8,6 +8,7 @@ use App\Exceptions\ChequePaymentException;
 use App\Exceptions\ManualPaymentException;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Services\Scholarship\TelmexCoverageLedger;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,6 @@ use Illuminate\Support\Facades\DB;
  */
 class RevertManualPaymentAction
 {
-    private const CHEQUE_COLUMNS = ['cheque_number', 'cheque_delivered_at', 'cheque_notes'];
     private const TRANSFER_COLUMNS = ['transfer_reference', 'transfer_paid_at', 'transfer_notes'];
 
     public function __construct(
@@ -47,7 +47,7 @@ class RevertManualPaymentAction
         $exception = $channel === PaymentMethod::CHEQUE
             ? ChequePaymentException::class
             : ManualPaymentException::class;
-        $columns = $channel === PaymentMethod::CHEQUE ? self::CHEQUE_COLUMNS : self::TRANSFER_COLUMNS;
+        $columns = $channel === PaymentMethod::CHEQUE ? [] : self::TRANSFER_COLUMNS;
 
         return DB::transaction(function () use ($refrendId, $reason, $channel, $exception, $columns) {
             $refrend = ScholarshipRefrend::lockForUpdate()->findOrFail($refrendId);
@@ -64,7 +64,13 @@ class RevertManualPaymentAction
 
             $priorStatus = $this->priorStatusFromLog($refrend, $channel);
 
-            $old = $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend, $columns);
+            $payments = ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->lockForUpdate()->get();
+
+            $old = $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend, $columns) + [
+                'manual_payments' => $payments->map(fn ($row) => ManualPaymentGuards::snapshotRow($row))->all(),
+            ];
+
+            ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->delete();
 
             $refrend->update(array_fill_keys(
                 array_merge(['paid_payment_method', 'paid_batch_type', 'locked_at', 'locked_by_id'], $columns),
@@ -85,7 +91,7 @@ class RevertManualPaymentAction
                 $refrend,
                 $channel->revertLogAction(),
                 $old,
-                $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend, $columns),
+                $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend, $columns) + ['manual_payments' => []],
                 $reason
             );
 

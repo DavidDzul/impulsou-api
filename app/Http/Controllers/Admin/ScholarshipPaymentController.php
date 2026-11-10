@@ -200,9 +200,10 @@ class ScholarshipPaymentController extends Controller
             $paid = app(MarkChequePaidAction::class)->execute(
                 $refrend,
                 (int) auth()->id(),
-                $data['cheque_number'],
-                $data['cheque_delivered_at'] ?? null,
-                $data['cheque_notes'] ?? null
+                $data['references'] ?? [],
+                $data['expected_amounts'],
+                $data['paid_at'] ?? null,
+                $data['notes'] ?? null
             );
         } catch (ModelNotFoundException) {
             return $this->refrendNotFound();

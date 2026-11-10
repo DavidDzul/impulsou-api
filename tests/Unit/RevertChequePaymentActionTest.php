@@ -15,6 +15,8 @@ use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\ScholarshipRefrendManualPayment;
+use App\Services\Scholarship\ManualPaymentConceptAmounts;
 use App\Models\TelmexCoverage;
 use App\Models\TelmexCoveragePayment;
 use App\Models\User;
@@ -75,10 +77,23 @@ class RevertChequePaymentActionTest extends TestCase
         ], $overrides));
     }
 
-    private function markPaid(ScholarshipRefrend $r): ScholarshipRefrend
+    private function markPaid(ScholarshipRefrend $r, string $number = 'A123'): ScholarshipRefrend
     {
-        return $this->app->make(MarkChequePaidAction::class)
-            ->execute($r->id, $this->admin->id, 'A123', '2026-05-10', 'nota');
+        $amounts = $this->app->make(ManualPaymentConceptAmounts::class)->forRefrend($r->id);
+
+        return $this->app->make(MarkChequePaidAction::class)->execute(
+            $r->id,
+            $this->admin->id,
+            array_intersect_key(['beca' => $number, 'apoyo' => $number . '-A'], $amounts),
+            ['beca' => $amounts['beca'] ?? '0.00', 'apoyo' => $amounts['apoyo'] ?? '0.00'],
+            '2026-05-10',
+            'nota'
+        );
+    }
+
+    private function childCount(ScholarshipRefrend $r): int
+    {
+        return ScholarshipRefrendManualPayment::where('refrend_id', $r->id)->count();
     }
 
     private function revert(ScholarshipRefrend $r, string $reason = self::REASON): ScholarshipRefrend
@@ -184,10 +199,43 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertNull($reverted->locked_at);
         $this->assertNull($reverted->locked_by_id);
         $this->assertNull($reverted->paid_payment_method);
-        $this->assertNull($reverted->cheque_number);
-        $this->assertNull($reverted->cheque_delivered_at);
-        $this->assertNull($reverted->cheque_notes);
         $this->assertNull($reverted->payment_batch_id);
+        $this->assertSame(0, $this->childCount($refrend));
+    }
+
+    /** @test */
+    public function revert_deletes_both_rows_and_snapshots_them_in_the_log(): void
+    {
+        $refrend = $this->makeRefrend([
+            'base_amount'           => 2000.00,
+            'snapshot_monto_apoyo'  => 200.00,
+            'snapshot_gross_amount' => 2200.00,
+            'discount_amount'       => 500.00,
+            'final_amount'          => 1700.00,
+        ]);
+        $paid = $this->markPaid($refrend, 'R1');
+        $this->assertSame(2, $this->childCount($refrend));
+
+        $this->revert($paid);
+
+        $this->assertSame(0, $this->childCount($refrend));
+        $log = ScholarshipRefrendLog::where('action', 'CHEQUE_PAYMENT_REVERTED')->sole();
+        $snapshot = collect($log->old_values['manual_payments'])->keyBy('concept');
+        $this->assertSame(['apoyo', 'beca'], $snapshot->keys()->sort()->values()->all());
+        $this->assertSame('R1', $snapshot['beca']['reference']);
+        $this->assertSame('R1-A', $snapshot['apoyo']['reference']);
+        $this->assertSame([], $log->new_values['manual_payments']);
+    }
+
+    /** @test */
+    public function references_become_reusable_by_another_refrend_after_the_revert(): void
+    {
+        $first = $this->markPaid($this->makeRefrend(), 'REUSE-1');
+        $this->revert($first);
+
+        $second = $this->markPaid($this->makeRefrend(), 'REUSE-1');
+
+        $this->assertSame(RefrendStatus::PAID, $second->status);
     }
 
     /** @test */
@@ -243,7 +291,9 @@ class RevertChequePaymentActionTest extends TestCase
             'locked_at'           => now(),
             'locked_by_id'        => $this->admin->id,
             'paid_payment_method' => PaymentMethod::CHEQUE->value,
-            'cheque_number'       => 'X1',
+        ]);
+        ScholarshipRefrendManualPayment::factory()->create([
+            'refrend_id' => $refrend->id, 'concept' => 'beca', 'method' => PaymentMethod::CHEQUE->value,
         ]);
 
         $e = $this->failure(fn () => $this->revert($refrend));
@@ -252,7 +302,7 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertSame(422, $e->httpStatus());
         $fresh = $refrend->fresh();
         $this->assertSame(RefrendStatus::PAID, $fresh->status);
-        $this->assertSame('X1', $fresh->cheque_number);
+        $this->assertSame(1, $this->childCount($refrend));
         $this->assertSame(0, ScholarshipRefrendLog::where('action', 'CHEQUE_PAYMENT_REVERTED')->count());
     }
 
@@ -325,9 +375,9 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertSame($this->admin->id, $log->performed_by_id);
         $this->assertSame(self::REASON, $log->notes);
         $this->assertSame('PAID', $log->old_values['status']);
-        $this->assertSame('A123', $log->old_values['cheque_number']);
+        $this->assertSame('A123', $log->old_values['manual_payments'][0]['reference']);
         $this->assertSame('DRAFT', $log->new_values['status']);
-        $this->assertNull($log->new_values['cheque_number']);
+        $this->assertSame([], $log->new_values['manual_payments']);
     }
 
     /** @test */
@@ -336,11 +386,10 @@ class RevertChequePaymentActionTest extends TestCase
         $refrend = $this->markPaid($this->makeRefrend());
         $this->revert($refrend);
 
-        $again = $this->app->make(MarkChequePaidAction::class)
-            ->execute($refrend->id, $this->admin->id, 'B999', null, null);
+        $again = $this->markPaid($refrend, 'B999');
 
         $this->assertSame(RefrendStatus::PAID, $again->status);
-        $this->assertSame('B999', $again->cheque_number);
+        $this->assertSame('B999', ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->sole()->reference);
         $this->assertSame(PaymentMethod::CHEQUE, $again->paid_payment_method);
     }
 
@@ -359,7 +408,7 @@ class RevertChequePaymentActionTest extends TestCase
         $this->assertSame('El ciclo del becario está cerrado.', $e->getMessage());
         $fresh = $refrend->fresh();
         $this->assertSame(RefrendStatus::PAID, $fresh->status);
-        $this->assertSame('A123', $fresh->cheque_number);
+        $this->assertSame(1, $this->childCount($refrend));
         $this->assertNotNull($fresh->locked_at);
         $this->assertSame(0, ScholarshipRefrendLog::where('action', 'CHEQUE_PAYMENT_REVERTED')->count());
     }
@@ -459,7 +508,7 @@ class RevertChequePaymentActionTest extends TestCase
 
         $reverted = $this->revert($paid);
         $this->assertSame(RefrendStatus::DRAFT, $reverted->status);
-        $this->assertNull($reverted->cheque_number);
+        $this->assertSame(0, $this->childCount($refrend));
         $this->assertSame($coverage->id, $reverted->snapshot_telmex_coverage_id);
     }
 

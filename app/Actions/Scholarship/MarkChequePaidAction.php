@@ -6,6 +6,7 @@ use App\Enums\PaymentMethod;
 use App\Exceptions\ChequePaymentException;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Services\ScholarshipLoggingService;
 use Illuminate\Support\Facades\DB;
 
@@ -13,16 +14,16 @@ use Illuminate\Support\Facades\DB;
  * sdd/pago-cheque PR3 (spec R3, design "Actions"): closes ONE refrend as paid
  * by cheque. Mirrors BulkPayAction's effects (PAID / CLOSED / locked_*) but
  * never stamps payment_batch_id — a cheque never belongs to a transfer batch
- * (spec R2.7) — and records the cheque metadata plus the paid-method snapshot.
+ * (spec R2.7) — and records the paid-method snapshot.
+ *
+ * sdd/bank-file-split-other-banks-cheques PR2a: the cheque data lives in the
+ * child table (one row per concept with amount > 0, written atomically with
+ * the paid state by ManualPaymentRecorder); the legacy cheque_* columns are no
+ * longer written.
  *
  * Guards run under the row lock, in order: already paid (409), becario method
- * is CHEQUE (422), then payability (422): resolution never a batch candidate,
- * status DRAFT/WITHHELD only (INVALID_STATUS; CANCELLED and PAID are
- * blocked), then
- * PaymentReadinessEvaluator with PaymentMethod::CHEQUE (which also enforces
- * Filter A / Telmex candidacy); finally the cheque number must not belong to
- * another cheque-paid refrend (422 CHEQUE_NUMBER_TAKEN). The shared guards
- * live in ManualPaymentGuards (sdd/catalogo-bancos).
+ * is CHEQUE (422), payability (422, ManualPaymentGuards), then the recorder's
+ * checks (409 CONCEPT_SPLIT_CHANGED, 422 references, 422 CHEQUE_REFERENCE_TAKEN).
  */
 class MarkChequePaidAction
 {
@@ -34,24 +35,28 @@ class MarkChequePaidAction
 
     public function __construct(
         private ManualPaymentGuards $guards,
+        private ManualPaymentRecorder $recorder,
         private ScholarshipLoggingService $logging
     ) {
     }
 
     /**
+     * @param array<string, mixed> $references      concept => reference
+     * @param array<string, mixed> $expectedAmounts concept => decimal
+     *
      * @throws ChequePaymentException
+     * @throws \Illuminate\Validation\ValidationException
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
      */
     public function execute(
         int $refrendId,
         int $userId,
-        string $chequeNumber,
-        ?string $deliveredAt,
+        array $references,
+        array $expectedAmounts,
+        ?string $paidAt,
         ?string $notes
     ): ScholarshipRefrend {
-        $chequeNumber = trim($chequeNumber);
-
-        return DB::transaction(function () use ($refrendId, $userId, $chequeNumber, $deliveredAt, $notes) {
+        return DB::transaction(function () use ($refrendId, $userId, $references, $expectedAmounts, $paidAt, $notes) {
             $refrend = $this->guards->lockUnpaid($refrendId, ChequePaymentException::class);
 
             $paymentData = ScholarshipPaymentData::where('user_id', $refrend->user_id)->first();
@@ -69,20 +74,17 @@ class MarkChequePaidAction
                 ChequePaymentException::class
             );
 
-            // A cheque number identifies ONE currently cheque-paid refrend
-            // (trimmed, case-insensitive). A revert clears cheque_number, so
-            // its number becomes reusable. The locking read narrows the race
-            // window between two concurrent marks; there is no unique index
-            // because the rule is conditional on the paid state.
-            $taken = ScholarshipRefrend::where('paid_payment_method', PaymentMethod::CHEQUE->value)
-                ->where('id', '!=', $refrend->id)
-                ->whereRaw('LOWER(TRIM(cheque_number)) = ?', [mb_strtolower($chequeNumber)])
-                ->lockForUpdate()
-                ->exists();
-
-            if ($taken) {
-                throw ChequePaymentException::chequeNumberTaken();
-            }
+            $rows = $this->recorder->record(
+                $refrend,
+                PaymentMethod::CHEQUE,
+                $userId,
+                $references,
+                $expectedAmounts,
+                $paidAt,
+                $notes,
+                fn (string $concept) => ChequePaymentException::chequeReferenceTaken($concept),
+                ChequePaymentException::class
+            );
 
             $old = $this->logging->snapshotRefrend($refrend);
 
@@ -90,11 +92,7 @@ class MarkChequePaidAction
                 $userId,
                 PaymentMethod::CHEQUE,
                 $this->guards->frozenBatchType($refrend)
-            ) + [
-                'cheque_number'       => $chequeNumber,
-                'cheque_delivered_at' => $deliveredAt ?? now()->toDateString(),
-                'cheque_notes'        => $notes,
-            ]);
+            ));
 
             $refrend = $refrend->fresh();
 
@@ -105,9 +103,10 @@ class MarkChequePaidAction
                 $this->logging->snapshotRefrend($refrend) + [
                     'paid_payment_method' => PaymentMethod::CHEQUE->value,
                     'paid_batch_type'     => $refrend->paid_batch_type?->value,
-                    'cheque_number'       => $refrend->cheque_number,
-                    'cheque_delivered_at' => $refrend->cheque_delivered_at?->toDateString(),
-                    'cheque_notes'        => $refrend->cheque_notes,
+                    'manual_payments'     => array_map(
+                        fn (ScholarshipRefrendManualPayment $row) => ManualPaymentGuards::snapshotRow($row),
+                        $rows
+                    ),
                 ]
             );
 

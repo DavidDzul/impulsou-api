@@ -14,13 +14,19 @@ use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\ScholarshipRefrendManualPayment;
+use App\Services\Scholarship\ManualPaymentConceptAmounts;
 use App\Models\User;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 /**
- * sdd/pago-cheque PR3 (spec R3.2/R3.3, design Actions).
+ * sdd/pago-cheque PR3 (spec R3.2/R3.3, design Actions) reworked by
+ * sdd/bank-file-split-other-banks-cheques PR2a: references per concept on the
+ * child table; legacy cheque_* columns are no longer written.
  */
 class MarkChequePaidActionTest extends TestCase
 {
@@ -72,9 +78,59 @@ class MarkChequePaidActionTest extends TestCase
         ], $overrides));
     }
 
-    private function mark(ScholarshipRefrend $r, string $number = 'A123', ?string $date = '2026-05-10', ?string $notes = null): ScholarshipRefrend
+    /** @return array<string, string> */
+    private function amounts(ScholarshipRefrend $r): array
     {
-        return $this->action->execute($r->id, $this->admin->id, $number, $date, $notes);
+        return $this->app->make(ManualPaymentConceptAmounts::class)->forRefrend($r->id);
+    }
+
+    /** Fixture whose split has both concepts. */
+    private function twoConceptOverrides(): array
+    {
+        return [
+            'base_amount'           => 2000.00,
+            'snapshot_monto_apoyo'  => 200.00,
+            'snapshot_gross_amount' => 2200.00,
+            'discount_amount'       => 500.00,
+            'final_amount'          => 1700.00,
+        ];
+    }
+
+    /**
+     * Default references: beca = $number, apoyo = "$number-A", only for the
+     * concepts the server will charge.
+     *
+     * @param array<string, string>|null $refs
+     * @param array<string, string>|null $expected
+     */
+    private function mark(
+        ScholarshipRefrend $r,
+        string $number = 'A123',
+        ?string $date = '2026-05-10',
+        ?string $notes = null,
+        ?array $refs = null,
+        ?array $expected = null
+    ): ScholarshipRefrend {
+        $amounts  = $this->amounts($r);
+        $refs   ??= array_intersect_key(['beca' => $number, 'apoyo' => $number . '-A'], $amounts);
+        $expected ??= ['beca' => $amounts['beca'] ?? '0.00', 'apoyo' => $amounts['apoyo'] ?? '0.00'];
+
+        return $this->action->execute($r->id, $this->admin->id, $refs, $expected, $date, $notes);
+    }
+
+    private function children(ScholarshipRefrend $r)
+    {
+        return ScholarshipRefrendManualPayment::where('refrend_id', $r->id)->orderBy('concept')->get();
+    }
+
+    private function validationErrors(callable $fn): array
+    {
+        try {
+            $fn();
+        } catch (ValidationException $e) {
+            return $e->errors();
+        }
+        $this->fail('Expected ValidationException');
     }
 
     private function failure(callable $fn): ChequePaymentException
@@ -101,9 +157,165 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame($this->admin->id, $refrend->locked_by_id);
         $this->assertSame(PaymentMethod::CHEQUE, $refrend->paid_payment_method);
         $this->assertNull($refrend->payment_batch_id);
-        $this->assertSame('A123', $refrend->cheque_number);
-        $this->assertSame('2026-05-10', $refrend->cheque_delivered_at->toDateString());
-        $this->assertSame('Entregado en ventanilla', $refrend->cheque_notes);
+
+        $child = $this->children($refrend)->sole();
+        $this->assertSame('beca', $child->concept);
+        $this->assertSame(PaymentMethod::CHEQUE->value, $child->method);
+        $this->assertSame('A123', $child->reference);
+        $this->assertSame('a123', $child->reference_normalized);
+        $this->assertSame('1000.00', (string) $child->amount);
+        $this->assertSame('2026-05-10', $child->paid_at->toDateString());
+        $this->assertSame('Entregado en ventanilla', $child->notes);
+        $this->assertSame($this->admin->id, $child->created_by_id);
+        $this->assertNull($refrend->cheque_number);
+        $this->assertNull($refrend->cheque_delivered_at);
+        $this->assertNull($refrend->cheque_notes);
+    }
+
+    /** @test */
+    public function writes_two_rows_for_a_two_concept_refrend(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+        $amounts = $this->amounts($refrend);
+
+        $this->mark($refrend, 'A1', '2026-05-10', 'n', ['beca' => 'B-1', 'apoyo' => 'P-1']);
+
+        $rows = $this->children($refrend)->keyBy('concept');
+        $this->assertCount(2, $rows);
+        $this->assertSame('B-1', $rows['beca']->reference);
+        $this->assertSame('P-1', $rows['apoyo']->reference);
+        $this->assertSame($amounts['beca'], (string) $rows['beca']->amount);
+        $this->assertSame($amounts['apoyo'], (string) $rows['apoyo']->amount);
+        $this->assertSame('n', $rows['apoyo']->notes);
+        $this->assertSame(RefrendStatus::PAID, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function a_zero_concept_writes_no_row_and_rejects_its_reference(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $errors = $this->validationErrors(
+            fn () => $this->mark($refrend, 'A1', null, null, ['beca' => 'B-1', 'apoyo' => 'P-1'])
+        );
+
+        $this->assertArrayHasKey('references.apoyo', $errors);
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function a_blank_reference_for_a_positive_concept_is_rejected_without_rows(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+
+        $errors = $this->validationErrors(
+            fn () => $this->mark($refrend, 'A1', null, null, ['beca' => 'B-1', 'apoyo' => '   '])
+        );
+
+        $this->assertArrayHasKey('references.apoyo', $errors);
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function beca_and_apoyo_references_must_differ_ignoring_case_and_whitespace(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+
+        $errors = $this->validationErrors(
+            fn () => $this->mark($refrend, 'A1', null, null, ['beca' => 'ab-1', 'apoyo' => ' AB-1 '])
+        );
+
+        $this->assertArrayHasKey('references.apoyo', $errors);
+        $this->assertSame(0, $this->children($refrend)->count());
+    }
+
+    /** @test */
+    public function a_failure_on_the_second_insert_rolls_everything_back(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+        $calls   = 0;
+        ScholarshipRefrendManualPayment::creating(function () use (&$calls) {
+            if (++$calls === 2) {
+                throw new \RuntimeException('boom');
+            }
+        });
+
+        try {
+            $this->mark($refrend);
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame(0, $this->children($refrend)->count());
+        $fresh = $refrend->fresh();
+        $this->assertSame(RefrendStatus::DRAFT, $fresh->status);
+        $this->assertNull($fresh->paid_payment_method);
+        $this->assertSame(0, ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)->count());
+    }
+
+    /** @test */
+    public function a_unique_index_violation_is_mapped_to_reference_taken(): void
+    {
+        $other   = $this->makeRefrend();
+        $refrend = $this->makeRefrend();
+        // Simulates a concurrent mark committing the same reference after our pre-check.
+        ScholarshipRefrendManualPayment::creating(function () use ($other) {
+            DB::table('scholarship_refrend_manual_payments')->insert([
+                'refrend_id' => $other->id, 'concept' => 'beca', 'method' => PaymentMethod::CHEQUE->value,
+                'reference' => 'RACE-1', 'reference_normalized' => 'race-1', 'amount' => '1.00',
+                'paid_at' => '2026-05-10', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+
+        $e = $this->failure(fn () => $this->mark($refrend, 'RACE-1'));
+
+        $this->assertSame('CHEQUE_REFERENCE_TAKEN', $e->code());
+        $this->assertSame(['concept' => 'beca'], $e->payload());
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+        $this->assertSame(0, $this->children($refrend)->count());
+    }
+
+    /** @test */
+    public function stale_expected_amounts_are_rejected_with_409_and_nothing_is_written(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+
+        $e = $this->failure(fn () => $this->mark($refrend, 'A1', null, null, null, ['beca' => '1.00', 'apoyo' => '200.00']));
+
+        $this->assertSame('CONCEPT_SPLIT_CHANGED', $e->code());
+        $this->assertSame(409, $e->httpStatus());
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function frozen_amounts_survive_a_later_drift_of_the_refrend(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+        $before  = $this->amounts($refrend);
+        $this->mark($refrend);
+
+        $refrend->update(['snapshot_monto_apoyo' => 500.00, 'snapshot_gross_amount' => 2500.00]);
+
+        $rows = $this->children($refrend)->keyBy('concept');
+        $this->assertSame($before['beca'], (string) $rows['beca']->amount);
+        $this->assertSame($before['apoyo'], (string) $rows['apoyo']->amount);
+    }
+
+    /** @test */
+    public function the_paid_log_carries_the_manual_payments_and_no_legacy_keys(): void
+    {
+        $refrend = $this->makeRefrend($this->twoConceptOverrides());
+
+        $this->mark($refrend, 'L1');
+
+        $log = ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)->where('action', 'CHEQUE_PAID')->sole();
+        $this->assertCount(2, $log->new_values['manual_payments']);
+        $this->assertSame('L1', collect($log->new_values['manual_payments'])->firstWhere('concept', 'beca')['reference']);
+        $this->assertArrayNotHasKey('cheque_number', $log->new_values);
     }
 
     // -- paid_batch_type stamp (sdd/cert-unid-historial R2, R8) --------------
@@ -183,11 +395,11 @@ class MarkChequePaidActionTest extends TestCase
 
         $e = $this->failure(fn () => $this->mark($second, 'A-100'));
 
-        $this->assertSame('CHEQUE_NUMBER_TAKEN', $e->code());
+        $this->assertSame('CHEQUE_REFERENCE_TAKEN', $e->code());
         $this->assertSame(422, $e->httpStatus());
-        $this->assertSame('Ese número de cheque ya fue registrado.', $e->getMessage());
+        $this->assertSame(['concept' => 'beca'], $e->payload());
         $this->assertSame(RefrendStatus::DRAFT, $second->fresh()->status);
-        $this->assertNull($second->fresh()->cheque_number);
+        $this->assertSame(0, $this->children($second)->count());
     }
 
     /** @test */
@@ -197,7 +409,7 @@ class MarkChequePaidActionTest extends TestCase
 
         $e = $this->failure(fn () => $this->mark($this->makeRefrend(), '  AB-100 '));
 
-        $this->assertSame('CHEQUE_NUMBER_TAKEN', $e->code());
+        $this->assertSame('CHEQUE_REFERENCE_TAKEN', $e->code());
     }
 
     /** @test */
@@ -206,7 +418,7 @@ class MarkChequePaidActionTest extends TestCase
         $this->mark($this->makeRefrend(), 'A-100');
         $second = $this->mark($this->makeRefrend(), 'A-101');
 
-        $this->assertSame('A-101', $second->cheque_number);
+        $this->assertSame('A-101', $this->children($second)->sole()->reference);
     }
 
     /** @test */
@@ -217,13 +429,13 @@ class MarkChequePaidActionTest extends TestCase
 
         $second = $this->mark($this->makeRefrend(), 'A-100');
 
-        $this->assertSame('A-100', $second->cheque_number);
+        $this->assertSame('A-100', $this->children($second)->sole()->reference);
     }
 
     /** @test */
     public function stores_the_cheque_number_trimmed(): void
     {
-        $this->assertSame('A-7', $this->mark($this->makeRefrend(), '  A-7 ')->cheque_number);
+        $this->assertSame('A-7', $this->children($this->mark($this->makeRefrend(), '  A-7 '))->sole()->reference);
     }
 
     /** @test */
@@ -233,7 +445,7 @@ class MarkChequePaidActionTest extends TestCase
 
         $this->mark($refrend, 'A1', null);
 
-        $this->assertSame(now()->toDateString(), $refrend->fresh()->cheque_delivered_at->toDateString());
+        $this->assertSame(now()->toDateString(), $this->children($refrend)->sole()->paid_at->toDateString());
     }
 
     /** @test */
@@ -258,7 +470,7 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('LISTO_PARA_PAGO', $log->old_values['workflow_status']);
         $this->assertSame('PAID', $log->new_values['status']);
         $this->assertSame('CLOSED', $log->new_values['workflow_status']);
-        $this->assertSame('Z9', $log->new_values['cheque_number']);
+        $this->assertSame('Z9', $log->new_values['manual_payments'][0]['reference']);
         $this->assertSame($this->admin->id, $log->performed_by_id);
     }
 
@@ -273,7 +485,7 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('ALREADY_PAID', $e->code());
         $this->assertSame(409, $e->httpStatus());
         $this->assertSame(1, ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)->count());
-        $this->assertSame('A123', $refrend->fresh()->cheque_number);
+        $this->assertSame('A123', $this->children($refrend)->sole()->reference);
     }
 
     /** @test */
@@ -406,6 +618,6 @@ class MarkChequePaidActionTest extends TestCase
     {
         $this->expectException(ModelNotFoundException::class);
 
-        $this->action->execute(999999, $this->admin->id, 'A1', null, null);
+        $this->action->execute(999999, $this->admin->id, ['beca' => 'A1'], ['beca' => '1.00', 'apoyo' => '0.00'], null, null);
     }
 }

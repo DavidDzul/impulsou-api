@@ -36,6 +36,15 @@ class ManualPaymentException extends \DomainException implements CarriesErrorPay
         return new static($message, 'NOT_PAYABLE', 422, ['reasons' => $reasons]);
     }
 
+    public static function conceptSplitChanged(): static
+    {
+        return new static(
+            'El desglose Beca/Apoyo cambió; actualiza la pantalla e inténtalo de nuevo.',
+            'CONCEPT_SPLIT_CHANGED',
+            409
+        );
+    }
+
     public static function cycleClosed(): static
     {
         return new static('El ciclo del becario está cerrado.', 'CYCLE_CLOSED', 409);

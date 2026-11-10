@@ -22,9 +22,14 @@ class ChequePaymentException extends ManualPaymentException
         return new self('El refrendo no está pagado con cheque.', 'NOT_CHEQUE_PAID', 422);
     }
 
-    public static function chequeNumberTaken(): self
+    public static function chequeReferenceTaken(string $concept): self
     {
-        return new self('Ese número de cheque ya fue registrado.', 'CHEQUE_NUMBER_TAKEN', 422);
+        return new self(
+            'Esa referencia de cheque ya fue registrada.',
+            'CHEQUE_REFERENCE_TAKEN',
+            422,
+            ['concept' => $concept]
+        );
     }
 
     public static function chequeLogMissing(): self

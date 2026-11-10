@@ -100,6 +100,23 @@ class ManualPaymentGuards
     }
 
     /**
+     * Log-friendly copy of a child row (paid mark and revert snapshots).
+     *
+     * @return array<string, mixed>
+     */
+    public static function snapshotRow(\App\Models\ScholarshipRefrendManualPayment $row): array
+    {
+        return [
+            'concept' => $row->concept,
+            'method'  => $row->method,
+            'reference' => $row->reference,
+            'amount'  => (string) $row->amount,
+            'paid_at' => $row->paid_at?->toDateString(),
+            'notes'   => $row->notes,
+        ];
+    }
+
+    /**
      * Freezes the segment at payment time (sdd/cert-unid-historial R2): a
      * later flag flip must not move this paid row between tabs.
      */
