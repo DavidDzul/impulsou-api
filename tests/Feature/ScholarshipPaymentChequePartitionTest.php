@@ -82,7 +82,6 @@ class ScholarshipPaymentChequePartitionTest extends TestCase
             'workflow_status'     => 'CLOSED',
             'locked_at'           => now(),
             'paid_payment_method' => PaymentMethod::CHEQUE->value,
-            'cheque_number'       => 'A123',
         ], $overrides), $name);
     }
 

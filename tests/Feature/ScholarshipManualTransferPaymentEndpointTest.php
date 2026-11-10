@@ -197,12 +197,21 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $this->markPaid($this->makeRefrend(), ['transfer_reference' => 'R-9'])->assertOk();
     }
 
+    /** Cheque mark body for the default 1000.00 Beca-only fixture. */
+    private function chequeBody(string $reference): array
+    {
+        return [
+            'references'       => ['beca' => $reference],
+            'expected_amounts' => ['beca' => '1000.00', 'apoyo' => '0.00'],
+        ];
+    }
+
     /** @test */
     public function the_reference_namespace_is_separate_from_cheque_numbers(): void
     {
         $cheque = $this->makeRefrend($this->chequeSpd());
         $this->actingAs($this->admin)
-            ->postJson("/api/admin/scholarship-payments/{$cheque->id}/cheque-payment", ['cheque_number' => 'SAME-1'])
+            ->postJson("/api/admin/scholarship-payments/{$cheque->id}/cheque-payment", $this->chequeBody('SAME-1'))
             ->assertOk();
 
         $this->markPaid($this->makeRefrend(), ['transfer_reference' => 'SAME-1'])->assertOk();
@@ -298,7 +307,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
     {
         $cheque = $this->makeRefrend($this->chequeSpd());
         $this->actingAs($this->admin)
-            ->postJson("/api/admin/scholarship-payments/{$cheque->id}/cheque-payment", ['cheque_number' => 'C-1'])
+            ->postJson("/api/admin/scholarship-payments/{$cheque->id}/cheque-payment", $this->chequeBody('C-1'))
             ->assertOk();
         $transfer = $this->makeRefrend();
         $this->markPaid($transfer)->assertOk();

@@ -10,6 +10,7 @@ use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -73,7 +74,10 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
     private function markPaid(ScholarshipRefrend $refrend): void
     {
         $this->actingAs($this->admin)
-            ->postJson("/api/admin/scholarship-payments/{$refrend->id}/cheque-payment", ['cheque_number' => 'A123'])
+            ->postJson("/api/admin/scholarship-payments/{$refrend->id}/cheque-payment", [
+                'references'       => ['beca' => 'A123'],
+                'expected_amounts' => ['beca' => '1000.00', 'apoyo' => '0.00'],
+            ])
             ->assertOk();
     }
 
@@ -106,16 +110,26 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
             ->assertJsonPath('data.status', 'DRAFT')
             ->assertJsonPath('data.workflow_status', 'LISTO_PARA_PAGO')
             ->assertJsonPath('data.paid_payment_method', null)
-            ->assertJsonPath('data.cheque_number', null)
-            ->assertJsonPath('data.cheque_delivered_at', null)
-            ->assertJsonPath('data.cheque_notes', null)
             ->assertJsonPath('data.locked_at', null);
+        $this->assertSame(0, ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->count());
         $this->assertDatabaseHas('scholarship_refrend_logs', [
             'scholarship_refrend_id' => $refrend->id,
             'action'                 => 'CHEQUE_PAYMENT_REVERTED',
             'notes'                  => self::REASON,
             'performed_by_id'        => $this->admin->id,
         ]);
+    }
+
+    /** @test */
+    public function there_is_no_per_concept_revert_endpoint(): void
+    {
+        $refrend = $this->makeRefrend();
+        $this->markPaid($refrend);
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/admin/scholarship-payments/{$refrend->id}/cheque-payment/beca/revert", ['reason' => self::REASON])
+            ->assertStatus(404);
+        $this->assertSame(1, ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->count());
     }
 
     /** @test */
@@ -220,7 +234,7 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
             ->assertJsonPath('msg', 'El ciclo del becario está cerrado.');
 
         $this->assertSame(RefrendStatus::PAID, $refrend->fresh()->status);
-        $this->assertSame('A123', $refrend->fresh()->cheque_number);
+        $this->assertSame(1, ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->count());
         $this->assertSame(0, ScholarshipRefrendLog::where('action', 'CHEQUE_PAYMENT_REVERTED')->count());
     }
 
@@ -240,7 +254,6 @@ class ScholarshipChequeRevertEndpointTest extends TestCase
         $row = $index->json('data.cheque_rows.0');
         $this->assertSame('DRAFT', $row['status']);
         $this->assertTrue($row['is_payable']);
-        $this->assertNull($row['cheque_number']);
     }
 
     /** @test */

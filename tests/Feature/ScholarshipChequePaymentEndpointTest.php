@@ -10,6 +10,7 @@ use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,9 +71,19 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
         ], $overrides));
     }
 
-    private function markPaid(ScholarshipRefrend|int $refrend, array $body = ['cheque_number' => 'A123'], ?User $as = null)
+    /** Single-concept (Beca only) body for the default fixture, amount 1000.00. */
+    private function body(string $reference = 'A123', array $extra = []): array
     {
-        $id = $refrend instanceof ScholarshipRefrend ? $refrend->id : $refrend;
+        return $extra + [
+            'references'       => ['beca' => $reference],
+            'expected_amounts' => ['beca' => '1000.00', 'apoyo' => '0.00'],
+        ];
+    }
+
+    private function markPaid(ScholarshipRefrend|int $refrend, ?array $body = null, ?User $as = null)
+    {
+        $id   = $refrend instanceof ScholarshipRefrend ? $refrend->id : $refrend;
+        $body ??= $this->body();
 
         return $this->actingAs($as ?? $this->admin)
             ->postJson("/api/admin/scholarship-payments/{$id}/cheque-payment", $body);
@@ -86,27 +97,27 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     }
 
     /** @test */
-    public function marks_the_cheque_as_paid_and_returns_the_refrend_payload(): void
+    public function marks_the_cheque_as_paid_and_writes_the_concept_row(): void
     {
         $refrend = $this->makeRefrend();
 
-        $response = $this->markPaid($refrend, [
-            'cheque_number'       => 'A123',
-            'cheque_delivered_at' => '2026-05-10',
-            'cheque_notes'        => 'Entregado',
-        ]);
+        $response = $this->markPaid($refrend, $this->body('A123', ['paid_at' => '2026-05-10', 'notes' => 'Entregado']));
 
         $response->assertOk()
             ->assertJsonPath('res', true)
             ->assertJsonPath('data.refrend_id', $refrend->id)
             ->assertJsonPath('data.status', 'PAID')
             ->assertJsonPath('data.workflow_status', 'CLOSED')
-            ->assertJsonPath('data.paid_payment_method', 'CHEQUE')
-            ->assertJsonPath('data.cheque_number', 'A123')
-            ->assertJsonPath('data.cheque_delivered_at', '2026-05-10')
-            ->assertJsonPath('data.cheque_notes', 'Entregado');
+            ->assertJsonPath('data.paid_payment_method', 'CHEQUE');
         $this->assertNotNull($response->json('data.locked_at'));
         $this->assertSame(RefrendStatus::PAID, $refrend->fresh()->status);
+        $row = ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->sole();
+        $this->assertSame('beca', $row->concept);
+        $this->assertSame('A123', $row->reference);
+        $this->assertSame('1000.00', (string) $row->amount);
+        $this->assertSame('2026-05-10', $row->paid_at->toDateString());
+        $this->assertSame('Entregado', $row->notes);
+        $this->assertNull($refrend->fresh()->cheque_number);
         $this->assertDatabaseHas('scholarship_refrend_logs', [
             'scholarship_refrend_id' => $refrend->id,
             'action'                 => 'CHEQUE_PAID',
@@ -115,32 +126,97 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     }
 
     /** @test */
-    public function delivered_at_defaults_to_today(): void
+    public function marks_both_concepts_in_one_request(): void
     {
-        $refrend = $this->makeRefrend();
+        $refrend = $this->makeRefrend(true, [
+            'base_amount' => 2000.00, 'snapshot_monto_apoyo' => 200.00, 'snapshot_gross_amount' => 2200.00,
+            'discount_amount' => 500.00, 'final_amount' => 1700.00,
+        ]);
+        $amounts = $this->app->make(\App\Services\Scholarship\ManualPaymentConceptAmounts::class)->forRefrend($refrend->id);
 
-        $this->markPaid($refrend)
-            ->assertOk()
-            ->assertJsonPath('data.cheque_delivered_at', now()->toDateString());
+        $this->markPaid($refrend, [
+            'references'       => ['beca' => 'B-1', 'apoyo' => 'P-1'],
+            'expected_amounts' => $amounts,
+        ])->assertOk();
+
+        $this->assertSame(2, ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->count());
     }
 
     /** @test */
-    public function future_delivered_at_is_rejected(): void
+    public function paid_at_defaults_to_today(): void
     {
         $refrend = $this->makeRefrend();
 
-        $this->markPaid($refrend, ['cheque_number' => 'A1', 'cheque_delivered_at' => now()->addDay()->toDateString()])
+        $this->markPaid($refrend)->assertOk();
+
+        $this->assertSame(
+            now()->toDateString(),
+            ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->sole()->paid_at->toDateString()
+        );
+    }
+
+    /** @test */
+    public function future_paid_at_is_rejected(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $this->markPaid($refrend, $this->body('A1', ['paid_at' => now()->addDay()->toDateString()]))
             ->assertStatus(422)
-            ->assertJsonValidationErrors('cheque_delivered_at');
+            ->assertJsonValidationErrors('paid_at');
         $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
     }
 
     /** @test */
-    public function missing_cheque_number_is_rejected(): void
+    public function missing_expected_amounts_are_rejected(): void
     {
         $refrend = $this->makeRefrend();
 
-        $this->markPaid($refrend, [])->assertStatus(422)->assertJsonValidationErrors('cheque_number');
+        $this->markPaid($refrend, ['references' => ['beca' => 'A1']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['expected_amounts']);
+    }
+
+    /** @test */
+    public function a_blank_reference_for_a_positive_concept_is_rejected_keyed_by_concept(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $this->markPaid($refrend, $this->body('A1', ['references' => ['beca' => '']]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('references.beca');
+        $this->assertSame(0, ScholarshipRefrendManualPayment::count());
+    }
+
+    /** @test */
+    public function a_reference_for_a_zero_amount_concept_is_rejected(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $this->markPaid($refrend, $this->body('A1', ['references' => ['beca' => 'A1', 'apoyo' => 'P1']]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('references.apoyo');
+    }
+
+    /** @test */
+    public function stale_expected_amounts_return_409_concept_split_changed(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $this->markPaid($refrend, $this->body('A1', ['expected_amounts' => ['beca' => '900.00', 'apoyo' => '100.00']]))
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'CONCEPT_SPLIT_CHANGED');
+        $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
+    }
+
+    /** @test */
+    public function a_reference_used_by_another_cheque_returns_422_with_the_concept(): void
+    {
+        $this->markPaid($this->makeRefrend(), $this->body('DUP-1'))->assertOk();
+
+        $this->markPaid($this->makeRefrend(), $this->body(' dup-1 '))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CHEQUE_REFERENCE_TAKEN')
+            ->assertJsonPath('data.concept', 'beca');
     }
 
     /** @test */
@@ -148,9 +224,9 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     {
         $refrend = $this->makeRefrend();
 
-        $this->markPaid($refrend, ['cheque_number' => str_repeat('9', 51), 'cheque_notes' => str_repeat('n', 501)])
+        $this->markPaid($refrend, $this->body('x', ['references' => ['beca' => str_repeat('9', 51)], 'notes' => str_repeat('n', 501)]))
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['cheque_number', 'cheque_notes']);
+            ->assertJsonValidationErrors(['references.beca', 'notes']);
     }
 
     /** @test */
@@ -159,7 +235,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
         $refrend = $this->makeRefrend();
         $noPerm  = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
 
-        $this->markPaid($refrend, ['cheque_number' => 'A1'], $noPerm)->assertStatus(403);
+        $this->markPaid($refrend, null, $noPerm)->assertStatus(403);
         $this->assertSame(RefrendStatus::DRAFT, $refrend->fresh()->status);
     }
 
@@ -167,7 +243,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     public function non_numeric_refrend_segment_returns_404_not_500(): void
     {
         $this->actingAs($this->admin)
-            ->postJson('/api/admin/scholarship-payments/abc/cheque-payment', ['cheque_number' => 'A123'])
+            ->postJson('/api/admin/scholarship-payments/abc/cheque-payment', $this->body())
             ->assertStatus(404);
         $this->actingAs($this->admin)
             ->postJson('/api/admin/scholarship-payments/abc/cheque-payment/revert', ['reason' => 'Cheque extraviado, se reexpide'])
@@ -184,15 +260,15 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     public function double_submit_returns_409_already_paid_and_keeps_the_first_cheque(): void
     {
         $refrend = $this->makeRefrend();
-        $this->markPaid($refrend, ['cheque_number' => 'FIRST'])->assertOk();
+        $this->markPaid($refrend, $this->body('FIRST'))->assertOk();
 
-        $this->markPaid($refrend, ['cheque_number' => 'SECOND'])
+        $this->markPaid($refrend, $this->body('SECOND'))
             ->assertStatus(409)
             ->assertJsonPath('res', false)
             ->assertJsonPath('code', 'ALREADY_PAID')
             ->assertJsonStructure(['res', 'msg', 'code', 'data']);
 
-        $this->assertSame('FIRST', $refrend->fresh()->cheque_number);
+        $this->assertSame('FIRST', ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->sole()->reference);
         $this->assertSame(1, ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)->where('action', 'CHEQUE_PAID')->count());
     }
 
@@ -250,7 +326,6 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
         $this->assertSame(1, $index->json('data.cheque_summary.paid'));
         $this->assertSame('PAID', $index->json('data.cheque_rows.0.status'));
         $this->assertSame('CHEQUE', $index->json('data.cheque_rows.0.payment_method'));
-        $this->assertSame('A123', $index->json('data.cheque_rows.0.cheque_number'));
         $this->assertSame(0, $index->json('data.summary.blocking'));
 
         $this->actingAs($this->admin)->postJson('/api/admin/scholarship-payments/process', [
@@ -287,7 +362,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
             ->assertJsonPath('data.status', 'DRAFT')
             ->assertJsonPath('data.workflow_status', 'LISTO_PARA_PAGO');
 
-        $this->markPaid($refrend, ['cheque_number' => 'B456'])->assertOk()->assertJsonPath('data.status', 'PAID');
+        $this->markPaid($refrend, $this->body('B456'))->assertOk()->assertJsonPath('data.status', 'PAID');
     }
 
     /**
@@ -322,7 +397,7 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
     {
         $refrend = $this->makeRefrend(true, ['status' => 'WITHHELD', 'final_amount' => 400.00]);
 
-        $this->markPaid($refrend)->assertOk();
+        $this->markPaid($refrend, $this->body('A123', ['expected_amounts' => ['beca' => '400.00', 'apoyo' => '0.00']]))->assertOk();
         $this->revertCheque($refrend)->assertOk()->assertJsonPath('data.status', 'WITHHELD');
     }
 }

@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Actions\Scholarship\MarkChequePaidAction;
+use App\Models\ScholarshipRefrendManualPayment;
+use App\Services\Scholarship\ManualPaymentConceptAmounts;
 use App\Actions\Scholarship\RecordAdvancePaymentAction;
 use App\Enums\RefrendStatus;
 use App\Enums\RefrendType;
@@ -94,7 +96,15 @@ class ScholarshipChequeAdvancePaymentCouplingTest extends TestCase
 
     private function markOrigin(): void
     {
-        app(MarkChequePaidAction::class)->execute($this->origin->id, $this->admin->id, 'ADV-1', null, null);
+        $amounts = app(ManualPaymentConceptAmounts::class)->forRefrend($this->origin->id);
+        app(MarkChequePaidAction::class)->execute(
+            $this->origin->id,
+            $this->admin->id,
+            array_intersect_key(['beca' => 'ADV-1', 'apoyo' => 'ADV-1-A'], $amounts),
+            ['beca' => $amounts['beca'] ?? '0.00', 'apoyo' => $amounts['apoyo'] ?? '0.00'],
+            null,
+            null
+        );
         $this->origin->refresh();
     }
 
@@ -108,7 +118,7 @@ class ScholarshipChequeAdvancePaymentCouplingTest extends TestCase
         $this->assertSame(RefrendStatus::PAID, $this->origin->status);
         $this->assertSame('CLOSED', $this->origin->workflow_status);
         $this->assertNull($this->origin->payment_batch_id);
-        $this->assertSame('ADV-1', $this->origin->cheque_number);
+        $this->assertSame('ADV-1', ScholarshipRefrendManualPayment::where('refrend_id', $this->origin->id)->orderBy('concept')->first()->reference);
     }
 
     /** @test */
