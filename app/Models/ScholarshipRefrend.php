@@ -223,6 +223,11 @@ class ScholarshipRefrend extends Model
         return $this->hasMany(ScholarshipRefrendLog::class, 'scholarship_refrend_id');
     }
 
+    public function manualPayments(): HasMany
+    {
+        return $this->hasMany(ScholarshipRefrendManualPayment::class, 'refrend_id');
+    }
+
     public function incidents(): HasMany
     {
         return $this->hasMany(ScholarshipRefrendIncident::class, 'scholarship_refrend_id');
