@@ -95,15 +95,19 @@ class ScholarshipPaymentController extends Controller
         // Paid batch: the cards show what was paid in it (summary.basis = 'paid').
         $summary             = $service->summary($rows, $batch['is_paid'] ? $batch['batch_id'] : null);
 
+        $chequeSummary         = $service->chequeSummary($chequeRows);
+        $manualTransferSummary = $service->manualTransferSummary($manualRows);
+
         return response()->json([
             'res'  => true,
             'data' => [
                 'rows'           => $rows,
                 'summary'        => $summary,
                 'cheque_rows'    => $chequeRows,
-                'cheque_summary' => $service->chequeSummary($chequeRows),
+                'cheque_summary' => $chequeSummary,
                 'manual_transfer_rows'    => $manualRows,
-                'manual_transfer_summary' => $service->manualTransferSummary($manualRows),
+                'manual_transfer_summary' => $manualTransferSummary,
+                'concept_totals' => $service->conceptTotals($rows, $chequeSummary, $manualTransferSummary),
                 'batch'          => $batch,
                 'batch_type'     => $batchType->value,
             ],

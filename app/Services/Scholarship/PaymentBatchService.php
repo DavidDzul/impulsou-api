@@ -704,6 +704,78 @@ class PaymentBatchService
     }
 
     /**
+     * sdd/bank-file-split-other-banks-cheques PR6 (spec C1-C3): combined
+     * Beca/Apoyo money across the three channels, ready and paid kept apart
+     * (never added together). No new math for the manual channels: they reuse
+     * the already computed cheque/manual-transfer summaries (paid = frozen
+     * child rows). BBVA is derived from the transfer rows' concept_split:
+     * ready = payable rows, paid = rows paid in a batch and not excluded from
+     * the bank file (same basis as summary()'s paid mode). All money in cents
+     * so beca + apoyo == total exactly; 2dp strings.
+     *
+     * @param array<int, array<string, mixed>> $transferRows rows() output after partitionByMethod() (BBVA)
+     * @param array<string, mixed> $chequeSummary
+     * @param array<string, mixed> $manualTransferSummary
+     * @return array{channels: array<string, array{ready: array<string, string>, paid: array<string, string>}>, overall: array{ready: array<string, string>, paid: array<string, string>}}
+     */
+    public function conceptTotals(array $transferRows, array $chequeSummary, array $manualTransferSummary): array
+    {
+        $bankCents = function (array $rows, string $key) {
+            return array_sum(array_map(
+                fn (array $r) => RefrendNetComponents::toCents($r['concept_split'][$key] ?? 0),
+                $rows
+            ));
+        };
+
+        $ready = array_filter($transferRows, fn (array $r) => $r['is_payable']);
+        $paid  = array_filter(
+            $transferRows,
+            fn (array $r) => $r['payment_batch_id'] !== null && ! $r['excluded_from_bank_file']
+        );
+
+        $manualCents = fn (array $summary, string $basis) => [
+            RefrendNetComponents::toCents($summary["{$basis}_beca_amount"]),
+            RefrendNetComponents::toCents($summary["{$basis}_apoyo_amount"]),
+        ];
+
+        $channels = [
+            'bbva' => [
+                'ready' => [$bankCents($ready, 'beca'), $bankCents($ready, 'apoyo')],
+                'paid'  => [$bankCents($paid, 'beca'), $bankCents($paid, 'apoyo')],
+            ],
+            'manual_transfer' => [
+                'ready' => $manualCents($manualTransferSummary, 'ready'),
+                'paid'  => $manualCents($manualTransferSummary, 'paid'),
+            ],
+            'cheque' => [
+                'ready' => $manualCents($chequeSummary, 'ready'),
+                'paid'  => $manualCents($chequeSummary, 'paid'),
+            ],
+        ];
+
+        $format = fn (array $pair) => [
+            'beca'  => number_format($pair[0] / 100, 2, '.', ''),
+            'apoyo' => number_format($pair[1] / 100, 2, '.', ''),
+            'total' => number_format(($pair[0] + $pair[1]) / 100, 2, '.', ''),
+        ];
+
+        $overall = ['ready' => [0, 0], 'paid' => [0, 0]];
+        $out     = [];
+        foreach ($channels as $name => $bases) {
+            foreach ($bases as $basis => $pair) {
+                $out[$name][$basis]   = $format($pair);
+                $overall[$basis][0]  += $pair[0];
+                $overall[$basis][1]  += $pair[1];
+            }
+        }
+
+        return [
+            'channels' => $out,
+            'overall'  => ['ready' => $format($overall['ready']), 'paid' => $format($overall['paid'])],
+        ];
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $chequeRows
      * @return array{total: int, ready: int, paid: int, blocking: int, ready_amount: string, paid_amount: string}
      */
