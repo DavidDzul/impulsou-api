@@ -95,12 +95,14 @@ class ScholarshipPaymentDataModelTest extends TestCase
     public function refrend_accepts_cheque_columns_and_casts_them(): void
     {
         $fillable = (new ScholarshipRefrend())->getFillable();
-        foreach (['paid_payment_method', 'cheque_number', 'cheque_delivered_at', 'cheque_notes'] as $col) {
-            $this->assertContains($col, $fillable);
+        $this->assertContains('paid_payment_method', $fillable);
+        foreach (['cheque_number', 'cheque_delivered_at', 'cheque_notes', 'transfer_reference', 'transfer_paid_at', 'transfer_notes'] as $legacy) {
+            $this->assertNotContains($legacy, $fillable, $legacy);
         }
 
         $casts = (new ScholarshipRefrend())->getCasts();
         $this->assertSame(PaymentMethod::class, $casts['paid_payment_method']);
-        $this->assertSame('date', $casts['cheque_delivered_at']);
+        $this->assertArrayNotHasKey('cheque_delivered_at', $casts);
+        $this->assertArrayNotHasKey('transfer_paid_at', $casts);
     }
 }

@@ -167,9 +167,9 @@ class MarkChequePaidActionTest extends TestCase
         $this->assertSame('2026-05-10', $child->paid_at->toDateString());
         $this->assertSame('Entregado en ventanilla', $child->notes);
         $this->assertSame($this->admin->id, $child->created_by_id);
-        $this->assertNull($refrend->cheque_number);
-        $this->assertNull($refrend->cheque_delivered_at);
-        $this->assertNull($refrend->cheque_notes);
+        foreach (['cheque_number', 'cheque_delivered_at', 'cheque_notes'] as $legacy) {
+            $this->assertFalse(\Illuminate\Support\Facades\Schema::hasColumn('scholarship_refrends', $legacy), $legacy);
+        }
     }
 
     /** @test */

@@ -84,13 +84,17 @@ class PagoChequeMigrationsTest extends TestCase
     /** @test */
     public function migration_b_adds_nullable_cheque_columns_and_down_drops_them(): void
     {
-        $cols = ['paid_payment_method', 'cheque_number', 'cheque_delivered_at', 'cheque_notes'];
-        $this->assertTrue(Schema::hasColumns('scholarship_refrends', $cols));
+        // PR4 dropped the legacy cheque_* columns; only paid_payment_method survives.
+        $this->assertTrue(Schema::hasColumn('scholarship_refrends', 'paid_payment_method'));
+        foreach (['cheque_number', 'cheque_delivered_at', 'cheque_notes'] as $legacy) {
+            $this->assertFalse(Schema::hasColumn('scholarship_refrends', $legacy), $legacy);
+        }
 
+        // Rollback order: the PR4 drop migration is undone first (re-adds the columns B drops).
+        require_once __DIR__ . '/../../database/migrations/2026_11_11_100000_drop_legacy_manual_payment_columns_from_scholarship_refrends.php';
+        (new \DropLegacyManualPaymentColumnsFromScholarshipRefrends())->down();
         $this->migrationB()->down();
 
-        foreach ($cols as $col) {
-            $this->assertFalse(Schema::hasColumn('scholarship_refrends', $col), $col);
-        }
+        $this->assertFalse(Schema::hasColumn('scholarship_refrends', 'paid_payment_method'));
     }
 }
