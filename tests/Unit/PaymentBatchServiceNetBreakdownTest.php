@@ -34,7 +34,8 @@ class PaymentBatchServiceNetBreakdownTest extends TestCase
         'pending_and_advance',
     ];
 
-    private const BASELINE_QUERIES = 5;
+    // 5 + 1 batched manual_payments query (sdd/bank-file-split-other-banks-cheques PR3).
+    private const BASELINE_QUERIES = 6;
 
     private PaymentBatchService $service;
 

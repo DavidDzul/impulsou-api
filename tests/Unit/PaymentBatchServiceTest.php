@@ -785,9 +785,9 @@ class PaymentBatchServiceTest extends TestCase
             'snapshot_telmex_coverage_id', 'snapshot_telmex_covered_amount', 'telmex_covered',
             // sdd/pago-cheque PR2: effective method + cheque data.
             'payment_method', 'paid_payment_method', 'bank_code', 'cheque_beneficiary',
-            'cheque_number', 'cheque_delivered_at', 'cheque_notes',
-            // sdd/catalogo-bancos R7: other-bank transfer data.
-            'transfer_reference', 'transfer_paid_at', 'transfer_notes',
+            // sdd/bank-file-split-other-banks-cheques PR3: frozen Beca/Apoyo
+            // reference rows replace the legacy cheque_*/transfer_* keys.
+            'manual_payments',
         ];
         $this->assertEqualsCanonicalizing($expectedKeys, array_keys($rows['Becario BECA_MES']));
     }

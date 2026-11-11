@@ -117,7 +117,13 @@ class ScholarshipChequePaymentEndpointTest extends TestCase
         $this->assertSame('1000.00', (string) $row->amount);
         $this->assertSame('2026-05-10', $row->paid_at->toDateString());
         $this->assertSame('Entregado', $row->notes);
-        $this->assertNull($refrend->fresh()->cheque_number);
+        $response->assertJsonPath('data.manual_payments', [[
+            'concept' => 'beca', 'method' => 'CHEQUE', 'reference' => 'A123',
+            'amount' => '1000.00', 'paid_at' => '2026-05-10', 'notes' => 'Entregado',
+        ]]);
+        foreach (['cheque_number', 'cheque_delivered_at', 'cheque_notes'] as $legacy) {
+            $this->assertArrayNotHasKey($legacy, $response->json('data'));
+        }
         $this->assertDatabaseHas('scholarship_refrend_logs', [
             'scholarship_refrend_id' => $refrend->id,
             'action'                 => 'CHEQUE_PAID',

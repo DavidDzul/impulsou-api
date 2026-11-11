@@ -8,9 +8,11 @@ use App\Enums\ScholarshipType;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Models\User;
 use App\Services\Scholarship\PaymentBatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -78,9 +80,10 @@ class PaymentBatchServiceChequeTest extends TestCase
         $this->assertTrue($row['is_payable']);
         $this->assertSame('CHEQUE', $row['payment_method']);
         $this->assertSame('Madre', $row['cheque_beneficiary']);
-        $this->assertNull($row['cheque_number']);
-        $this->assertNull($row['cheque_delivered_at']);
-        $this->assertNull($row['cheque_notes']);
+        $this->assertSame([], $row['manual_payments']);
+        foreach (['cheque_number', 'cheque_delivered_at', 'cheque_notes', 'transfer_reference', 'transfer_paid_at', 'transfer_notes'] as $legacy) {
+            $this->assertArrayNotHasKey($legacy, $row);
+        }
     }
 
     /** @test */
@@ -118,17 +121,53 @@ class PaymentBatchServiceChequeTest extends TestCase
             'workflow_status'     => 'CLOSED',
             'locked_at'           => now(),
             'paid_payment_method' => PaymentMethod::CHEQUE->value,
-            'cheque_number'       => 'A123',
-            'cheque_delivered_at' => '2026-05-10',
-            'cheque_notes'        => 'Entregado en sede',
         ]);
+        $this->freeze($refrend, 'beca', 'A123', '800.00', 'Entregado en sede');
 
         $row = $this->rowFor($refrend);
 
         $this->assertSame('CHEQUE', $row['payment_method']);
-        $this->assertSame('A123', $row['cheque_number']);
-        $this->assertSame('Entregado en sede', $row['cheque_notes']);
-        $this->assertNotNull($row['cheque_delivered_at']);
+        $this->assertSame([[
+            'concept' => 'beca', 'method' => 'CHEQUE', 'reference' => 'A123',
+            'amount' => '800.00', 'paid_at' => '2026-05-10', 'notes' => 'Entregado en sede',
+        ]], $row['manual_payments']);
+    }
+
+    /** @test */
+    public function manual_payments_come_beca_first_with_frozen_amounts_in_one_batched_query(): void
+    {
+        $makePaid = function (string $name) {
+            $refrend = $this->makeRefrend(PaymentMethod::CHEQUE, [
+                'status' => 'PAID', 'workflow_status' => 'CLOSED', 'locked_at' => now(),
+                'paid_payment_method' => PaymentMethod::CHEQUE->value,
+            ], $name);
+            // Insert apoyo first: the payload order must not depend on insertion order.
+            $this->freeze($refrend, 'apoyo', $name . '-AP', '200.00');
+            $this->freeze($refrend, 'beca', $name . '-BE', '800.00');
+
+            return $refrend;
+        };
+        $first = $makePaid('One');
+
+        DB::enableQueryLog();
+        $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
+        $queriesForOne = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        foreach (['Two', 'Three', 'Four'] as $name) {
+            $makePaid($name);
+        }
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $rows = $this->service->rows(self::CAMPUS, self::YEAR, self::MONTH);
+        $queriesForFour = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertSame($queriesForOne, $queriesForFour);
+        $this->assertSame(
+            ['beca', 'apoyo'],
+            array_column(collect($rows)->firstWhere('refrend_id', $first->id)['manual_payments'], 'concept')
+        );
     }
 
     /** @test */
@@ -186,6 +225,9 @@ class PaymentBatchServiceChequeTest extends TestCase
             'status' => 'PAID', 'workflow_status' => 'CLOSED', 'locked_at' => now(),
             'paid_payment_method' => PaymentMethod::CHEQUE->value, 'final_amount' => 250.00,
         ], 'Paid');
+        $paid = ScholarshipRefrend::where('snapshot_name', 'Paid')->first();
+        $this->freeze($paid, 'beca', 'P-BE', '150.00');
+        $this->freeze($paid, 'apoyo', 'P-AP', '100.00');
 
         [, $cheque] = $this->service->partitionByMethod($this->service->rows(self::CAMPUS, self::YEAR, self::MONTH));
         $summary    = $this->service->chequeSummary($cheque);
@@ -200,8 +242,9 @@ class PaymentBatchServiceChequeTest extends TestCase
             // sdd/archivo-pago-beca-apoyo PR2: per-concept sums (no apoyo in this fixture).
             'ready_beca_amount'  => '1500.00',
             'ready_apoyo_amount' => '0.00',
-            'paid_beca_amount'   => '250.00',
-            'paid_apoyo_amount'  => '0.00',
+            // Paid amounts are the FROZEN child rows (150 + 100), not the derived split.
+            'paid_beca_amount'   => '150.00',
+            'paid_apoyo_amount'  => '100.00',
         ], $summary);
     }
 
@@ -217,6 +260,14 @@ class PaymentBatchServiceChequeTest extends TestCase
         $rows = $this->service->paidRows($batch);
 
         $this->assertSame([$transfer->id], array_column($rows, 'refrend_id'));
+    }
+
+    private function freeze(ScholarshipRefrend $refrend, string $concept, string $reference, string $amount, ?string $notes = null): void
+    {
+        ScholarshipRefrendManualPayment::factory()->create([
+            'refrend_id' => $refrend->id, 'concept' => $concept, 'method' => 'CHEQUE',
+            'reference' => $reference, 'amount' => $amount, 'paid_at' => '2026-05-10', 'notes' => $notes,
+        ]);
     }
 
     private function batchAttributes(): array

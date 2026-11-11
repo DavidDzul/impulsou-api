@@ -136,7 +136,8 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
     {
         $refrend = $this->makeRefrend();
 
-        $this->markPaid($refrend, $this->body('  REF-1  ', ['paid_at' => '2026-05-10', 'notes' => 'SPEI']))
+        $response = $this->markPaid($refrend, $this->body('  REF-1  ', ['paid_at' => '2026-05-10', 'notes' => 'SPEI']));
+        $response
             ->assertOk()
             ->assertJsonPath('data.paid_payment_method', 'MANUAL_TRANSFER');
 
@@ -156,9 +157,14 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $this->assertSame('2026-05-10', $rows[0]->paid_at->toDateString());
         $this->assertSame('SPEI', $rows[0]->notes);
         $this->assertSame($this->admin->id, $rows[0]->created_by_id);
-        $this->assertNull($fresh->transfer_reference);
-        $this->assertNull($fresh->transfer_paid_at);
-        $this->assertNull($fresh->transfer_notes);
+        $data = $response->json('data');
+        $this->assertSame([[
+            'concept' => 'beca', 'method' => 'MANUAL_TRANSFER', 'reference' => 'REF-1',
+            'amount' => '1000.00', 'paid_at' => '2026-05-10', 'notes' => 'SPEI',
+        ]], $data['manual_payments']);
+        foreach (['transfer_reference', 'transfer_paid_at', 'transfer_notes'] as $legacy) {
+            $this->assertArrayNotHasKey($legacy, $data);
+        }
 
         $log = ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)
             ->where('action', 'MANUAL_TRANSFER_PAID')->firstOrFail();
@@ -424,7 +430,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $refrend = $this->makeRefrend();
         $this->markPaid($refrend)->assertOk();
 
-        $this->revert($refrend)->assertOk()->assertJsonPath('data.status', 'DRAFT');
+        $this->revert($refrend)->assertOk()->assertJsonPath('data.status', 'DRAFT')->assertJsonPath('data.manual_payments', []);
 
         $fresh = $refrend->fresh();
         $this->assertSame('LISTO_PARA_PAGO', $fresh->workflow_status);
@@ -515,6 +521,8 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
             'rfc' => 'PEPJ800101ABC',
         ], [], 'C bbva');
         $this->markPaid($paid, $this->body('REF-A'))->assertOk();
+        // Drift the live amount after marking: the paid figures must stay frozen.
+        $paid->refresh()->forceFill(['final_amount' => 400.00])->save();
 
         $response = $this->actingAs($this->admin)->getJson('/api/admin/scholarship-payments?' . http_build_query([
             'campus' => self::CAMPUS, 'period_year' => self::YEAR, 'period_month' => self::MONTH, 'batch_type' => 'NORMAL',
@@ -533,6 +541,12 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $this->assertSame(1, $summary['ready']);
         $this->assertSame(1, $summary['paid']);
         $this->assertSame('1000.00', $summary['paid_amount']);
+        $this->assertSame('1000.00', $summary['paid_beca_amount']);
+        $this->assertSame('0.00', $summary['paid_apoyo_amount']);
+        $this->assertSame('REF-A', $rows[0]['manual_payments'][0]['reference']);
+        $this->assertSame('1000.00', $rows[0]['manual_payments'][0]['amount']);
+        $this->assertSame([], $rows[1]['manual_payments']);
+        $this->assertArrayNotHasKey('transfer_reference', $rows[0]);
 
         $this->assertSame(['C bbva'], array_column($response->json('data.rows'), 'snapshot_name'));
     }

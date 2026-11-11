@@ -7,6 +7,7 @@ use App\Enums\ScholarshipType;
 use App\Models\Bank;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Models\User;
 use App\Services\Scholarship\PaymentBatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -136,7 +137,13 @@ class PaymentBatchServiceConceptSplitTest extends TestCase
     public function manual_summaries_add_ready_and_paid_sums_per_concept(): void
     {
         $this->makeRefrend(['snapshot_name' => 'Ready cheque'], 'cheque');
-        $this->makeRefrend(['snapshot_name' => 'Paid cheque', 'status' => 'PAID', 'paid_payment_method' => 'CHEQUE'], 'cheque');
+        $paidCheque = $this->makeRefrend(['snapshot_name' => 'Paid cheque', 'status' => 'PAID', 'paid_payment_method' => 'CHEQUE'], 'cheque');
+        // Frozen at mark time: deliberately different from the derived split (1545.45 / 154.55).
+        foreach (['beca' => '1500.00', 'apoyo' => '200.00'] as $concept => $amount) {
+            ScholarshipRefrendManualPayment::factory()->create([
+                'refrend_id' => $paidCheque->id, 'concept' => $concept, 'method' => 'CHEQUE', 'amount' => $amount,
+            ]);
+        }
         $this->makeRefrend(['snapshot_name' => 'Ready other', 'snapshot_monto_apoyo' => null, 'final_amount' => 800.00], 'other_bank');
 
         [, $cheque, $manual] = $this->service->partitionByMethod($this->rows());
@@ -147,8 +154,8 @@ class PaymentBatchServiceConceptSplitTest extends TestCase
         $this->assertSame('1545.45', $chequeSummary['ready_beca_amount']);
         $this->assertSame('154.55', $chequeSummary['ready_apoyo_amount']);
         $this->assertSame('1700.00', $chequeSummary['paid_amount']);
-        $this->assertSame('1545.45', $chequeSummary['paid_beca_amount']);
-        $this->assertSame('154.55', $chequeSummary['paid_apoyo_amount']);
+        $this->assertSame('1500.00', $chequeSummary['paid_beca_amount']);
+        $this->assertSame('200.00', $chequeSummary['paid_apoyo_amount']);
         $this->assertSame('800.00', $manualSummary['ready_beca_amount']);
         $this->assertSame('0.00', $manualSummary['ready_apoyo_amount']);
         $this->assertSame('0.00', $manualSummary['paid_beca_amount']);
@@ -178,7 +185,8 @@ class PaymentBatchServiceConceptSplitTest extends TestCase
         DB::disableQueryLog();
 
         $this->assertSame($one, $many);
-        // 3 baseline queries (rows, incidents, advance-paid lookup) + 2 resolver queries.
-        $this->assertSame(5, $many);
+        // 3 baseline queries (rows, incidents, advance-paid lookup) + 2 resolver queries
+        // + 1 batched manual_payments query.
+        $this->assertSame(6, $many);
     }
 }
