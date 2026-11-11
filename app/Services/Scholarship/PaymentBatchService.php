@@ -9,6 +9,7 @@ use App\Enums\ScholarshipType;
 use App\Models\ScholarshipAdvancePaymentMonth;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Support\Banking\BatchBank;
 use App\Support\Scholarship\PaymentAmountFloor;
 use App\Support\Scholarship\RefrendConceptSplit;
@@ -265,12 +266,6 @@ class PaymentBatchService
                 'b.code as bank_code',
                 'spd.cheque_beneficiary',
                 'r.paid_payment_method',
-                'r.cheque_number',
-                'r.cheque_delivered_at',
-                'r.cheque_notes',
-                'r.transfer_reference',
-                'r.transfer_paid_at',
-                'r.transfer_notes',
                 // base_amount/snapshot_monto_apoyo (sdd/pagos-batch-sede-totals,
                 // design D9): raw pass-throughs feeding summary()'s type-
                 // partitioned money totals. r.snapshot_scholarship_type is
@@ -341,7 +336,10 @@ class PaymentBatchService
         // row's payable. Batch-scoped: exactly 2 queries whatever the size.
         $carryover = $this->carryover->forRows($refrends);
 
-        return $refrends->map(function ($row) use ($refrendIdsWithIncidents, $advancePaidByRefrendId, $carryover) {
+        // One batched query for every row's frozen cheque / other-bank payments.
+        $manualPayments = ScholarshipRefrendManualPayment::payloadsByRefrend($refrends->pluck('refrend_id')->all());
+
+        return $refrends->map(function ($row) use ($refrendIdsWithIncidents, $advancePaidByRefrendId, $carryover, $manualPayments) {
             $advance = $advancePaidByRefrendId->get($row->refrend_id);
             $hasEnrollment  = $row->enrollment !== null && $row->enrollment !== '';
             // sdd/pago-cheque R2.2: a CHEQUE spd has no bank_name, so the
@@ -380,12 +378,9 @@ class PaymentBatchService
                 'paid_payment_method'       => $row->paid_payment_method,
                 'bank_code'                 => $row->bank_code,
                 'cheque_beneficiary'        => $row->cheque_beneficiary,
-                'cheque_number'             => $row->cheque_number,
-                'cheque_delivered_at'       => $row->cheque_delivered_at,
-                'cheque_notes'              => $row->cheque_notes,
-                'transfer_reference'        => $row->transfer_reference,
-                'transfer_paid_at'          => $row->transfer_paid_at,
-                'transfer_notes'            => $row->transfer_notes,
+                // sdd/bank-file-split-other-banks-cheques: frozen Beca/Apoyo
+                // child rows of a cheque / other-bank payment (empty if unpaid).
+                'manual_payments'           => $manualPayments[$row->refrend_id] ?? [],
                 // status (sdd/pagos-por-generacion-estado-pago, design D2):
                 // raw pass-through of the already-SELECTed r.status column.
                 // DB::table() bypasses the enum cast, so this arrives as a
@@ -726,15 +721,25 @@ class PaymentBatchService
 
         // sdd/archivo-pago-beca-apoyo (D12): per-concept sums, in cents so the
         // two always add up to ready_amount / paid_amount.
-        $concept = fn (array $rows, string $key) => number_format(
-            array_sum(array_map(
-                fn (array $r) => RefrendNetComponents::toCents($r['concept_split'][$key] ?? 0),
-                $rows
-            )) / 100,
-            2,
-            '.',
-            ''
-        );
+        $cents = fn (int $value) => number_format($value / 100, 2, '.', '');
+
+        $readyCents = fn (array $rows, string $key) => array_sum(array_map(
+            fn (array $r) => RefrendNetComponents::toCents($r['concept_split'][$key] ?? 0),
+            $rows
+        ));
+
+        // Paid money is what was FROZEN at mark time (child rows), never the
+        // live split, so later amount drift cannot rewrite what was paid.
+        $paidCents = fn (array $rows, string $key) => array_sum(array_map(
+            fn (array $r) => array_sum(array_map(
+                fn (array $p) => $p['concept'] === $key ? RefrendNetComponents::toCents($p['amount']) : 0,
+                $r['manual_payments']
+            )),
+            $rows
+        ));
+
+        $paidBeca  = $paidCents($paid, 'beca');
+        $paidApoyo = $paidCents($paid, 'apoyo');
 
         return [
             'total'              => count($chequeRows),
@@ -742,11 +747,11 @@ class PaymentBatchService
             'paid'               => count($paid),
             'blocking'           => count($chequeRows) - count($ready) - count($paid),
             'ready_amount'       => $sum($ready),
-            'paid_amount'        => $sum($paid),
-            'ready_beca_amount'  => $concept($ready, 'beca'),
-            'ready_apoyo_amount' => $concept($ready, 'apoyo'),
-            'paid_beca_amount'   => $concept($paid, 'beca'),
-            'paid_apoyo_amount'  => $concept($paid, 'apoyo'),
+            'paid_amount'        => $cents($paidBeca + $paidApoyo),
+            'ready_beca_amount'  => $cents($readyCents($ready, 'beca')),
+            'ready_apoyo_amount' => $cents($readyCents($ready, 'apoyo')),
+            'paid_beca_amount'   => $cents($paidBeca),
+            'paid_apoyo_amount'  => $cents($paidApoyo),
         ];
     }
 

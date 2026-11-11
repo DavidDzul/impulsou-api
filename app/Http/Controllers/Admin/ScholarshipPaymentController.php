@@ -18,6 +18,7 @@ use App\Http\Requests\RevertChequePaymentRequest;
 use App\Models\Generation;
 use App\Models\ScholarshipPaymentBatch;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Services\Scholarship\AdvancePaymentDocumentContext;
 use App\Services\Scholarship\BankDataValidator;
 use App\Services\Scholarship\BankPaymentFileName;
@@ -312,11 +313,14 @@ class ScholarshipPaymentController extends Controller
             'status'              => $refrend->status->value,
             'workflow_status'     => $refrend->workflow_status,
             'paid_payment_method' => $refrend->paid_payment_method?->value,
-            'transfer_reference'  => $refrend->transfer_reference,
-            'transfer_paid_at'    => $refrend->transfer_paid_at?->toDateString(),
-            'transfer_notes'      => $refrend->transfer_notes,
+            'manual_payments'     => $this->manualPaymentsPayload($refrend),
             'locked_at'           => $refrend->locked_at?->toISOString(),
         ];
+    }
+
+    private function manualPaymentsPayload(ScholarshipRefrend $refrend): array
+    {
+        return ScholarshipRefrendManualPayment::payloadsByRefrend([$refrend->id])[$refrend->id] ?? [];
     }
 
     private function chequePayload(ScholarshipRefrend $refrend): array
@@ -326,9 +330,7 @@ class ScholarshipPaymentController extends Controller
             'status'              => $refrend->status->value,
             'workflow_status'     => $refrend->workflow_status,
             'paid_payment_method' => $refrend->paid_payment_method?->value,
-            'cheque_number'       => $refrend->cheque_number,
-            'cheque_delivered_at' => $refrend->cheque_delivered_at?->toDateString(),
-            'cheque_notes'        => $refrend->cheque_notes,
+            'manual_payments'     => $this->manualPaymentsPayload($refrend),
             'locked_at'           => $refrend->locked_at?->toISOString(),
         ];
     }
