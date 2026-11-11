@@ -10,10 +10,12 @@ use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipProfile;
 use App\Models\ScholarshipRefrend;
 use App\Models\ScholarshipRefrendLog;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Models\User;
+use App\Services\Scholarship\ManualPaymentConceptAmounts;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -79,8 +81,46 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         return ['payment_method' => 'CHEQUE', 'bank_id' => null, 'bank_name' => null, 'account_number' => null];
     }
 
-    private function markPaid(ScholarshipRefrend $refrend, array $body = ['transfer_reference' => 'REF-1'], ?User $as = null)
+    /** Mark body for the default 1000.00 Beca-only fixture. */
+    private function body(string $beca = 'REF-1', array $extra = []): array
     {
+        return array_merge([
+            'references'       => ['beca' => $beca],
+            'expected_amounts' => ['beca' => '1000.00', 'apoyo' => '0.00'],
+        ], $extra);
+    }
+
+    /** Fixture whose split has both concepts (1500 Beca / 200 Apoyo). */
+    private function twoConceptOverrides(): array
+    {
+        return [
+            'base_amount'           => 2000.00,
+            'snapshot_monto_apoyo'  => 200.00,
+            'snapshot_gross_amount' => 2200.00,
+            'discount_amount'       => 500.00,
+            'final_amount'          => 1700.00,
+        ];
+    }
+
+    private function twoConceptBody(ScholarshipRefrend $refrend, string $beca = 'B-1', string $apoyo = 'A-1', array $extra = []): array
+    {
+        $amounts = $this->app->make(ManualPaymentConceptAmounts::class)->forRefrend($refrend->id);
+
+        return array_merge([
+            'references'       => ['beca' => $beca, 'apoyo' => $apoyo],
+            'expected_amounts' => ['beca' => $amounts['beca'], 'apoyo' => $amounts['apoyo']],
+        ], $extra);
+    }
+
+    private function children(ScholarshipRefrend $refrend)
+    {
+        return ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->orderBy('concept')->get();
+    }
+
+    private function markPaid(ScholarshipRefrend $refrend, ?array $body = null, ?User $as = null)
+    {
+        $body ??= $this->body();
+
         return $this->actingAs($as ?? $this->admin)
             ->postJson("/api/admin/scholarship-payments/{$refrend->id}/manual-transfer-payment", $body);
     }
@@ -92,23 +132,13 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
     }
 
     /** @test */
-    public function the_migration_adds_the_transfer_columns(): void
-    {
-        foreach (['transfer_reference', 'transfer_paid_at', 'transfer_notes'] as $column) {
-            $this->assertTrue(Schema::hasColumn('scholarship_refrends', $column), $column);
-        }
-    }
-
-    /** @test */
     public function marking_paid_closes_the_refrend_with_the_manual_transfer_snapshot_and_logs_bank_and_clabe(): void
     {
         $refrend = $this->makeRefrend();
 
-        $this->markPaid($refrend, [
-            'transfer_reference' => '  REF-1  ', 'transfer_paid_at' => '2026-05-10', 'transfer_notes' => 'SPEI',
-        ])->assertOk()
-            ->assertJsonPath('data.paid_payment_method', 'MANUAL_TRANSFER')
-            ->assertJsonPath('data.transfer_reference', 'REF-1');
+        $this->markPaid($refrend, $this->body('  REF-1  ', ['paid_at' => '2026-05-10', 'notes' => 'SPEI']))
+            ->assertOk()
+            ->assertJsonPath('data.paid_payment_method', 'MANUAL_TRANSFER');
 
         $fresh = $refrend->fresh();
         $this->assertSame('PAID', $fresh->status->value);
@@ -116,16 +146,128 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $this->assertNotNull($fresh->locked_at);
         $this->assertNull($fresh->payment_batch_id);
         $this->assertSame('MANUAL_TRANSFER', $fresh->paid_payment_method->value);
-        $this->assertSame('2026-05-10', $fresh->transfer_paid_at->toDateString());
-        $this->assertSame('SPEI', $fresh->transfer_notes);
-        $this->assertNull($fresh->cheque_number);
+
+        $rows = $this->children($refrend);
+        $this->assertCount(1, $rows);
+        $this->assertSame('beca', $rows[0]->concept);
+        $this->assertSame('MANUAL_TRANSFER', (string) $rows[0]->getRawOriginal('method'));
+        $this->assertSame('REF-1', $rows[0]->reference);
+        $this->assertSame('1000.00', (string) $rows[0]->amount);
+        $this->assertSame('2026-05-10', $rows[0]->paid_at->toDateString());
+        $this->assertSame('SPEI', $rows[0]->notes);
+        $this->assertSame($this->admin->id, $rows[0]->created_by_id);
+        $this->assertNull($fresh->transfer_reference);
+        $this->assertNull($fresh->transfer_paid_at);
+        $this->assertNull($fresh->transfer_notes);
 
         $log = ScholarshipRefrendLog::where('scholarship_refrend_id', $refrend->id)
             ->where('action', 'MANUAL_TRANSFER_PAID')->firstOrFail();
         $this->assertSame('072', $log->new_values['bank_code']);
         $this->assertSame('Banorte', $log->new_values['bank_name']);
         $this->assertSame(self::CLABE, $log->new_values['clabe']);
-        $this->assertSame('REF-1', $log->new_values['transfer_reference']);
+        $this->assertArrayNotHasKey('transfer_reference', $log->new_values);
+        $this->assertSame('REF-1', $log->new_values['manual_payments'][0]['reference']);
+        $this->assertSame('beca', $log->new_values['manual_payments'][0]['concept']);
+    }
+
+    /** @test */
+    public function a_two_concept_refrend_writes_both_rows_atomically(): void
+    {
+        $refrend = $this->makeRefrend([], $this->twoConceptOverrides());
+
+        $this->markPaid($refrend, $this->twoConceptBody($refrend))->assertOk();
+
+        $rows = $this->children($refrend);
+        $this->assertSame(['apoyo', 'beca'], $rows->pluck('concept')->all());
+        $this->assertSame(['A-1', 'B-1'], $rows->pluck('reference')->all());
+        $this->assertEqualsWithDelta((float) $refrend->fresh()->final_amount, (float) $rows->sum('amount'), 0.001);
+    }
+
+    /** @test */
+    public function a_zero_concept_writes_no_row_and_rejects_its_reference(): void
+    {
+        $refrend = $this->makeRefrend();
+
+        $this->markPaid($refrend, $this->body('B-1', ['references' => ['beca' => 'B-1', 'apoyo' => 'A-1']]))
+            ->assertStatus(422)->assertJsonValidationErrors('references.apoyo');
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame('DRAFT', $refrend->fresh()->status->value);
+    }
+
+    /** @test */
+    public function a_blank_reference_for_a_positive_concept_is_rejected_without_rows(): void
+    {
+        $refrend = $this->makeRefrend([], $this->twoConceptOverrides());
+
+        $this->markPaid($refrend, $this->twoConceptBody($refrend, 'B-1', '   '))
+            ->assertStatus(422)->assertJsonValidationErrors('references.apoyo');
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame('DRAFT', $refrend->fresh()->status->value);
+    }
+
+    /** @test */
+    public function beca_and_apoyo_references_must_differ_ignoring_case_and_whitespace(): void
+    {
+        $refrend = $this->makeRefrend([], $this->twoConceptOverrides());
+
+        $this->markPaid($refrend, $this->twoConceptBody($refrend, 'Same-1', ' same-1 '))
+            ->assertStatus(422)->assertJsonValidationErrors('references.apoyo');
+        $this->assertSame(0, $this->children($refrend)->count());
+    }
+
+    /** @test */
+    public function stale_expected_amounts_are_a_409_and_nothing_is_written(): void
+    {
+        $refrend = $this->makeRefrend([], $this->twoConceptOverrides());
+
+        $this->markPaid($refrend, $this->twoConceptBody($refrend, 'B-1', 'A-1', [
+            'expected_amounts' => ['beca' => '1000.00', 'apoyo' => '700.00'],
+        ]))->assertStatus(409)->assertJsonPath('code', 'CONCEPT_SPLIT_CHANGED');
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame('DRAFT', $refrend->fresh()->status->value);
+    }
+
+    /** @test */
+    public function a_failure_on_the_second_insert_rolls_everything_back(): void
+    {
+        $refrend = $this->makeRefrend([], $this->twoConceptOverrides());
+        $calls = 0;
+        ScholarshipRefrendManualPayment::creating(function () use (&$calls) {
+            if (++$calls === 2) {
+                throw new \RuntimeException('boom');
+            }
+        });
+
+        try {
+            $this->markPaid($refrend, $this->twoConceptBody($refrend));
+        } catch (\Throwable) {
+            // the handler may render or rethrow; only the DB state matters
+        }
+
+        $this->assertSame(0, $this->children($refrend)->count());
+        $this->assertSame('DRAFT', $refrend->fresh()->status->value);
+        $this->assertNull($refrend->fresh()->paid_payment_method);
+    }
+
+    /** @test */
+    public function a_unique_index_violation_is_mapped_to_transfer_reference_taken(): void
+    {
+        $refrend = $this->makeRefrend();
+        $other   = $this->makeRefrend();
+        // A concurrent mark commits the same reference right after the pre-check.
+        ScholarshipRefrendManualPayment::creating(function () use ($other) {
+            DB::table('scholarship_refrend_manual_payments')->insert([
+                'refrend_id' => $other->id, 'concept' => 'beca', 'method' => 'MANUAL_TRANSFER',
+                'reference' => 'RACE', 'reference_normalized' => 'race', 'amount' => '1000.00',
+                'paid_at' => '2026-05-10', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+
+        $this->markPaid($refrend, $this->body('Race'))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'TRANSFER_REFERENCE_TAKEN')
+            ->assertJsonPath('data.concept', 'beca');
+        $this->assertSame(0, $this->children($refrend)->count());
     }
 
     /** @test */
@@ -133,10 +275,9 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
     {
         $refrend = $this->makeRefrend();
 
-        $this->markPaid($refrend, ['transfer_reference' => '   '])
+        $this->markPaid($refrend, $this->body('   '))
             ->assertStatus(422)
-            ->assertJsonValidationErrors('transfer_reference')
-            ->assertJsonPath('errors.transfer_reference.0', 'El folio de la transferencia es obligatorio.');
+            ->assertJsonValidationErrors('references.beca');
         $this->assertSame('DRAFT', $refrend->fresh()->status->value);
     }
 
@@ -153,16 +294,15 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $fresh = $refrend->fresh();
         $this->assertSame('PAID', $fresh->status->value);
         $this->assertSame('CLOSED', $fresh->workflow_status);
-        $this->assertSame('REF-1', $fresh->transfer_reference);
+        $this->assertSame(1, $this->children($refrend)->count());
         $this->assertSame(0, ScholarshipRefrendLog::where('action', 'MANUAL_TRANSFER_REVERTED')->count());
     }
 
     /** @test */
     public function a_future_paid_date_is_rejected(): void
     {
-        $this->markPaid($this->makeRefrend(), [
-            'transfer_reference' => 'X', 'transfer_paid_at' => now()->addDay()->toDateString(),
-        ])->assertStatus(422)->assertJsonValidationErrors('transfer_paid_at');
+        $this->markPaid($this->makeRefrend(), $this->body('X', ['paid_at' => now()->addDay()->toDateString()]))
+            ->assertStatus(422)->assertJsonValidationErrors('paid_at');
     }
 
     /** @test */
@@ -172,29 +312,31 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
 
         $this->markPaid($refrend)->assertOk();
 
-        $this->assertSame(now()->toDateString(), $refrend->fresh()->transfer_paid_at->toDateString());
+        $this->assertSame(now()->toDateString(), $this->children($refrend)[0]->paid_at->toDateString());
     }
 
     /** @test */
     public function a_reference_cannot_be_reused_among_manual_transfers_case_insensitively(): void
     {
-        $this->markPaid($this->makeRefrend(), ['transfer_reference' => 'Abc-1'])->assertOk();
+        $this->markPaid($this->makeRefrend(), $this->body('Abc-1'))->assertOk();
         $second = $this->makeRefrend();
 
-        $this->markPaid($second, ['transfer_reference' => ' abc-1 '])
+        $this->markPaid($second, $this->body(' abc-1 '))
             ->assertStatus(422)
-            ->assertJsonPath('code', 'TRANSFER_REFERENCE_TAKEN');
+            ->assertJsonPath('code', 'TRANSFER_REFERENCE_TAKEN')
+            ->assertJsonPath('data.concept', 'beca');
         $this->assertSame('DRAFT', $second->fresh()->status->value);
+        $this->assertSame(0, $this->children($second)->count());
     }
 
     /** @test */
     public function a_reference_is_free_again_after_a_revert(): void
     {
         $first = $this->makeRefrend();
-        $this->markPaid($first, ['transfer_reference' => 'R-9'])->assertOk();
+        $this->markPaid($first, $this->body('R-9'))->assertOk();
         $this->revert($first)->assertOk();
 
-        $this->markPaid($this->makeRefrend(), ['transfer_reference' => 'R-9'])->assertOk();
+        $this->markPaid($this->makeRefrend(), $this->body('R-9'))->assertOk();
     }
 
     /** Cheque mark body for the default 1000.00 Beca-only fixture. */
@@ -214,7 +356,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
             ->postJson("/api/admin/scholarship-payments/{$cheque->id}/cheque-payment", $this->chequeBody('SAME-1'))
             ->assertOk();
 
-        $this->markPaid($this->makeRefrend(), ['transfer_reference' => 'SAME-1'])->assertOk();
+        $this->markPaid($this->makeRefrend(), $this->body('SAME-1'))->assertOk();
     }
 
     /** @test */
@@ -223,7 +365,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $refrend = $this->makeRefrend();
         $this->markPaid($refrend)->assertOk();
 
-        $this->markPaid($refrend, ['transfer_reference' => 'OTHER'])
+        $this->markPaid($refrend, $this->body('OTHER'))
             ->assertStatus(409)->assertJsonPath('code', 'ALREADY_PAID');
     }
 
@@ -261,7 +403,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
     public function an_unknown_refrend_is_a_404(): void
     {
         $this->actingAs($this->admin)
-            ->postJson('/api/admin/scholarship-payments/999999/manual-transfer-payment', ['transfer_reference' => 'X'])
+            ->postJson('/api/admin/scholarship-payments/999999/manual-transfer-payment', $this->body('X'))
             ->assertStatus(404);
     }
 
@@ -289,10 +431,26 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $this->assertNull($fresh->locked_at);
         $this->assertNull($fresh->paid_payment_method);
         $this->assertNull($fresh->paid_batch_type);
-        $this->assertNull($fresh->transfer_reference);
-        $this->assertNull($fresh->transfer_paid_at);
-        $this->assertNull($fresh->transfer_notes);
+        $this->assertSame(0, $this->children($refrend)->count());
         $this->assertSame(1, ScholarshipRefrendLog::where('action', 'MANUAL_TRANSFER_REVERTED')->count());
+        $log = ScholarshipRefrendLog::where('action', 'MANUAL_TRANSFER_REVERTED')->firstOrFail();
+        $this->assertSame('REF-1', $log->old_values['manual_payments'][0]['reference']);
+        $this->assertSame([], $log->new_values['manual_payments']);
+        $this->assertArrayNotHasKey('transfer_reference', $log->old_values);
+        $this->markPaid($refrend)->assertOk();
+    }
+
+    /** @test */
+    public function revert_deletes_both_rows_and_frees_both_references(): void
+    {
+        $refrend = $this->makeRefrend([], $this->twoConceptOverrides());
+        $this->markPaid($refrend, $this->twoConceptBody($refrend))->assertOk();
+
+        $this->revert($refrend)->assertOk();
+
+        $this->assertSame(0, $this->children($refrend)->count());
+        $second = $this->makeRefrend([], $this->twoConceptOverrides());
+        $this->markPaid($second, $this->twoConceptBody($second))->assertOk();
     }
 
     /** @test */
@@ -343,7 +501,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $refrend = $this->makeRefrend();
         $viewer  = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
 
-        $this->markPaid($refrend, ['transfer_reference' => 'X'], $viewer)->assertStatus(403);
+        $this->markPaid($refrend, $this->body('X'), $viewer)->assertStatus(403);
         $this->revert($refrend, ['reason' => self::REASON], $viewer)->assertStatus(403);
     }
 
@@ -356,7 +514,7 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
             'bank_id' => Bank::where('code', '012')->value('id'), 'bank_name' => 'BBVA', 'account_number' => '0123456789',
             'rfc' => 'PEPJ800101ABC',
         ], [], 'C bbva');
-        $this->markPaid($paid, ['transfer_reference' => 'REF-A'])->assertOk();
+        $this->markPaid($paid, $this->body('REF-A'))->assertOk();
 
         $response = $this->actingAs($this->admin)->getJson('/api/admin/scholarship-payments?' . http_build_query([
             'campus' => self::CAMPUS, 'period_year' => self::YEAR, 'period_month' => self::MONTH, 'batch_type' => 'NORMAL',
@@ -365,7 +523,6 @@ class ScholarshipManualTransferPaymentEndpointTest extends TestCase
         $rows = $response->json('data.manual_transfer_rows');
         $this->assertSame(['A pagado', 'B pendiente'], array_column($rows, 'snapshot_name'));
         $this->assertSame('MANUAL_TRANSFER', $rows[0]['payment_method']);
-        $this->assertSame('REF-A', $rows[0]['transfer_reference']);
         $this->assertSame('072', $rows[1]['bank_code']);
         $this->assertSame(self::CLABE, $rows[1]['account_number']);
         $this->assertTrue($rows[1]['is_payable']);
