@@ -31,6 +31,8 @@ class ScholarshipPaymentConceptTotalsTest extends TestCase
 
     private User $admin;
 
+    private int $enrollmentSeq = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -46,7 +48,7 @@ class ScholarshipPaymentConceptTotalsTest extends TestCase
             'user_type'  => 'BEC_ACTIVE',
             'campus'     => self::CAMPUS,
             'active'     => true,
-            'enrollment' => 'MAT-' . random_int(100000, 999999),
+            'enrollment' => sprintf('MAT-CT-%06d', ++$this->enrollmentSeq),
         ]);
 
         if ($channel === 'cheque') {
