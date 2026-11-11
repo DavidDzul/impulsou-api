@@ -69,9 +69,14 @@ class ManualPaymentException extends \DomainException implements CarriesErrorPay
         return new static('El refrendo no está pagado con transferencia a otro banco.', 'NOT_MANUAL_TRANSFER_PAID', 422);
     }
 
-    public static function transferReferenceTaken(): static
+    public static function transferReferenceTaken(string $concept): static
     {
-        return new static('Esa referencia de transferencia ya fue registrada.', 'TRANSFER_REFERENCE_TAKEN', 422);
+        return new static(
+            'Esa referencia de transferencia ya fue registrada.',
+            'TRANSFER_REFERENCE_TAKEN',
+            422,
+            ['concept' => $concept]
+        );
     }
 
     public static function transferLogMissing(): static

@@ -7,6 +7,7 @@ use App\Exceptions\ManualPaymentException;
 use App\Models\Bank;
 use App\Models\ScholarshipPaymentData;
 use App\Models\ScholarshipRefrend;
+use App\Models\ScholarshipRefrendManualPayment;
 use App\Services\ScholarshipLoggingService;
 use App\Support\Banking\BatchBank;
 use Illuminate\Support\Facades\DB;
@@ -17,35 +18,44 @@ use Illuminate\Support\Facades\DB;
  * (PAID / CLOSED / locked_*, no payment_batch_id) with the transfer metadata
  * and the MANUAL_TRANSFER paid-method snapshot.
  *
+ * sdd/bank-file-split-other-banks-cheques PR2b: the transfer data lives in the
+ * child table (one row per concept with amount > 0, written atomically with
+ * the paid state by ManualPaymentRecorder); the legacy transfer_* columns are
+ * no longer written.
+ *
  * Guards run under the row lock, in order: already paid (409), the becario's
  * channel is MANUAL_TRANSFER, i.e. a TRANSFER method with a non-batch bank
  * (422 NOT_MANUAL_TRANSFER_METHOD), payability incl. a valid CLABE matching
- * the bank (422 NOT_PAYABLE), and finally the reference must not belong to
- * another currently manual-transfer-paid refrend (422
- * TRANSFER_REFERENCE_TAKEN; a separate namespace from cheque numbers).
+ * the bank (422 NOT_PAYABLE), then the recorder's checks (409
+ * CONCEPT_SPLIT_CHANGED, 422 references, 422 TRANSFER_REFERENCE_TAKEN; a
+ * separate namespace from cheque references).
  */
 class MarkManualTransferPaidAction
 {
     public function __construct(
         private ManualPaymentGuards $guards,
+        private ManualPaymentRecorder $recorder,
         private ScholarshipLoggingService $logging
     ) {
     }
 
     /**
+     * @param array<string, mixed> $references      concept => reference
+     * @param array<string, mixed> $expectedAmounts concept => decimal
+     *
      * @throws ManualPaymentException
+     * @throws \Illuminate\Validation\ValidationException
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
      */
     public function execute(
         int $refrendId,
         int $userId,
-        string $reference,
+        array $references,
+        array $expectedAmounts,
         ?string $paidAt,
         ?string $notes
     ): ScholarshipRefrend {
-        $reference = trim($reference);
-
-        return DB::transaction(function () use ($refrendId, $userId, $reference, $paidAt, $notes) {
+        return DB::transaction(function () use ($refrendId, $userId, $references, $expectedAmounts, $paidAt, $notes) {
             $refrend = $this->guards->lockUnpaid($refrendId);
 
             $paymentData = ScholarshipPaymentData::where('user_id', $refrend->user_id)->first();
@@ -65,19 +75,16 @@ class MarkManualTransferPaidAction
                 $bank->code
             );
 
-            // A reference identifies ONE currently manual-transfer-paid
-            // refrend (trimmed, case-insensitive). A revert clears it, so it
-            // becomes reusable. The locking read narrows the race window
-            // between two concurrent marks.
-            $taken = ScholarshipRefrend::where('paid_payment_method', PaymentMethod::MANUAL_TRANSFER->value)
-                ->where('id', '!=', $refrend->id)
-                ->whereRaw('LOWER(TRIM(transfer_reference)) = ?', [mb_strtolower($reference)])
-                ->lockForUpdate()
-                ->exists();
-
-            if ($taken) {
-                throw ManualPaymentException::transferReferenceTaken();
-            }
+            $rows = $this->recorder->record(
+                $refrend,
+                PaymentMethod::MANUAL_TRANSFER,
+                $userId,
+                $references,
+                $expectedAmounts,
+                $paidAt,
+                $notes,
+                fn (string $concept) => ManualPaymentException::transferReferenceTaken($concept)
+            );
 
             $old = $this->logging->snapshotRefrend($refrend);
 
@@ -85,11 +92,7 @@ class MarkManualTransferPaidAction
                 $userId,
                 PaymentMethod::MANUAL_TRANSFER,
                 $this->guards->frozenBatchType($refrend)
-            ) + [
-                'transfer_reference' => $reference,
-                'transfer_paid_at'   => $paidAt ?? now()->toDateString(),
-                'transfer_notes'     => $notes,
-            ]);
+            ));
 
             $refrend = $refrend->fresh();
 
@@ -103,9 +106,10 @@ class MarkManualTransferPaidAction
                     'bank_code'           => $bank->code,
                     'bank_name'           => $bank->name,
                     'clabe'               => $paymentData->account_number,
-                    'transfer_reference'  => $refrend->transfer_reference,
-                    'transfer_paid_at'    => $refrend->transfer_paid_at?->toDateString(),
-                    'transfer_notes'      => $refrend->transfer_notes,
+                    'manual_payments'     => array_map(
+                        fn (ScholarshipRefrendManualPayment $row) => ManualPaymentGuards::snapshotRow($row),
+                        $rows
+                    ),
                 ]
             );
 

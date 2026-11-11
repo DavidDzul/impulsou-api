@@ -29,8 +29,6 @@ use Illuminate\Support\Facades\DB;
  */
 class RevertManualPaymentAction
 {
-    private const TRANSFER_COLUMNS = ['transfer_reference', 'transfer_paid_at', 'transfer_notes'];
-
     public function __construct(
         private ManualPaymentGuards $guards,
         private ScholarshipLoggingService $logging,
@@ -47,9 +45,8 @@ class RevertManualPaymentAction
         $exception = $channel === PaymentMethod::CHEQUE
             ? ChequePaymentException::class
             : ManualPaymentException::class;
-        $columns = $channel === PaymentMethod::CHEQUE ? [] : self::TRANSFER_COLUMNS;
 
-        return DB::transaction(function () use ($refrendId, $reason, $channel, $exception, $columns) {
+        return DB::transaction(function () use ($refrendId, $reason, $channel, $exception) {
             $refrend = ScholarshipRefrend::lockForUpdate()->findOrFail($refrendId);
 
             if ($refrend->status !== RefrendStatus::PAID
@@ -66,14 +63,14 @@ class RevertManualPaymentAction
 
             $payments = ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->lockForUpdate()->get();
 
-            $old = $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend, $columns) + [
+            $old = $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend) + [
                 'manual_payments' => $payments->map(fn ($row) => ManualPaymentGuards::snapshotRow($row))->all(),
             ];
 
             ScholarshipRefrendManualPayment::where('refrend_id', $refrend->id)->delete();
 
             $refrend->update(array_fill_keys(
-                array_merge(['paid_payment_method', 'paid_batch_type', 'locked_at', 'locked_by_id'], $columns),
+                ['paid_payment_method', 'paid_batch_type', 'locked_at', 'locked_by_id'],
                 null
             ) + [
                 'status'          => $priorStatus->value,
@@ -91,7 +88,7 @@ class RevertManualPaymentAction
                 $refrend,
                 $channel->revertLogAction(),
                 $old,
-                $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend, $columns) + ['manual_payments' => []],
+                $this->logging->snapshotRefrend($refrend) + $this->paidFields($refrend) + ['manual_payments' => []],
                 $reason
             );
 
@@ -120,22 +117,12 @@ class RevertManualPaymentAction
         return $status;
     }
 
-    /**
-     * @param array<int, string> $columns
-     * @return array<string, mixed>
-     */
-    private function paidFields(ScholarshipRefrend $refrend, array $columns): array
+    /** @return array<string, mixed> */
+    private function paidFields(ScholarshipRefrend $refrend): array
     {
-        $fields = [
+        return [
             'paid_payment_method' => $refrend->paid_payment_method?->value,
             'paid_batch_type'     => $refrend->paid_batch_type?->value,
         ];
-
-        foreach ($columns as $column) {
-            $value = $refrend->{$column};
-            $fields[$column] = $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value;
-        }
-
-        return $fields;
     }
 }
