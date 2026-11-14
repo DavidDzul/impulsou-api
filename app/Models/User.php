@@ -196,6 +196,19 @@ class User extends Authenticatable
         ]);
     }
 
+    /**
+     * Users that may be assigned to a class: active scholarship holders of the
+     * class campus and generation. Single definition shared by auto-assign,
+     * the user filter and manual assignment.
+     */
+    public function scopeEligibleForClass(Builder $query, string $campus, int $generationId): Builder
+    {
+        return $query->where('user_type', 'BEC_ACTIVE')
+            ->where('active', true)
+            ->where('campus', $campus)
+            ->where('generation_id', $generationId);
+    }
+
     public function scholarshipProfile()
     {
         return $this->hasOne(ScholarshipProfile::class, 'user_id');
