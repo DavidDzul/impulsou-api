@@ -35,6 +35,20 @@ class ClassModel extends Model
         ];
     }
 
+    /**
+     * Single copy of the duplicate-class message, shared by the validation rule
+     * and the unique-index race handler in ClassController@store.
+     */
+    public static function duplicateDateMessage(): string
+    {
+        return 'Ya existe una clase para esa sede, generación y fecha.';
+    }
+
+    public static function createMessages(): array
+    {
+        return ['date.unique' => self::duplicateDateMessage()];
+    }
+
     public static function createRules($request = null)
     {
         return [

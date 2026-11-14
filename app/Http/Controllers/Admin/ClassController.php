@@ -15,6 +15,9 @@ use App\Models\Generation;
 use App\Models\User;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ClassController extends Controller
 {
@@ -63,28 +66,46 @@ class ClassController extends Controller
     public function store(Request $request)
     {
         // $data = $request->validate(ClassModel::createRules());
-        $data = $request->validate(ClassModel::createRules($request));
+        $data = $request->validate(ClassModel::createRules($request), ClassModel::createMessages());
 
         $data['start_time'] = Carbon::createFromFormat('H:i:s', $data['start_time'])->toTimeString();
         $data['end_time']   = Carbon::createFromFormat('H:i:s', $data['end_time'])->toTimeString();
-        $class = ClassModel::create($data);
 
-        $userIds = User::where('campus', $data['campus'])
-            ->where('generation_id', $data['generation_id'])
-            ->where('user_type', 'BEC_ACTIVE')
-            ->where('active', true)
-            ->pluck('id');
+        try {
+            $class = DB::transaction(function () use ($data) {
+                $class = ClassModel::create($data);
 
-        $attendanceData = $userIds->map(fn($userId) => [
-            'class_id'   => $class->id,
-            'user_id'    => $userId,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ])->toArray();
+                $userIds = User::eligibleForClass($data['campus'], (int) $data['generation_id'])->pluck('id');
 
-        Attendance::insert($attendanceData);
+                $attendanceData = $userIds->map(fn($userId) => [
+                    'class_id'   => $class->id,
+                    'user_id'    => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])->toArray();
+
+                Attendance::insert($attendanceData);
+
+                return $class;
+            });
+        } catch (QueryException $e) {
+            // The unique index is the real guard: a concurrent twin request lands here, never as a 500.
+            if ($this->isUniqueViolation($e)) {
+                throw ValidationException::withMessages(['date' => [ClassModel::duplicateDateMessage()]]);
+            }
+
+            throw $e;
+        }
 
         return ClassResource::make($class);
+    }
+
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        $code = $e->errorInfo[1] ?? null;
+
+        return $code === 1062
+            || ($code === 19 && str_contains($e->getMessage(), 'UNIQUE'));
     }
 
     /**
