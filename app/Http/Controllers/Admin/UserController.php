@@ -183,9 +183,7 @@ class UserController extends Controller
             'generation_id' => 'required|integer',
         ]);
 
-        $users = User::where('campus', $request->campus)
-            ->where('generation_id', $request->generation_id)
-            ->get();
+        $users = User::eligibleForClass($request->campus, (int) $request->generation_id)->get();
 
         return response()->json([
             'res' => true,
