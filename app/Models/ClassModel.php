@@ -30,6 +30,8 @@ class ClassModel extends Model
         return [
             'campus'     => 'required|in:MERIDA,TIZIMIN,OXKUTZCAB,VALLADOLID',
             'generation_id' => 'required|exists:generations,id',
+            'year'       => 'nullable|integer|between:2020,2100|required_with:month',
+            'month'      => 'nullable|integer|between:1,12',
         ];
     }
 

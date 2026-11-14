@@ -36,8 +36,18 @@ class ClassController extends Controller
             ], 401);
         }
 
+        $year = $data['year'] ?? null;
+        $month = $data['month'] ?? null;
+
+        // Half-open range [start, end) so the date index can be used.
+        $start = $year ? Carbon::create((int) $year, $month ? (int) $month : 1, 1)->startOfDay() : null;
+        $end = $start ? ($month ? $start->copy()->addMonth() : $start->copy()->addYear()) : null;
+
         $classes = ClassModel::where('campus', $data['campus'])
             ->where('generation_id', $data['generation_id'])
+            ->when($start, fn ($query) => $query
+                ->where('date', '>=', $start->toDateString())
+                ->where('date', '<', $end->toDateString()))
             ->orderBy('created_at', 'desc')
             ->get();
 
