@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Attendance;
 use App\Models\AttendanceToken;
+use App\Models\ClassModel;
+use App\Models\User;
+use App\Exceptions\ClassUsersNotEligibleException;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class AttendanceController extends Controller
@@ -32,11 +36,12 @@ class AttendanceController extends Controller
         $data = $request->validate([
             'class_id'   => 'required|exists:classes,id',
             'user_ids'   => 'required|array',
-            'user_ids.*' => 'exists:users,id',
+            'user_ids.*' => 'integer|distinct|exists:users,id',
         ]);
 
-        $classId = $data['class_id'];
-        $incomingUserIds = $data['user_ids'];
+        $class = ClassModel::findOrFail($data['class_id']);
+        $classId = $class->id;
+        $incomingUserIds = array_values(array_unique($data['user_ids']));
 
         // Usuarios que ya están en attendance
         $existingAttendances = Attendance::where('class_id', $classId)->get();
@@ -44,15 +49,20 @@ class AttendanceController extends Controller
         $existingUserIds = $existingAttendances->pluck('user_id')->toArray();
 
         // Diferencias
-        $toInsert = array_diff($incomingUserIds, $existingUserIds);
+        $toInsert = array_values(array_diff($incomingUserIds, $existingUserIds));
         $toDelete = array_diff($existingUserIds, $incomingUserIds);
 
-        // Insertar nuevos
-        foreach ($toInsert as $userId) {
-            Attendance::create([
-                'class_id' => $classId,
-                'user_id'  => $userId,
-            ]);
+        // Elegibilidad solo para los NUEVOS; los ya asignados nunca se revalidan.
+        if (!empty($toInsert)) {
+            $eligibleIds = User::eligibleForClass($class->campus, (int) $class->generation_id)
+                ->whereIn('id', $toInsert)
+                ->pluck('id')
+                ->all();
+            $ineligible = array_values(array_diff($toInsert, $eligibleIds));
+
+            if (!empty($ineligible)) {
+                throw new ClassUsersNotEligibleException($ineligible);
+            }
         }
 
         // Filtrar los que sí se pueden eliminar (check_in = null)
@@ -62,12 +72,23 @@ class AttendanceController extends Controller
             ->pluck('user_id')
             ->toArray();
 
-        // Eliminar solo los permitidos
-        if (!empty($toDeleteFiltered)) {
-            Attendance::where('class_id', $classId)
-                ->whereIn('user_id', $toDeleteFiltered)
-                ->delete();
-        }
+        // Todas las validaciones ya pasaron: escribir en una sola transacción.
+        DB::transaction(function () use ($toInsert, $toDeleteFiltered, $classId) {
+            foreach ($toInsert as $userId) {
+                Attendance::create([
+                    'class_id' => $classId,
+                    'user_id'  => $userId,
+                    'status'   => 'ABSENT',
+                ]);
+            }
+
+            if (!empty($toDeleteFiltered)) {
+                Attendance::where('class_id', $classId)
+                    ->whereIn('user_id', $toDeleteFiltered)
+                    ->whereNull('check_in')
+                    ->delete();
+            }
+        });
 
         // Retornar los attendance actualizados con relación a user
         $attendances = Attendance::with('user')
