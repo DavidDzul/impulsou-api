@@ -78,16 +78,21 @@ class PersonsScopeAuthorizationTest extends TestCase
         $business = $this->makeUser('BUSINESS', 'MERIDA');
         $rootAdm = $this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION');
         $staff = $this->makeUser('ADMIN', 'MERIDA', 'ATTENDANCE');
-        $actors = [
+        $writers = [
             $this->makeUser('ADMIN', 'MERIDA', 'ROOT'),
-            $this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION'),
             $this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS'),
             $this->makeUser('ADMIN', 'MERIDA', 'ADMIN_STUDENT'),
         ];
+        // ROOT_ADMINISTRATION reads persons for administration-panel (ADM_READ_USERS) but cannot
+        // write them: its PUT stops at the gate (403, covered by PersonsGateMatrixTest), so it is
+        // only checked on the read path here.
+        $readers = array_merge($writers, [$this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION')]);
 
-        foreach ($actors as $actor) {
-            foreach ([$business, $rootAdm, $staff] as $target) {
+        foreach ([$business, $rootAdm, $staff] as $target) {
+            foreach ($readers as $actor) {
                 $this->as($actor)->getJson("/api/admin/{$resource}/{$target->id}")->assertNotFound();
+            }
+            foreach ($writers as $actor) {
                 $this->as($actor)
                     ->putJson("/api/admin/{$resource}/{$target->id}", ['user_type' => 'BEC_ACTIVE', 'first_name' => 'X'])
                     ->assertNotFound();
