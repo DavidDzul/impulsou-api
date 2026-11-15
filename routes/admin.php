@@ -88,8 +88,9 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::match(['put', 'patch'], 'businessData/{businessData}', [BusinessDataController::class, 'update'])->whereNumber('businessData')->middleware('ps_permission:PS_EDIT_BUSINESS');
     Route::get('businessAgreement/{businessAgreement}', [BusinessAgreementController::class, 'show'])->whereNumber('businessAgreement')->middleware('ps_permission:PS_READ_BUSINESS');
 
-    // ROOT role only (ps_root); no PS_ROLES grant is consulted. Explicit routes: no create/show/delete.
-    Route::prefix('roles')->middleware('ps_root')->group(function () {
+    // Business plan roles (USER) only. Configurable gate: ROOT always passes (PS bypass), ROOT_JOB holds PS_ROLES.
+    // Safe because the controller can only grant USER permissions, never PS_*/ADM_*. Explicit routes: no create/show/delete.
+    Route::prefix('roles')->middleware('ps_permission:PS_ROLES')->group(function () {
         Route::get('/', [RoleController::class, 'index']);
         Route::get('permissions', [RoleController::class, 'getAllPermissions']);
         Route::match(['put', 'patch'], '{id}', [RoleController::class, 'update'])->whereNumber('id');

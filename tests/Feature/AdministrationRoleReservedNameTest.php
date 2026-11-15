@@ -45,6 +45,23 @@ class AdministrationRoleReservedNameTest extends TestCase
     }
 
     /** @test */
+    public function yucatan_and_business_tier_names_are_reserved_even_when_the_role_row_is_missing(): void
+    {
+        // Deleting the rows proves the RESERVED_NAMES check fires, not only the unique rule.
+        Role::whereIn('name', ['YUCATAN', 'BASIC', 'DIAMOND'])->delete();
+        $count = Role::count();
+
+        foreach (['YUCATAN', 'yucatan', 'BASIC', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'diamond'] as $name) {
+            $this->actingAs($this->rootAdmin)
+                ->postJson('/api/admin/administration-roles', ['name' => $name])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('name');
+        }
+
+        $this->assertSame($count, Role::count());
+    }
+
+    /** @test */
     public function a_fresh_name_is_still_created(): void
     {
         $this->actingAs($this->rootAdmin)

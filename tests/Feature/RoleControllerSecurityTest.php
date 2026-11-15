@@ -12,8 +12,8 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
- * RoleController lock-down: ROOT only (ps_root), business plan roles (type USER)
- * ONLY. Staff (ADMIN, incl. ROOT) and ADMINISTRATION roles are 404 and never
+ * RoleController lock-down: gate ps_permission:PS_ROLES (ROOT always passes, ROOT_JOB holds
+ * PS_ROLES), business plan roles (type USER) ONLY. Staff (ADMIN, incl. ROOT) and ADMINISTRATION roles are 404 and never
  * listed. Permissions must be type USER. 403 (gate) -> 404 -> 422 ordering.
  */
 class RoleControllerSecurityTest extends TestCase
@@ -125,11 +125,11 @@ class RoleControllerSecurityTest extends TestCase
         $this->assertSame(0, $admin->filter(fn ($n) => str_starts_with($n, 'PS_') || str_starts_with($n, 'ADM_'))->count());
     }
 
-    public function test_only_root_role_passes_the_gate_on_all_three_routes(): void
+    public function test_roles_without_ps_roles_are_forbidden_on_all_three_routes(): void
     {
         $gold = $this->roleId('GOLD');
 
-        foreach (['ROOT_JOB', 'ROOT_CAMPUS', 'ADMIN_JOB', 'ROOT_ADMINISTRATION'] as $role) {
+        foreach (['ROOT_CAMPUS', 'ADMIN_JOB', 'ROOT_ADMINISTRATION'] as $role) {
             $this->actor($role);
             $this->getJson('/api/admin/roles')->assertForbidden();
             $this->getJson('/api/admin/roles/permissions')->assertForbidden();
@@ -137,14 +137,35 @@ class RoleControllerSecurityTest extends TestCase
         }
     }
 
-    public function test_root_job_with_ps_roles_granted_directly_is_still_forbidden(): void
+    public function test_root_job_holds_ps_roles_and_passes_on_all_three_routes(): void
     {
-        $actor = $this->actor('ROOT_JOB');
-        $actor->givePermissionTo('PS_ROLES');
+        $gold = $this->roleId('GOLD');
+        $this->actor('ROOT_JOB');
+
+        $this->getJson('/api/admin/roles')->assertOk();
+        $this->getJson('/api/admin/roles/permissions')->assertOk();
+        $this->putJson("/api/admin/roles/{$gold}", $this->tierPayload([]))->assertOk();
+    }
+
+    public function test_root_job_is_forbidden_once_ps_roles_is_revoked_from_it(): void
+    {
+        $this->actor('ROOT_JOB');
+        Role::where('name', 'ROOT_JOB')->first()->revokePermissionTo('PS_ROLES');
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->getJson('/api/admin/roles')->assertForbidden();
         $this->getJson('/api/admin/roles/permissions')->assertForbidden();
+    }
+
+    public function test_a_role_without_ps_roles_passes_when_it_is_granted_directly(): void
+    {
+        $actor = $this->actor('ROOT_CAMPUS');
+        $this->getJson('/api/admin/roles')->assertForbidden();
+
+        $actor->givePermissionTo('PS_ROLES');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $this->getJson('/api/admin/roles')->assertOk();
     }
 
     public function test_unauthenticated_gets_401(): void
@@ -192,6 +213,33 @@ class RoleControllerSecurityTest extends TestCase
 
         $this->assertSame($before, $this->permNames('GOLD'));
         $this->assertDatabaseMissing('role_configuration', ['role_id' => $gold, 'num_job_vacancies' => 7]);
+    }
+
+    public function test_tier_update_without_permissions_ids_is_422_and_leaves_permissions_unchanged(): void
+    {
+        $this->actor('ROOT');
+        $diamond = $this->roleId('DIAMOND');
+        $before = $this->permNames('DIAMOND');
+        $this->assertNotEmpty($before);
+
+        $payload = $this->tierPayload([]);
+        unset($payload['permissions_ids']);
+
+        $this->putJson("/api/admin/roles/{$diamond}", $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('permissions_ids');
+
+        $this->assertSame($before, $this->permNames('DIAMOND'));
+    }
+
+    public function test_an_explicit_empty_permissions_ids_still_clears_the_tier(): void
+    {
+        $this->actor('ROOT');
+        $diamond = $this->roleId('DIAMOND');
+
+        $this->putJson("/api/admin/roles/{$diamond}", $this->tierPayload([]))->assertOk();
+
+        $this->assertSame([], $this->permNames('DIAMOND'));
     }
 
     public function test_name_in_payload_is_ignored_on_tier_update(): void

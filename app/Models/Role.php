@@ -67,7 +67,8 @@ class Role extends SpatieRole
             'num_jr_vacancies' => 'required|integer|min:0',
             'unlimited_visualizations'          => 'boolean',
             'num_visualizations' => 'required|integer|min:0',
-            'permissions_ids'    => 'array',
+            // present: an omitted key must not silently wipe the tier's permissions (an explicit [] clears them).
+            'permissions_ids'    => 'present|array',
             'permissions_ids.*'  => [Rule::exists('permissions', 'id')->where('type', 'USER')],
         ];
     }
@@ -78,7 +79,10 @@ class Role extends SpatieRole
     }
 
     /** Role names that an administration role may never take (compared case-insensitively). */
-    public const RESERVED_NAMES = ['ROOT', 'ROOT_JOB', 'ROOT_ADMINISTRATION'];
+    public const RESERVED_NAMES = [
+        'ROOT', 'ROOT_JOB', 'ROOT_ADMINISTRATION', 'YUCATAN',
+        'BASIC', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND',
+    ];
 
     /**
      * Validation rules for creating a Control (administration-panel) role.
