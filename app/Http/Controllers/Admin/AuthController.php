@@ -59,8 +59,10 @@ class AuthController extends Controller
 
     public function updateProfile(Request $request)
     {
-        $user = User::findOrFail($request->id);
+        // Always the authenticated account: a body `id` must never select another user.
+        $user = $request->user();
         $data = $request->validate(User::updateRulesProfile($user->id));
+        unset($data['id']);
 
         if ($request->filled('password')) {
             $data['password'] = Hash::make($data['password']);
