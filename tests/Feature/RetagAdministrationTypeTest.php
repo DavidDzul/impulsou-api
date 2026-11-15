@@ -123,9 +123,10 @@ class RetagAdministrationTypeTest extends TestCase
 
     /**
      * Spec R1 scenario "Retagging does not alter any PS_* permission or any
-     * other role's type" — spot-checks ROOT, ROOT_CAMPUS, a PS_* permission,
-     * and a business-tier role (DIAMOND), all of which must remain
-     * type='USER' (the column default) after the retag.
+     * other role's type" — spot-checks ROOT, ROOT_CAMPUS, a PS_* permission
+     * and a business-tier role (DIAMOND). Since empresas-autorizacion-api
+     * (RoleSeeder aligned with staging) staff roles and PS_* are 'ADMIN' and
+     * tiers stay 'USER'; none of them may become 'ADMINISTRATION'.
      *
      * @test
      */
@@ -143,9 +144,9 @@ class RetagAdministrationTypeTest extends TestCase
         $this->assertNotNull($diamond);
         $this->assertNotNull($psPermission);
 
-        $this->assertSame('USER', $root->type, 'ROOT must remain type=USER.');
-        $this->assertSame('USER', $rootCampus->type, 'ROOT_CAMPUS must remain type=USER.');
+        $this->assertSame('ADMIN', $root->type, 'ROOT must be type=ADMIN (staging semantics).');
+        $this->assertSame('ADMIN', $rootCampus->type, 'ROOT_CAMPUS must be type=ADMIN (staging semantics).');
         $this->assertSame('USER', $diamond->type, 'DIAMOND must remain type=USER.');
-        $this->assertSame('USER', $psPermission->type, 'PS_READ_USERS must remain type=USER.');
+        $this->assertSame('ADMIN', $psPermission->type, 'PS_READ_USERS must be type=ADMIN (staging semantics).');
     }
 }

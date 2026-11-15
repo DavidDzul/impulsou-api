@@ -6,6 +6,16 @@ use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 
+/**
+ * Local/test seed data only. Types mirror staging (design empresas-autorizacion-api B1):
+ * USER = business tiers + CANDIDATES_VIEW/CREATE_VACANT_JR; ADMIN = psicol staff roles + PS_*;
+ * ADMINISTRATION = ROOT_ADMINISTRATION + ADM_*. Every line is updateOrCreate, so a re-run
+ * on a local DB is safe and retags old rows.
+ *
+ * NEVER run this seeder on staging or production: syncRoles() REPLACES each permission's
+ * grant set with the matrix below and would wipe any drift/customisation made there.
+ * Staging/prod changes go through the docs/deploy-staging SQL scripts instead.
+ */
 class RoleSeeder extends Seeder
 {
     /**
@@ -16,75 +26,69 @@ class RoleSeeder extends Seeder
     public function run()
     {
         //
-        Role::create(['name' => 'BASIC']);
-        $bronzeRole = Role::create(['name' => 'BRONZE']);
-        $silverRole = Role::create(['name' => 'SILVER']);
-        $goldRole = Role::create(['name' => 'GOLD']);
-        $platinumRole = Role::create(['name' => 'PLATINUM']);
-        $diamondRole = Role::create(['name' => 'DIAMOND']);
+        Role::updateOrCreate(['name' => 'BASIC'], ['type' => 'USER']);
+        $bronzeRole = Role::updateOrCreate(['name' => 'BRONZE'], ['type' => 'USER']);
+        $silverRole = Role::updateOrCreate(['name' => 'SILVER'], ['type' => 'USER']);
+        $goldRole = Role::updateOrCreate(['name' => 'GOLD'], ['type' => 'USER']);
+        $platinumRole = Role::updateOrCreate(['name' => 'PLATINUM'], ['type' => 'USER']);
+        $diamondRole = Role::updateOrCreate(['name' => 'DIAMOND'], ['type' => 'USER']);
 
-        $rootRole = Role::create(['name' => 'ROOT']);
-        $rootCampusRole = Role::create(['name' => 'ROOT_CAMPUS']);
-        $yucatanRole = Role::create(['name' => 'YUCATAN']);
-        $attendanceRole = Role::create(['name' => 'ATTENDANCE']);
-        $adminStudentRole = Role::create(['name' => 'ADMIN_STUDENT']);
-        $rootJobRole = Role::create(['name' => 'ROOT_JOB']);
-        $adminJobRole = Role::create(['name' => 'ADMIN_JOB']);
-        // This entry uses updateOrCreate so it is safe to seed onto an already-populated DB
-        // (e.g. via `php artisan tinker`, targeting only this line). The rest of this seeder
-        // class is NOT idempotent — do not run the full class via `db:seed` on a non-fresh DB.
-        // updateOrCreate() matches by `name` only and forces `type` on BOTH create AND update,
-        // which is required here: control-accesos-administration-panel PR1 (B0 retag, design
-        // obs #1593) needs this line to retag a ROOT_ADMINISTRATION row that may already exist
-        // with type='USER' (the column default) from prior seeding — firstOrCreate() cannot do
-        // this, since it only sets attributes on CREATE, never on an existing match.
+        $rootRole = Role::updateOrCreate(['name' => 'ROOT'], ['type' => 'ADMIN']);
+        $rootCampusRole = Role::updateOrCreate(['name' => 'ROOT_CAMPUS'], ['type' => 'ADMIN']);
+        $yucatanRole = Role::updateOrCreate(['name' => 'YUCATAN'], ['type' => 'ADMIN']);
+        $attendanceRole = Role::updateOrCreate(['name' => 'ATTENDANCE'], ['type' => 'ADMIN']);
+        $adminStudentRole = Role::updateOrCreate(['name' => 'ADMIN_STUDENT'], ['type' => 'ADMIN']);
+        $rootJobRole = Role::updateOrCreate(['name' => 'ROOT_JOB'], ['type' => 'ADMIN']);
+        $adminJobRole = Role::updateOrCreate(['name' => 'ADMIN_JOB'], ['type' => 'ADMIN']);
+        // Same updateOrCreate rationale: matches by `name` and forces `type` on create AND update
+        // (control-accesos-administration-panel PR1 B0 retag, design obs #1593).
         $rootAdministrationRole = Role::updateOrCreate(['name' => 'ROOT_ADMINISTRATION'], ['type' => 'ADMINISTRATION']);
 
         /** PANEL DE USUARIO */
-        Permission::create(['name' => 'CANDIDATES_VIEW'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
-        Permission::create(['name' => 'CREATE_VACANT_JR'])->syncRoles([$diamondRole]);
+        Permission::updateOrCreate(['name' => 'CANDIDATES_VIEW'], ['type' => 'USER'])->syncRoles([$bronzeRole, $silverRole, $goldRole, $platinumRole, $diamondRole]);
+        Permission::updateOrCreate(['name' => 'CREATE_VACANT_JR'], ['type' => 'USER'])->syncRoles([$diamondRole]);
 
         /** PANEL ADMINISTRATIVO */
-        Permission::create(['name' => 'PS_GROUP_USERS'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $adminStudentRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_USERS'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_READ_USERS'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_CREATE_USERS'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_EDIT_USERS'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $adminStudentRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
-        Permission::create(['name' => 'PS_GRADUATES'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_READ_GRADUATES'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_CREATE_GRADUATES'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_EDIT_GRADUATES'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
-        Permission::create(['name' => 'PS_BUSINESS'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_READ_BUSINESS'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_CREATE_BUSINESS'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_EDIT_BUSINESS'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
-        Permission::create(['name' => 'PS_GROUP_JOBS'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_VACANT'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_READ_VACANT'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_CREATE_VACANT'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_EDIT_VACANT'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_JOBS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
-        Permission::create(['name' => 'PS_APPLICATION'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_READ_APPLICATION'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::create(['name' => 'PS_EDIT_APPLICATION'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_APPLICATION'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_APPLICATION'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_APPLICATION'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
-        Permission::create(['name' => 'PS_GROUP_CONFIG'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole, $rootJobRole]);
-        Permission::create(['name' => 'PS_GRAPHICS'])->syncRoles([$rootRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_CONFIG'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GRAPHICS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootJobRole]);
 
-        Permission::create(['name' => 'PS_GROUP_ATTENDANCE'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_CHECK'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_CLASSES'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_ATTENDANCE'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CHECK'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CLASSES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
-        Permission::create(['name' => 'PS_GENERATIONS'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::create(['name' => 'PS_ROLES'])->syncRoles([$rootRole, $rootJobRole]);
-        Permission::create(['name' => 'PS_NOTICES'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
+        Permission::updateOrCreate(['name' => 'PS_GENERATIONS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_NOTICES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
 
-        Permission::create(['name' => 'PS_GROUP_SCHOLARSHIPS'])->syncRoles([$rootRole]);
-        Permission::create(['name' => 'PS_SCHOLARSHIPS_ATENCION'])->syncRoles([$rootRole]);
-        Permission::create(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_SCHOLARSHIPS'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_ATENCION'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
 
         // Effective only for MERIDA staff (User::hasGlobalBusinessVisibility). Type ADMIN mirrors
         // the staging PS_* permissions. Default grant: ROOT only. ROOT_JOB is intentionally not
