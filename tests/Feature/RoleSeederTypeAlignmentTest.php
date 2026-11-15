@@ -96,12 +96,12 @@ class RoleSeederTypeAlignmentTest extends TestCase
     }
 
     /** @test */
-    public function ps_roles_is_granted_to_root_only(): void
+    public function ps_roles_is_granted_to_root_and_root_job(): void
     {
         $this->seed(RoleSeeder::class);
 
-        $this->assertSame(
-            ['ROOT'],
+        $this->assertEqualsCanonicalizing(
+            ['ROOT', 'ROOT_JOB'],
             Permission::where('name', 'PS_ROLES')->firstOrFail()->roles()->pluck('name')->all()
         );
     }
@@ -147,9 +147,40 @@ class RoleSeederTypeAlignmentTest extends TestCase
         $this->assertSame('ADMIN', Role::where('name', 'ROOT')->firstOrFail()->type);
         $this->assertSame('USER', Role::where('name', 'DIAMOND')->firstOrFail()->type);
         $this->assertSame('ADMIN', Permission::where('name', 'PS_READ_USERS')->firstOrFail()->type);
-        $this->assertSame(
-            ['ROOT'],
+        $this->assertEqualsCanonicalizing(
+            ['ROOT', 'ROOT_JOB'],
             Permission::where('name', 'PS_ROLES')->firstOrFail()->roles()->pluck('name')->all()
         );
+    }
+
+    /** @test */
+    public function seeding_is_refused_in_production_and_staging_and_changes_nothing(): void
+    {
+        foreach (['production', 'staging'] as $env) {
+            $this->app['env'] = $env;
+
+            // Direct call: db:seed --force would skip artisan's own production prompt, this guard must not depend on it.
+            try {
+                (new RoleSeeder())->run();
+                $this->fail("RoleSeeder must refuse to run in {$env}.");
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString($env, $e->getMessage());
+            }
+
+            $this->assertSame(0, Role::count());
+            $this->assertSame(0, Permission::count());
+        }
+    }
+
+    /** @test */
+    public function seeding_still_works_in_local_and_testing(): void
+    {
+        foreach (['local', 'testing'] as $env) {
+            $this->app['env'] = $env;
+
+            $this->seed(RoleSeeder::class);
+
+            $this->assertGreaterThan(0, Role::count());
+        }
     }
 }

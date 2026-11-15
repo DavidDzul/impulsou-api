@@ -25,7 +25,14 @@ class RoleSeeder extends Seeder
      */
     public function run()
     {
-        //
+        // Hard stop, not only a docblock: syncRoles() below would replace live grants.
+        if (app()->environment(['production', 'staging'])) {
+            throw new \RuntimeException(sprintf(
+                'RoleSeeder refused to run in the "%s" environment: it overwrites role/permission grants. Use the docs/deploy-staging SQL scripts instead.',
+                app()->environment()
+            ));
+        }
+
         Role::updateOrCreate(['name' => 'BASIC'], ['type' => 'USER']);
         $bronzeRole = Role::updateOrCreate(['name' => 'BRONZE'], ['type' => 'USER']);
         $silverRole = Role::updateOrCreate(['name' => 'SILVER'], ['type' => 'USER']);
@@ -83,7 +90,8 @@ class RoleSeeder extends Seeder
         Permission::updateOrCreate(['name' => 'PS_CLASSES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
         Permission::updateOrCreate(['name' => 'PS_GENERATIONS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+        // Configurable gate of /roles (business plans only): ROOT always passes; ROOT_JOB holds it as in staging.
+        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootJobRole]);
         Permission::updateOrCreate(['name' => 'PS_NOTICES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
 
         Permission::updateOrCreate(['name' => 'PS_GROUP_SCHOLARSHIPS'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
