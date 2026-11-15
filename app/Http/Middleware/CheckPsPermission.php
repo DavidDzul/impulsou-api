@@ -9,10 +9,15 @@ use Spatie\Permission\Exceptions\UnauthorizedException;
 /**
  * Gate for psicol-panel permissions (PS_*) with a ROOT bypass.
  *
- * ROOT passes only when EVERY requested permission starts with "PS_", so the
- * bypass is independent of seeder/DB drift but never leaks to ADM_* gates or
- * to mixed lists. Everyone else is delegated to CheckPermission unchanged
- * (same 401/403 contract).
+ * ROOT passes when the requested list contains AT LEAST ONE "PS_" permission, so
+ * "ROOT has access to everything in psicol" does not depend on seeder/DB drift,
+ * including mixed lists such as PS_READ_USERS|ADM_READ_USERS. Lists made only of
+ * ADM_* permissions never bypass (ROOT keeps no administration-panel access).
+ * Everyone else is delegated to CheckPermission unchanged (same 401/403 contract).
+ *
+ * Separator: ONLY "|" separates permissions. Laravel splits middleware
+ * parameters on commas, so "ps_permission:PS_A,PS_B" is read as permission
+ * PS_A with guard PS_B (an invalid guard) and fails; never use a comma.
  */
 class CheckPsPermission
 {
@@ -28,21 +33,21 @@ class CheckPsPermission
 
         $permissions = is_array($permission) ? $permission : explode('|', $permission);
 
-        if ($user->hasRole('ROOT') && $this->allArePsPermissions($permissions)) {
+        if ($user->hasRole('ROOT') && $this->containsPsPermission($permissions)) {
             return $next($request);
         }
 
         return app(CheckPermission::class)->handle($request, $next, $permission, $guard);
     }
 
-    private function allArePsPermissions(array $permissions): bool
+    private function containsPsPermission(array $permissions): bool
     {
         foreach ($permissions as $name) {
-            if (!str_starts_with($name, self::PS_PREFIX)) {
-                return false;
+            if (str_starts_with($name, self::PS_PREFIX)) {
+                return true;
             }
         }
 
-        return $permissions !== [];
+        return false;
     }
 }

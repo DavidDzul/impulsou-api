@@ -32,6 +32,10 @@ class PsPermissionMiddlewareTest extends TestCase
                 ->middleware('ps_permission:ADM_READ_USERS');
             Route::get('mixed', fn () => response()->json(['ok' => true]))
                 ->middleware('ps_permission:PS_READ_BUSINESS|ADM_READ_USERS');
+            Route::get('adm-list', fn () => response()->json(['ok' => true]))
+                ->middleware('ps_permission:ADM_READ_USERS|ADM_EDIT_USERS');
+            Route::get('comma', fn () => response()->json(['ok' => true]))
+                ->middleware('ps_permission:PS_READ_BUSINESS,PS_CREATE_BUSINESS');
             Route::get('root-only', fn () => response()->json(['ok' => true]))
                 ->middleware('ps_root');
         });
@@ -62,13 +66,38 @@ class PsPermissionMiddlewareTest extends TestCase
         $this->getJson('/__test/ps-adm-adm')->assertForbidden();
     }
 
-    public function test_root_is_not_bypassed_on_mixed_list(): void
+    public function test_root_passes_mixed_list_when_it_contains_a_ps_permission(): void
     {
         Role::findByName('ROOT')->revokePermissionTo('PS_READ_BUSINESS');
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         Sanctum::actingAs($this->staff('ROOT'));
 
+        $this->getJson('/__test/mixed')->assertOk();
+    }
+
+    public function test_root_is_forbidden_on_adm_only_list(): void
+    {
+        Sanctum::actingAs($this->staff('ROOT'));
+
+        $this->getJson('/__test/adm-list')->assertForbidden();
+    }
+
+    public function test_non_root_on_mixed_list_still_needs_a_real_permission(): void
+    {
+        Role::findByName('ROOT_CAMPUS')->revokePermissionTo('PS_READ_BUSINESS');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        Sanctum::actingAs($this->staff('ROOT_CAMPUS'));
+
         $this->getJson('/__test/mixed')->assertForbidden();
+    }
+
+    public function test_comma_is_not_a_permission_separator(): void
+    {
+        Sanctum::actingAs($this->staff('ROOT'));
+        $this->getJson('/__test/comma')->assertStatus(500);
+
+        Sanctum::actingAs($this->staff('ROOT_CAMPUS'));
+        $this->getJson('/__test/comma')->assertStatus(500);
     }
 
     public function test_unauthenticated_gets_401(): void
