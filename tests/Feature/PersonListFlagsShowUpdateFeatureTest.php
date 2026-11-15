@@ -29,7 +29,11 @@ class PersonListFlagsShowUpdateFeatureTest extends TestCase
 
     private function admin(): User
     {
-        return User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $this->seed(\Database\Seeders\RoleSeeder::class);
+        $admin = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $admin->assignRole('ROOT');
+
+        return $admin;
     }
 
     private function withFullProfile(string $type): User

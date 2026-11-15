@@ -49,21 +49,30 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         ->middleware('ps_permission:PS_READ_BUSINESS|PS_CREATE_VACANT|PS_EDIT_VACANT');
 
     Route::apiResource('generations', GenerationController::class);
-    Route::get('filterUsers', [UserController::class, 'getUsersByFilters']);
+    Route::get('filterUsers', [UserController::class, 'getUsersByFilters'])
+        ->middleware('ps_permission:PS_CLASSES|PS_READ_USERS');
 
     // Explicit routes (no apiResource): no destroy, numeric ids only. fetchPDF stays first.
-    Route::put('users/{id}/fetchPDF', [UserController::class, 'showUserPDF'])->whereNumber('id');
-    Route::get('users', [UserController::class, 'index']);
-    Route::post('users', [UserController::class, 'store']);
-    Route::get('users/{id}', [UserController::class, 'show'])->whereNumber('id');
-    Route::match(['put', 'patch'], 'users/{id}', [UserController::class, 'update'])->whereNumber('id');
+    Route::put('users/{id}/fetchPDF', [UserController::class, 'showUserPDF'])->whereNumber('id')
+        ->middleware('ps_permission:PS_READ_USERS|PS_READ_GRADUATES');
+    Route::get('users', [UserController::class, 'index'])
+        ->middleware('ps_permission:PS_READ_USERS|PS_READ_GRADUATES|ADM_READ_USERS');
+    Route::post('users', [UserController::class, 'store'])->middleware('ps_permission:PS_CREATE_USERS');
+    Route::get('users/{id}', [UserController::class, 'show'])->whereNumber('id')
+        ->middleware('ps_permission:PS_READ_USERS|PS_READ_GRADUATES|ADM_READ_USERS');
+    Route::match(['put', 'patch'], 'users/{id}', [UserController::class, 'update'])->whereNumber('id')
+        ->middleware('ps_permission:PS_EDIT_USERS|PS_EDIT_GRADUATES');
 
-    Route::get('graduates', [GraduateController::class, 'index']);
-    Route::post('graduates', [GraduateController::class, 'store']);
-    Route::get('graduates/{id}', [GraduateController::class, 'show'])->whereNumber('id');
-    Route::match(['put', 'patch'], 'graduates/{id}', [GraduateController::class, 'update'])->whereNumber('id');
+    Route::get('graduates', [GraduateController::class, 'index'])
+        ->middleware('ps_permission:PS_READ_USERS|PS_READ_GRADUATES|ADM_READ_USERS');
+    Route::post('graduates', [GraduateController::class, 'store'])->middleware('ps_permission:PS_CREATE_GRADUATES');
+    Route::get('graduates/{id}', [GraduateController::class, 'show'])->whereNumber('id')
+        ->middleware('ps_permission:PS_READ_USERS|PS_READ_GRADUATES|ADM_READ_USERS');
+    Route::match(['put', 'patch'], 'graduates/{id}', [GraduateController::class, 'update'])->whereNumber('id')
+        ->middleware('ps_permission:PS_EDIT_USERS|PS_EDIT_GRADUATES');
 
-    Route::post('persons', [PersonController::class, 'store']);
+    Route::post('persons', [PersonController::class, 'store'])
+        ->middleware('ps_permission:PS_CREATE_USERS|PS_CREATE_GRADUATES');
 
     Route::prefix('business')->group(function () {
         Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement'])

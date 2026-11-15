@@ -70,7 +70,7 @@ class PersonsIndexCharacterizationTest extends TestCase
             'ROOT_CAMPUS MERIDA sees own campus' => ['ROOT_CAMPUS', 'MERIDA', 'MERIDA'],
             'ROOT_CAMPUS VALLADOLID sees own campus' => ['ROOT_CAMPUS', 'VALLADOLID', 'VALLADOLID'],
             'ADMIN_STUDENT MERIDA sees own campus' => ['ADMIN_STUDENT', 'MERIDA', 'MERIDA'],
-            'roleless ADMIN sees own campus' => [null, 'MERIDA', 'MERIDA'],
+            'ADMIN_STUDENT VALLADOLID sees own campus' => ['ADMIN_STUDENT', 'VALLADOLID', 'VALLADOLID'],
         ];
     }
 

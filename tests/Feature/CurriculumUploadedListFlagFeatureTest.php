@@ -26,7 +26,9 @@ class CurriculumUploadedListFlagFeatureTest extends TestCase
 
     private function rows(string $resource, string $key)
     {
+        $this->seed(\Database\Seeders\RoleSeeder::class);
         $admin = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $admin->assignRole('ROOT');
 
         return collect(
             $this->actingAs($admin)->getJson("/api/admin/{$resource}")->assertOk()->json($key)

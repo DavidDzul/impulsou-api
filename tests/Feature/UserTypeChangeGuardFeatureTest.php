@@ -23,7 +23,9 @@ class UserTypeChangeGuardFeatureTest extends TestCase
     {
         parent::setUp();
 
+        $this->seed(\Database\Seeders\RoleSeeder::class);
         $this->admin = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $this->admin->assignRole('ROOT');
     }
 
     private function holder(string $type = 'BEC_ACTIVE'): User

@@ -82,7 +82,7 @@ class PersonsScopeAuthorizationTest extends TestCase
             $this->makeUser('ADMIN', 'MERIDA', 'ROOT'),
             $this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION'),
             $this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS'),
-            $this->makeUser('ADMIN', 'MERIDA'),
+            $this->makeUser('ADMIN', 'MERIDA', 'ADMIN_STUDENT'),
         ];
 
         foreach ($actors as $actor) {

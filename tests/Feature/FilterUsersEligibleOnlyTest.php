@@ -17,7 +17,9 @@ class FilterUsersEligibleOnlyTest extends TestCase
     /** @test */
     public function filter_users_returns_only_active_scholarship_holders_of_campus_and_generation(): void
     {
+        $this->seed(\Database\Seeders\RoleSeeder::class);
         $admin = User::factory()->create(['user_type' => 'ADMIN', 'active' => true, 'campus' => 'MERIDA']);
+        $admin->assignRole('ADMIN_STUDENT');
         $g1 = Generation::create(['generation_name' => 'G1', 'campus' => 'MERIDA', 'generation_active' => true]);
         $g2 = Generation::create(['generation_name' => 'G2', 'campus' => 'MERIDA', 'generation_active' => true]);
 

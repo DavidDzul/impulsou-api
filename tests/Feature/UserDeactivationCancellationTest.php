@@ -33,7 +33,9 @@ class UserDeactivationCancellationTest extends TestCase
         parent::setUp();
 
         Carbon::setTestNow(Carbon::create(2026, 5, 10, 12));
+        $this->seed(\Database\Seeders\RoleSeeder::class);
         $this->admin = User::factory()->create(['user_type' => 'ADMIN', 'active' => true]);
+        $this->admin->assignRole('ROOT');
     }
 
     protected function tearDown(): void
