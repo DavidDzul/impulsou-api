@@ -52,7 +52,8 @@ class AuthController extends Controller
         $permissions = $user->getAllPermissions();
 
         return response()->json([
-            'permissions' => $permissions->pluck('name')
+            'permissions' => $permissions->pluck('name'),
+            'can_view_all_campuses' => $user->hasGlobalBusinessVisibility(),
         ]);
     }
 
