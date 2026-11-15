@@ -97,6 +97,19 @@ class BusinessIndexCharacterizationTest extends TestCase
     }
 
     /** @test */
+    public function merida_root_campus_with_view_all_campuses_sees_all_campuses(): void
+    {
+        // Intended change introduced with the permission: the only behaviour difference.
+        $staff = $this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS');
+        $staff->givePermissionTo('PS_VIEW_ALL_CAMPUSES');
+
+        $this->assertSame(
+            $this->ids($this->bizMerida, $this->bizValladolid, $this->bizTizimin),
+            $this->listedIdsFor($staff)
+        );
+    }
+
+    /** @test */
     public function admin_job_sees_only_own_campus(): void
     {
         $staff = $this->makeUser('ADMIN', 'TIZIMIN', 'ADMIN_JOB');

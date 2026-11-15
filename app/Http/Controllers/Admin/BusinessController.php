@@ -28,23 +28,7 @@ class BusinessController extends Controller
             ], 401);
         }
 
-        $query = User::with(['businessData:id,user_id,bs_name'])
-            ->where('user_type', 'BUSINESS');
-
-        // Si es ROOT o ROOT_JOB → puede ver todo
-        if (!($user->isRoot() || $user->isRootJob())) {
-
-            // Si es YUCATAN → filtrar por business asignados
-            if ($user->hasRole('YUCATAN')) {
-                $businessIds = UserBusinessMap::where('user_id', $user->id)
-                    ->pluck('business_id');
-
-                $query->whereIn('id', $businessIds);
-            } else {
-                // Si NO es ROOT, NO es ROOT_JOB y NO es YUCATAN → campus normal
-                $query->where('campus', $user->campus);
-            }
-        }
+        $query = User::businessVisibleTo($user)->with(['businessData:id,user_id,bs_name']);
 
         $data = $query->get()->map(function ($user) {
             $user->role = $user->mainRole();
