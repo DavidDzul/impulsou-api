@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\VacantPosition;
-use App\Models\UserBusinessMap;
 
 class VacantPositionController extends Controller
 {
@@ -27,29 +26,12 @@ class VacantPositionController extends Controller
             ], 401);
         }
 
-        // Consulta base
+        // Visibility follows the owner business (see VacantPosition::scopeVisibleTo).
         $query = VacantPosition::select('id', 'user_id', 'vacant_name', 'status', 'category', 'created_at')
             ->with(['business' => function ($query) {
                 $query->select('id', 'user_id', 'bs_name');
-            }]);
-
-        // 1. ROOT / ROOT_JOB → ven TODO
-        if (!($user->isRoot() || $user->isRootJob())) {
-
-            // 2. YUCATAN → ver solo vacantes de sus business asignados
-            if ($user->hasRole('YUCATAN')) {
-
-                $businessIds = UserBusinessMap::where('user_id', $user->id)
-                    ->pluck('business_id'); // devuelve los business_id
-
-                $query->whereIn('user_id', $businessIds);
-            }
-            // 3. Usuario normal → filtrar por campus
-            else {
-
-                $query->where('campus', $user->campus);
-            }
-        }
+            }])
+            ->visibleTo($user);
 
         $data = $query->get();
 
@@ -112,7 +94,7 @@ class VacantPositionController extends Controller
 
     public function storeVacant(Request $request, $id)
     {
-        $user = User::findOrFail($id);
+        $user = $this->visibleOwner($request, $id);
         $role = $user->roles()->with('configuration')->first();
 
         $request->merge([
@@ -174,7 +156,7 @@ class VacantPositionController extends Controller
     public function storePractice(Request $request, $id)
     {
 
-        $user = User::findOrFail($id);
+        $user = $this->visibleOwner($request, $id);
         $role = $user->roles()->with('configuration')->first();
 
         $request->merge([
@@ -233,7 +215,7 @@ class VacantPositionController extends Controller
 
     public function storeVacantJr(Request $request, $id)
     {
-        $user = User::findOrFail($id);
+        $user = $this->visibleOwner($request, $id);
         $role = $user->roles()->with('configuration')->first();
 
         $request->merge([
@@ -340,5 +322,14 @@ class VacantPositionController extends Controller
             'msg' => 'Estado de la vacante restablecido con éxito.',
             'vacant' => $vacant,
         ], 200);
+    }
+
+    /** The owner of a new vacancy must be a BUSINESS user visible to the actor, even for ROOT. 404, never findOrFail (the Handler maps it to 400). */
+    private function visibleOwner(Request $request, $id): User
+    {
+        $owner = User::businessVisibleTo($request->user())->find($id);
+        abort_if(!$owner, 404);
+
+        return $owner;
     }
 }

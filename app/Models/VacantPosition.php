@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -395,6 +396,20 @@ class VacantPosition extends Model
             'candidate_type' => 'required|in:INTERNAL,EXTERNAL,NOT_COVERED,OTHER',
             'candidate_other' => 'nullable|string|max:255'
         ];
+    }
+
+    /**
+     * Vacancies a staff member may see/manage. Visibility follows the OWNER business (user_id), never
+     * the editable `campus` column: global business visibility sees all, everyone else only vacancies
+     * whose owner is a business visible to them.
+     */
+    public function scopeVisibleTo(Builder $query, User $staff): Builder
+    {
+        if ($staff->hasGlobalBusinessVisibility()) {
+            return $query;
+        }
+
+        return $query->whereIn('user_id', User::businessVisibleTo($staff)->select('id'));
     }
 
     public function image()
