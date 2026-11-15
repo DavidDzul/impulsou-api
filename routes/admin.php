@@ -60,9 +60,13 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('persons', [PersonController::class, 'store']);
 
     Route::prefix('business')->group(function () {
-        Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement']);
+        Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement'])
+            ->middleware('ps_permission:PS_CREATE_BUSINESS|PS_EDIT_BUSINESS');
     });
-    Route::apiResource('business', BusinessController::class);
+    Route::get('business', [BusinessController::class, 'index'])->middleware('ps_permission:PS_READ_BUSINESS');
+    Route::post('business', [BusinessController::class, 'store'])->middleware('ps_permission:PS_CREATE_BUSINESS');
+    Route::get('business/{business}', [BusinessController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
+    Route::match(['put', 'patch'], 'business/{business}', [BusinessController::class, 'update'])->middleware('ps_permission:PS_EDIT_BUSINESS');
 
     Route::apiResource('businessData', BusinessDataController::class);
     Route::apiResource('businessAgreement', BusinessAgreementController::class);

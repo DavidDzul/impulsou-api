@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Spatie\Permission\Models\Role;
 use App\Actions\Scholarship\CloseScholarshipCycleAction;
 use App\Enums\ScholarshipType;
 use App\Enums\WithholdingCancellationReason;
@@ -110,6 +111,13 @@ class UserDeactivationCancellationTest extends TestCase
 
     private function updateAs(string $resource, User $user, array $payload)
     {
+        if ($resource === 'business') {
+            // The business endpoint only resolves BUSINESS targets, for a ROOT actor (PS gates + scope).
+            Role::findOrCreate('ROOT', 'web');
+            $this->admin->assignRole('ROOT');
+            $user->forceFill(['user_type' => 'BUSINESS'])->saveQuietly();
+        }
+
         return $this->actingAs($this->admin)->putJson("/api/admin/{$resource}/{$user->id}", $payload);
     }
 

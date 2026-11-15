@@ -17,6 +17,20 @@ use App\Mail\WelcomeMail;
 
 class BusinessController extends Controller
 {
+    /**
+     * Resolves a BUSINESS user through the staff visibility scope. Out-of-scope, non-BUSINESS and
+     * missing ids are indistinguishable (404). Not findOrFail(): the app handler maps
+     * ModelNotFoundException to 400.
+     */
+    private function visibleBusinessOrNotFound(Request $request, string $id, array $with = []): User
+    {
+        $business = User::businessVisibleTo($request->user())->with($with)->find($id);
+
+        abort_if($business === null, 404);
+
+        return $business;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -45,6 +59,10 @@ class BusinessController extends Controller
     public function store(Request $request)
     {
         $user = $request->validate(User::createRulesBusiness());
+        $forcedCampus = User::forcedBusinessCampusFor($request->user());
+        if ($forcedCampus !== null) {
+            $user['campus'] = $forcedCampus;
+        }
         $business = $request->validate(BusinessData::createRules());
         $agreement = $request->validate(BusinessAgreement::createRules());
 
@@ -79,9 +97,9 @@ class BusinessController extends Controller
         ], 201);
     }
 
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
-        $business = User::with(['roles'])->findOrFail($id);
+        $business = $this->visibleBusinessOrNotFound($request, $id, ['roles']);
 
         $business->role = $business->roles->first();
         $business->makeHidden('roles');
@@ -94,8 +112,13 @@ class BusinessController extends Controller
 
     public function update(Request $request, $id, UserDeactivationService $deactivation)
     {
-        $user = User::findOrFail($id);
+        $user = $this->visibleBusinessOrNotFound($request, $id);
         $data = $request->validate(User::updateRulesBusiness($user->id));
+
+        $forcedCampus = User::forcedBusinessCampusFor($request->user());
+        if ($forcedCampus !== null && array_key_exists('campus', $data)) {
+            $data['campus'] = $forcedCampus;
+        }
 
         if ($request->filled('password')) {
             $data['password'] = Hash::make($data['password']);
@@ -134,7 +157,7 @@ class BusinessController extends Controller
 
     public function storeBusinessAgreement(Request $request, $id)
     {
-        $business = User::findOrFail($id);
+        $business = $this->visibleBusinessOrNotFound($request, $id);
         $agreement = $request->validate(BusinessAgreement::createRules());
         $agreement['user_id'] = $business->id;
 
