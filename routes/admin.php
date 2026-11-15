@@ -51,12 +51,17 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::apiResource('generations', GenerationController::class);
     Route::get('filterUsers', [UserController::class, 'getUsersByFilters']);
 
-    Route::prefix('users')->group(function () {
-        Route::put('{id}/fetchPDF', [UserController::class, 'showUserPDF']);
-    });
-    Route::apiResource('users', UserController::class);
+    // Explicit routes (no apiResource): no destroy, numeric ids only. fetchPDF stays first.
+    Route::put('users/{id}/fetchPDF', [UserController::class, 'showUserPDF'])->whereNumber('id');
+    Route::get('users', [UserController::class, 'index']);
+    Route::post('users', [UserController::class, 'store']);
+    Route::get('users/{id}', [UserController::class, 'show'])->whereNumber('id');
+    Route::match(['put', 'patch'], 'users/{id}', [UserController::class, 'update'])->whereNumber('id');
 
-    Route::apiResource('graduates', GraduateController::class);
+    Route::get('graduates', [GraduateController::class, 'index']);
+    Route::post('graduates', [GraduateController::class, 'store']);
+    Route::get('graduates/{id}', [GraduateController::class, 'show'])->whereNumber('id');
+    Route::match(['put', 'patch'], 'graduates/{id}', [GraduateController::class, 'update'])->whereNumber('id');
 
     Route::post('persons', [PersonController::class, 'store']);
 

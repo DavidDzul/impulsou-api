@@ -40,14 +40,7 @@ class UserController extends Controller
             ], 401);
         }
 
-        // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->isRoot()) {
-            $data = User::withListFlags()->where('user_type', 'BEC_ACTIVE')->get();
-        } else {
-            // Si no, solo obtiene los registros de su campus
-            $data = User::withListFlags()->where('campus', $user->campus,)->where('user_type', 'BEC_ACTIVE')->get();
-        }
-
+        $data = User::withListFlags()->personsVisibleTo($user)->where('user_type', 'BEC_ACTIVE')->get();
 
         return response()->json([
             'res' => true,
@@ -93,9 +86,10 @@ class UserController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
-        $user = User::withListFlags()->findOrFail($id);
+        $user = User::withListFlags()->personsVisibleTo($request->user())->find($id);
+        abort_if(!$user, 404);
 
         return response()->json([
             'user' => $user
@@ -107,7 +101,8 @@ class UserController extends Controller
      */
     public function update(Request $request, $id, UserDeactivationService $deactivation)
     {
-        $user = User::findOrFail($id);
+        $user = User::personsVisibleTo($request->user())->find($id);
+        abort_if(!$user, 404);
         $data = $request->validate(User::updateRulesUser($user->id));
 
         try {
@@ -146,8 +141,10 @@ class UserController extends Controller
      */
     // public function destroy(string $id) {}
 
-    public function showUserPDF($id)
+    public function showUserPDF(Request $request, $id)
     {
+        abort_if(!User::personsVisibleTo($request->user())->whereKey($id)->exists(), 404);
+
         try {
 
             $curriculum = Curriculum::where('user_id', $id)->first();

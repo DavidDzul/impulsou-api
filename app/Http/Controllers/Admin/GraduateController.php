@@ -32,13 +32,7 @@ class GraduateController extends Controller
             ], 401);
         }
 
-        // Si el usuario pertenece al campus "MERIDA", obtiene todos los registros
-        if ($user->isRoot()) {
-            $data = User::withListFlags()->where('user_type', 'BEC_INACTIVE')->get();
-        } else {
-            // Si no, solo obtiene los registros de su campus
-            $data = User::withListFlags()->where('campus', $user->campus,)->where('user_type', 'BEC_INACTIVE')->get();
-        }
+        $data = User::withListFlags()->personsVisibleTo($user)->where('user_type', 'BEC_INACTIVE')->get();
 
         return response()->json([
             'res' => true,
@@ -86,9 +80,10 @@ class GraduateController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $user = User::withListFlags()->findOrFail($id);
+        $user = User::withListFlags()->personsVisibleTo($request->user())->find($id);
+        abort_if(!$user, 404);
 
         return response()->json([
             'user' => $user
@@ -104,7 +99,8 @@ class GraduateController extends Controller
      */
     public function update(Request $request, $id, UserDeactivationService $deactivation)
     {
-        $user = User::findOrFail($id);
+        $user = User::personsVisibleTo($request->user())->find($id);
+        abort_if(!$user, 404);
         $data = $request->validate(User::updateRulesUser($user->id));
 
         try {
@@ -136,16 +132,5 @@ class GraduateController extends Controller
             'deactivation_effects' => $saved['effects'],
             'updateGraduate' => $user
         ], 200);
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function destroy($id)
-    {
-        //
     }
 }

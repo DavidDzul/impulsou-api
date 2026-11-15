@@ -229,7 +229,9 @@ class UserDeactivationCancellationTest extends TestCase
      */
     public function deactivating_a_non_becario_is_unchanged(string $resource, string $key): void
     {
-        $user = User::factory()->create(['user_type' => 'BUSINESS', 'active' => true]);
+        // users/{id} no longer resolves BUSINESS targets (404); a becario with no ScholarshipProfile
+        // keeps the original intent: deactivation has no effects.
+        $user = User::factory()->create(['user_type' => 'BEC_ACTIVE', 'active' => true]);
         // Stray data for a user without a ScholarshipProfile must not be touched.
         $w = $this->withholding($user, 2);
 

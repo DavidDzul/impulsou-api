@@ -321,6 +321,28 @@ class User extends Authenticatable
         return $query->where('campus', $staff->campus);
     }
 
+    public const PERSON_TYPES = ['BEC_ACTIVE', 'BEC_INACTIVE'];
+
+    /**
+     * Becarios and egresados a staff member may see/manage. Same rule as the persons indexes:
+     * isRoot() (ROOT or ROOT_ADMINISTRATION) is global, everyone else is limited to their own
+     * campus, and staff without a campus see nothing. Staff, BUSINESS and ROOT accounts are never included.
+     */
+    public function scopePersonsVisibleTo(Builder $query, User $staff): Builder
+    {
+        $query->whereIn('user_type', self::PERSON_TYPES);
+
+        if ($staff->isRoot()) {
+            return $query;
+        }
+
+        if ($staff->campus === null || $staff->campus === '') {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where('campus', $staff->campus);
+    }
+
     /** Campus a staff member must write on business records; null means free choice. */
     public static function forcedBusinessCampusFor(User $staff): ?string
     {
