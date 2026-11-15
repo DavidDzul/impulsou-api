@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -262,6 +263,8 @@ class RoleSeederAdministrationTest extends TestCase
             $query->where('name', 'like', 'PS_%')
                 ->orWhereIn('name', ['CANDIDATES_VIEW', 'CREATE_VACANT_JR']);
         })
+            // New permission (empresas-autorizacion-api) is seeded with copy on purpose.
+            ->where('name', '!=', User::PERMISSION_VIEW_ALL_CAMPUSES)
             ->where(function ($query) {
                 $query->whereNotNull('description')->orWhereNotNull('module');
             })
