@@ -165,7 +165,6 @@ class VacantPosition extends Model
         return [
             "user_id" => "sometimes|exists:users,id",
             "vacant_name" => "sometimes|string|max:255",
-            "category" => "sometimes|string|max:255",
             "activities" => "sometimes|string",
             "study_profile" => "sometimes|string|max:255",
             "net_salary" => "sometimes|string|max:255",
@@ -266,7 +265,6 @@ class VacantPosition extends Model
         return [
             "user_id" => "sometimes|exists:users,id",
             "vacant_name" => "sometimes|string|max:255",
-            "category" => "sometimes|string|max:255",
             "activities" => "sometimes|string",
             "study_profile" => "sometimes|string|max:255",
             "financial_support" => "nullable|boolean",
@@ -351,7 +349,6 @@ class VacantPosition extends Model
         return [
             "user_id" => "sometimes|exists:users,id",
             "vacant_name" => "sometimes|string|max:255",
-            "category" => "sometimes|string|max:255",
             "activities" => "sometimes|string",
             "study_profile" => "sometimes|string|max:255",
             "net_salary" => "sometimes|string|max:255",

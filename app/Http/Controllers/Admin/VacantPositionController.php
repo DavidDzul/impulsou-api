@@ -108,7 +108,7 @@ class VacantPositionController extends Controller
 
         $vacant = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updateVacantRules());
-        unset($data['user_id']); // the owner of a vacancy is immutable
+        unset($data['user_id'], $data['category']); // owner and category are fixed at creation
 
         $vacant->update($data);
         $vacant->load(['business:id,user_id,bs_name']);
@@ -169,7 +169,7 @@ class VacantPositionController extends Controller
 
         $practice = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updatePracticeRules());
-        unset($data['user_id']);
+        unset($data['user_id'], $data['category']);
 
         $practice->update($data);
         $practice->load(['business:id,user_id,bs_name']);
@@ -230,7 +230,7 @@ class VacantPositionController extends Controller
 
         $vacant = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updateJrRules());
-        unset($data['user_id']);
+        unset($data['user_id'], $data['category']);
 
         $vacant->update($data);
         $vacant->load(['business:id,user_id,bs_name']);
