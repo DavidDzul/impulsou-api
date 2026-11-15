@@ -80,6 +80,9 @@ class Kernel extends HttpKernel
         // PermissionRegistrar's cache hydration. Using our own drop-in
         // replacement under the SAME alias/route syntax instead.
         'permission' => \App\Http\Middleware\CheckPermission::class,
+        // PS_* gate with ROOT bypass (PS_* only) and ROOT-role-only gate.
+        'ps_permission' => \App\Http\Middleware\CheckPsPermission::class,
+        'ps_root' => \App\Http\Middleware\RequireRootRole::class,
 
     ];
 }
