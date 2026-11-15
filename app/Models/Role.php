@@ -39,8 +39,30 @@ class Role extends SpatieRole
         });
     }
 
-    public static function createOrUpdateRules()
+    /** Role types the ROOT-only RoleController may list and edit. */
+    public const MANAGEABLE_TYPES = ['USER', 'ADMIN'];
+
+    /** Roles that can never be edited through RoleController. */
+    public const PROTECTED_ROLES = ['ROOT'];
+
+    /**
+     * Validation rules for updating a role through RoleController.
+     *
+     * Every `permissions_ids.*` must exist with the SAME type as the role.
+     * USER (tier) roles keep the vacancy-limit contract; ADMIN (staff) roles
+     * only take `permissions_ids` (required, so an empty payload cannot wipe them).
+     */
+    public static function createOrUpdateRules(string $roleType)
     {
+        $permissionRule = [Rule::exists('permissions', 'id')->where('type', $roleType)];
+
+        if ($roleType === 'ADMIN') {
+            return [
+                'permissions_ids'   => 'present|array',
+                'permissions_ids.*' => $permissionRule,
+            ];
+        }
+
         return [
             'unlimited_jobs'          => 'boolean',
             'num_job_vacancies' => 'required|integer|min:0',
@@ -51,7 +73,7 @@ class Role extends SpatieRole
             'unlimited_visualizations'          => 'boolean',
             'num_visualizations' => 'required|integer|min:0',
             'permissions_ids'    => 'array',
-            'permissions_ids.*'  => 'exists:permissions,id',
+            'permissions_ids.*'  => $permissionRule,
         ];
     }
 

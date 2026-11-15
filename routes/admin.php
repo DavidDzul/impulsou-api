@@ -73,10 +73,12 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::match(['put', 'patch'], 'businessData/{businessData}', [BusinessDataController::class, 'update'])->middleware('ps_permission:PS_EDIT_BUSINESS');
     Route::get('businessAgreement/{businessAgreement}', [BusinessAgreementController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
 
-    Route::prefix('roles')->group(function () {
+    // ROOT role only (ps_root); no PS_ROLES grant is consulted. Explicit routes: no create/show/delete.
+    Route::prefix('roles')->middleware('ps_root')->group(function () {
+        Route::get('/', [RoleController::class, 'index']);
         Route::get('permissions', [RoleController::class, 'getAllPermissions']);
+        Route::match(['put', 'patch'], '{id}', [RoleController::class, 'update'])->whereNumber('id');
     });
-    Route::apiResource('roles', RoleController::class);
 
     Route::prefix('vacantPositions')->group(function () {
         Route::post('{id}/storeVacant', [VacantPositionController::class, 'storeVacant']);
