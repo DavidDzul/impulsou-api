@@ -82,19 +82,33 @@ class Role extends SpatieRole
         return $this->hasOne(RoleConfiguration::class, 'role_id');
     }
 
+    /** Role names that an administration role may never take (compared case-insensitively). */
+    public const RESERVED_NAMES = ['ROOT', 'ROOT_JOB', 'ROOT_ADMINISTRATION'];
+
     /**
      * Validation rules for creating a Control (administration-panel) role.
      *
-     * `name` is unique only among type='ADMINISTRATION' roles, not globally —
-     * the `roles` table already has USER-type rows sharing similarly-shaped
-     * names (ROOT, ROOT_CAMPUS, etc.). `type` is intentionally NOT a
-     * validated/accepted field here: it is always hardcoded server-side by
-     * the controller (design obs #1593, spec obs #1592 R2).
+     * `name` must be unique across ALL roles of the web guard (the DB unique
+     * index is name+guard_name, not type-scoped, so a name already used by a
+     * USER/ADMIN role would otherwise surface as a 500) and may not be a
+     * reserved ROOT name. `type` is intentionally NOT a validated/accepted
+     * field here: it is always hardcoded server-side by the controller
+     * (design obs #1593, spec obs #1592 R2).
      */
     public static function createAdministrationRules()
     {
         return [
-            'name' => ['required', 'string', 'max:255', Rule::unique('roles', 'name')->where('type', 'ADMINISTRATION')],
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) {
+                    if (in_array(strtoupper((string) $value), self::RESERVED_NAMES, true)) {
+                        $fail('Este nombre de rol está reservado.');
+                    }
+                },
+                Rule::unique('roles', 'name')->where('guard_name', 'web'),
+            ],
         ];
     }
 
