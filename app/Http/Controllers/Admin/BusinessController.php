@@ -173,7 +173,8 @@ class BusinessController extends Controller
     public function searchBusinesses(Request $request)
     {
         $search = $request->input('search');
-        $businesses = BusinessData::where('bs_name', 'LIKE', "%{$search}%")
+        $businesses = BusinessData::whereIn('user_id', User::businessVisibleTo($request->user())->select('id'))
+            ->where('bs_name', 'LIKE', "%{$search}%")
             ->select('id', 'bs_name', 'user_id')
             ->limit(10)
             ->get();

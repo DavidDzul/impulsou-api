@@ -45,7 +45,8 @@ Route::middleware('auth:sanctum')->get('/permissions', [AuthController::class, '
 Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('updateProfile', [AuthController::class, 'updateProfile']);
-    Route::get('search', [BusinessController::class, 'searchBusinesses']);
+    Route::get('search', [BusinessController::class, 'searchBusinesses'])
+        ->middleware('ps_permission:PS_READ_BUSINESS|PS_CREATE_VACANT|PS_EDIT_VACANT');
 
     Route::apiResource('generations', GenerationController::class);
     Route::get('filterUsers', [UserController::class, 'getUsersByFilters']);
@@ -68,8 +69,9 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::get('business/{business}', [BusinessController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
     Route::match(['put', 'patch'], 'business/{business}', [BusinessController::class, 'update'])->middleware('ps_permission:PS_EDIT_BUSINESS');
 
-    Route::apiResource('businessData', BusinessDataController::class);
-    Route::apiResource('businessAgreement', BusinessAgreementController::class);
+    Route::get('businessData/{businessData}', [BusinessDataController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
+    Route::match(['put', 'patch'], 'businessData/{businessData}', [BusinessDataController::class, 'update'])->middleware('ps_permission:PS_EDIT_BUSINESS');
+    Route::get('businessAgreement/{businessAgreement}', [BusinessAgreementController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
 
     Route::prefix('roles')->group(function () {
         Route::get('permissions', [RoleController::class, 'getAllPermissions']);

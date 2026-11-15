@@ -4,56 +4,34 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\BusinessData;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class BusinessDataController extends Controller
 {
     /**
-     * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
+     * Owner resolved through the actor's business scope; out-of-scope, non-BUSINESS and missing
+     * all yield the same 404. find()+abort_if because Handler.php maps ModelNotFoundException to 400.
      */
-    public function index()
+    public function show(Request $request, $id)
     {
-        //
-    }
+        abort_if(User::businessVisibleTo($request->user())->find($id) === null, 404);
 
-    /**
-     * Store a newly created resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
-     */
-    public function store(Request $request)
-    {
-        //
-    }
-
-    /**
-     * Display the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function show($id)
-    {
-        $data = BusinessData::where('user_id', $id)->firstOrFail();
+        $data = BusinessData::where('user_id', $id)->first();
+        abort_if($data === null, 404);
 
         return response()->json([
             'data' => $data
         ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
     public function update(Request $request, $id)
     {
-        $info = BusinessData::findOrFail($id);
+        $info = BusinessData::whereKey($id)
+            ->whereIn('user_id', User::businessVisibleTo($request->user())->select('id'))
+            ->first();
+        abort_if($info === null, 404);
+
         $data = $request->validate(BusinessData::updateRules());
 
         $info->update($data);
@@ -64,12 +42,4 @@ class BusinessDataController extends Controller
             'updateData' => $info,
         ]);
     }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function destroy($id) {}
 }
