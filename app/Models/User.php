@@ -276,4 +276,52 @@ class User extends Authenticatable
     {
         return $this->roles->first();
     }
+
+    public const PERMISSION_VIEW_ALL_CAMPUSES = 'PS_VIEW_ALL_CAMPUSES';
+    public const CENTRAL_CAMPUS = 'MERIDA';
+
+    /**
+     * Single rule for "sees businesses of every campus": ROOT (always), ROOT_JOB (hardcoded),
+     * or non-YUCATAN MERIDA staff holding PS_VIEW_ALL_CAMPUSES (role or direct grant).
+     */
+    public function hasGlobalBusinessVisibility(): bool
+    {
+        if ($this->isRoot() || $this->isRootJob()) {
+            return true;
+        }
+
+        return !$this->hasRole('YUCATAN')
+            && $this->campus === self::CENTRAL_CAMPUS
+            && $this->holdsPermission(self::PERMISSION_VIEW_ALL_CAMPUSES);
+    }
+
+    /**
+     * Role OR direct grant. Not checkPermissionTo(): this model overrides hasRole(string), which
+     * breaks Spatie's role path (it passes a Collection), so role grants would never match.
+     */
+    private function holdsPermission(string $name): bool
+    {
+        return $this->getAllPermissions()->contains('name', $name);
+    }
+
+    public function scopeBusinessVisibleTo(Builder $query, User $staff): Builder
+    {
+        $query->where('user_type', 'BUSINESS');
+
+        if ($staff->hasGlobalBusinessVisibility()) {
+            return $query;
+        }
+
+        if ($staff->hasRole('YUCATAN')) {
+            return $query->whereIn('id', UserBusinessMap::select('business_id')->where('user_id', $staff->id));
+        }
+
+        return $query->where('campus', $staff->campus);
+    }
+
+    /** Campus a staff member must write on business records; null means free choice. */
+    public static function forcedBusinessCampusFor(User $staff): ?string
+    {
+        return $staff->hasGlobalBusinessVisibility() ? null : $staff->campus;
+    }
 }

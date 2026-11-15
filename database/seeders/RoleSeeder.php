@@ -86,6 +86,14 @@ class RoleSeeder extends Seeder
         Permission::create(['name' => 'PS_SCHOLARSHIPS_ATENCION'])->syncRoles([$rootRole]);
         Permission::create(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'])->syncRoles([$rootRole]);
 
+        // Effective only for MERIDA staff (User::hasGlobalBusinessVisibility). Type ADMIN mirrors
+        // the staging PS_* permissions. Default grant: ROOT only. ROOT_JOB is intentionally not
+        // granted: its global visibility is hardcoded.
+        Permission::updateOrCreate(
+            ['name' => 'PS_VIEW_ALL_CAMPUSES'],
+            ['type' => 'ADMIN', 'module' => 'Empresas', 'description' => 'Ver empresas de todas las sedes (solo personal de Mérida)']
+        )->syncRoles([$rootRole]);
+
         /** PANEL ADMINISTRATION (administration-panel) */
         // updateOrCreate here mirrors the ROOT_ADMINISTRATION role above: this grant must be
         // safe to re-run without creating duplicate permission rows or duplicate role_has_permissions
