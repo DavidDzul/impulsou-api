@@ -281,16 +281,17 @@ class User extends Authenticatable
     public const CENTRAL_CAMPUS = 'MERIDA';
 
     /**
-     * Single rule for "sees businesses of every campus": ROOT (always), ROOT_JOB (hardcoded),
-     * or non-YUCATAN MERIDA staff holding PS_VIEW_ALL_CAMPUSES (role or direct grant).
+     * Single rule for "sees businesses of every campus": ROOT (always, not ROOT_ADMINISTRATION),
+     * ROOT_JOB (hardcoded), or non-ROOT_ADMINISTRATION MERIDA staff holding PS_VIEW_ALL_CAMPUSES (role or direct grant).
+     * Every other role, YUCATAN included, follows the campus rule.
      */
     public function hasGlobalBusinessVisibility(): bool
     {
-        if ($this->isRoot() || $this->isRootJob()) {
+        if ($this->hasRole('ROOT') || $this->isRootJob()) {
             return true;
         }
 
-        return !$this->hasRole('YUCATAN')
+        return !$this->hasRole('ROOT_ADMINISTRATION')
             && $this->campus === self::CENTRAL_CAMPUS
             && $this->holdsPermission(self::PERMISSION_VIEW_ALL_CAMPUSES);
     }
@@ -312,8 +313,9 @@ class User extends Authenticatable
             return $query;
         }
 
-        if ($staff->hasRole('YUCATAN')) {
-            return $query->whereIn('id', UserBusinessMap::select('business_id')->where('user_id', $staff->id));
+        // Non-global staff without a campus must see nothing, never a NULL/'' match.
+        if ($staff->campus === null || $staff->campus === '') {
+            return $query->whereRaw('1 = 0');
         }
 
         return $query->where('campus', $staff->campus);

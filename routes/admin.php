@@ -62,16 +62,17 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
 
     Route::prefix('business')->group(function () {
         Route::post('{id}/agreement', [BusinessController::class, 'storeBusinessAgreement'])
+            ->whereNumber('id')
             ->middleware('ps_permission:PS_CREATE_BUSINESS|PS_EDIT_BUSINESS');
     });
     Route::get('business', [BusinessController::class, 'index'])->middleware('ps_permission:PS_READ_BUSINESS');
     Route::post('business', [BusinessController::class, 'store'])->middleware('ps_permission:PS_CREATE_BUSINESS');
-    Route::get('business/{business}', [BusinessController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
-    Route::match(['put', 'patch'], 'business/{business}', [BusinessController::class, 'update'])->middleware('ps_permission:PS_EDIT_BUSINESS');
+    Route::get('business/{business}', [BusinessController::class, 'show'])->whereNumber('business')->middleware('ps_permission:PS_READ_BUSINESS');
+    Route::match(['put', 'patch'], 'business/{business}', [BusinessController::class, 'update'])->whereNumber('business')->middleware('ps_permission:PS_EDIT_BUSINESS');
 
-    Route::get('businessData/{businessData}', [BusinessDataController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
-    Route::match(['put', 'patch'], 'businessData/{businessData}', [BusinessDataController::class, 'update'])->middleware('ps_permission:PS_EDIT_BUSINESS');
-    Route::get('businessAgreement/{businessAgreement}', [BusinessAgreementController::class, 'show'])->middleware('ps_permission:PS_READ_BUSINESS');
+    Route::get('businessData/{businessData}', [BusinessDataController::class, 'show'])->whereNumber('businessData')->middleware('ps_permission:PS_READ_BUSINESS');
+    Route::match(['put', 'patch'], 'businessData/{businessData}', [BusinessDataController::class, 'update'])->whereNumber('businessData')->middleware('ps_permission:PS_EDIT_BUSINESS');
+    Route::get('businessAgreement/{businessAgreement}', [BusinessAgreementController::class, 'show'])->whereNumber('businessAgreement')->middleware('ps_permission:PS_READ_BUSINESS');
 
     // ROOT role only (ps_root); no PS_ROLES grant is consulted. Explicit routes: no create/show/delete.
     Route::prefix('roles')->middleware('ps_root')->group(function () {

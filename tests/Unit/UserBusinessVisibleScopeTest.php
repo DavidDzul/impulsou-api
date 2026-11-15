@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Models\User;
-use App\Models\UserBusinessMap;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -112,12 +111,42 @@ class UserBusinessVisibleScopeTest extends TestCase
     }
 
     /** @test */
-    public function yucatan_with_permission_sees_only_mapped(): void
+    public function merida_yucatan_with_permission_sees_all(): void
     {
         $staff = $this->makeUser('ADMIN', 'MERIDA', 'YUCATAN', true);
-        UserBusinessMap::create(['user_id' => $staff->id, 'business_id' => $this->bizTizimin->id]);
 
-        $this->assertSame($this->ids($this->bizTizimin), $this->visibleIds($staff));
+        $this->assertSame($this->allBusinesses(), $this->visibleIds($staff));
+    }
+
+    /** @test */
+    public function yucatan_without_permission_sees_own_campus_only(): void
+    {
+        $staff = $this->makeUser('ADMIN', 'MERIDA', 'YUCATAN');
+
+        $this->assertSame($this->ids($this->bizMerida), $this->visibleIds($staff));
+    }
+
+    /** @test */
+    public function root_administration_is_not_global_even_with_view_all_campuses(): void
+    {
+        $plain = $this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION');
+        $granted = $this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION', true);
+
+        $this->assertFalse($plain->hasGlobalBusinessVisibility());
+        $this->assertSame($this->ids($this->bizMerida), $this->visibleIds($plain));
+        $this->assertFalse($granted->hasGlobalBusinessVisibility());
+        $this->assertSame($this->ids($this->bizMerida), $this->visibleIds($granted));
+    }
+
+    /** @test */
+    public function non_global_staff_with_empty_or_null_campus_sees_nothing(): void
+    {
+        foreach (['', null] as $campus) {
+            $staff = $this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS');
+            $staff->campus = $campus; // in memory: the campus column is an enum, '' cannot be stored
+
+            $this->assertSame([], $this->visibleIds($staff));
+        }
     }
 
     /** @test */
@@ -153,13 +182,13 @@ class UserBusinessVisibleScopeTest extends TestCase
     public function global_visibility_truth_table(): void
     {
         $this->assertTrue($this->makeUser('ADMIN', 'MERIDA', 'ROOT')->hasGlobalBusinessVisibility());
-        $this->assertTrue($this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION')->hasGlobalBusinessVisibility());
+        $this->assertFalse($this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION')->hasGlobalBusinessVisibility());
         $this->assertTrue($this->makeUser('ADMIN', 'VALLADOLID', 'ROOT_JOB')->hasGlobalBusinessVisibility());
         $this->assertTrue($this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS', true)->hasGlobalBusinessVisibility());
 
         $this->assertFalse($this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS')->hasGlobalBusinessVisibility());
         $this->assertFalse($this->makeUser('ADMIN', 'VALLADOLID', 'ROOT_CAMPUS', true)->hasGlobalBusinessVisibility());
-        $this->assertFalse($this->makeUser('ADMIN', 'MERIDA', 'YUCATAN', true)->hasGlobalBusinessVisibility());
+        $this->assertTrue($this->makeUser('ADMIN', 'MERIDA', 'YUCATAN', true)->hasGlobalBusinessVisibility());
         $this->assertFalse($this->makeUser('ADMIN', 'MERIDA', 'ADMIN_JOB')->hasGlobalBusinessVisibility());
     }
 
@@ -167,13 +196,13 @@ class UserBusinessVisibleScopeTest extends TestCase
     public function forced_campus_is_null_for_global_actors_and_own_campus_otherwise(): void
     {
         $this->assertNull(User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'ROOT')));
-        $this->assertNull(User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION')));
+        $this->assertSame('MERIDA', User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'ROOT_ADMINISTRATION')));
         $this->assertNull(User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'VALLADOLID', 'ROOT_JOB')));
         $this->assertNull(User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS', true)));
 
         $this->assertSame('MERIDA', User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS')));
         $this->assertSame('VALLADOLID', User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'VALLADOLID', 'ROOT_CAMPUS', true)));
-        $this->assertSame('MERIDA', User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'YUCATAN', true)));
+        $this->assertNull(User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'MERIDA', 'YUCATAN', true)));
         $this->assertSame('TIZIMIN', User::forcedBusinessCampusFor($this->makeUser('ADMIN', 'TIZIMIN', 'ADMIN_JOB')));
     }
 

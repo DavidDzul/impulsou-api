@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Models\UserBusinessMap;
 use App\Services\Users\UserDeactivationService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -188,15 +187,37 @@ class BusinessAuthorizationTest extends TestCase
     }
 
     /** @test */
-    public function yucatan_reads_mapped_only_and_cannot_write(): void
+    public function yucatan_reads_own_campus_only_and_cannot_write(): void
     {
-        $actor = $this->as('YUCATAN', 'MERIDA');
-        UserBusinessMap::create(['user_id' => $actor->id, 'business_id' => $this->bizValladolid->id]);
+        $this->as('YUCATAN', 'MERIDA');
 
-        $this->getJson("/api/admin/business/{$this->bizValladolid->id}")->assertOk();
-        $this->getJson("/api/admin/business/{$this->bizTizimin->id}")->assertNotFound();
-        $this->putJson("/api/admin/business/{$this->bizValladolid->id}", ['first_name' => 'X'])->assertForbidden();
+        $this->getJson("/api/admin/business/{$this->bizMerida->id}")->assertOk();
+        $this->getJson("/api/admin/business/{$this->bizValladolid->id}")->assertNotFound();
+        $this->putJson("/api/admin/business/{$this->bizMerida->id}", ['first_name' => 'X'])->assertForbidden();
         $this->postJson('/api/admin/business', $this->storePayload())->assertForbidden();
+    }
+
+    /** @test */
+    public function non_global_staff_with_empty_or_null_campus_gets_404_by_id(): void
+    {
+        foreach (['', null] as $campus) {
+            $actor = $this->as('ROOT_CAMPUS', 'MERIDA');
+            $actor->campus = $campus; // in memory: the campus column is an enum, '' cannot be stored
+
+            $this->getJson("/api/admin/business/{$this->bizMerida->id}")->assertNotFound();
+        }
+    }
+
+    /** @test */
+    public function non_numeric_ids_do_not_match_business_routes(): void
+    {
+        $this->as('ROOT', 'MERIDA');
+
+        $this->getJson('/api/admin/business/1abc')->assertNotFound();
+        $this->putJson('/api/admin/business/1abc', ['first_name' => 'X'])->assertNotFound();
+        $this->postJson('/api/admin/business/1abc/agreement', $this->agreementPayload())->assertNotFound();
+        $this->getJson('/api/admin/businessData/1abc')->assertNotFound();
+        $this->getJson('/api/admin/businessAgreement/1abc')->assertNotFound();
     }
 
     /** @test */

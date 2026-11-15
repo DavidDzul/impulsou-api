@@ -64,7 +64,9 @@ class PermissionsFlagTest extends TestCase
             'MERIDA ROOT_CAMPUS with permission' => ['ROOT_CAMPUS', 'MERIDA', true, true],
             'MERIDA ROOT_CAMPUS without permission' => ['ROOT_CAMPUS', 'MERIDA', false, false],
             'VALLADOLID holder' => ['ROOT_CAMPUS', 'VALLADOLID', true, false],
-            'YUCATAN MERIDA holder' => ['YUCATAN', 'MERIDA', true, false],
+            'YUCATAN MERIDA holder' => ['YUCATAN', 'MERIDA', true, true],
+            'ROOT_ADMINISTRATION MERIDA holder' => ['ROOT_ADMINISTRATION', 'MERIDA', true, false],
+            'ROOT_ADMINISTRATION without permission' => ['ROOT_ADMINISTRATION', 'MERIDA', false, false],
             'ADMIN_JOB' => ['ADMIN_JOB', 'MERIDA', false, false],
         ];
     }

@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\BusinessAgreement;
 use App\Models\BusinessData;
 use App\Models\User;
-use App\Models\UserBusinessMap;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -191,15 +190,14 @@ class BusinessDataAuthorizationTest extends TestCase
     }
 
     /** @test */
-    public function yucatan_reads_mapped_only_and_cannot_update(): void
+    public function yucatan_reads_own_campus_only_and_cannot_update(): void
     {
-        $actor = $this->as('YUCATAN', 'MERIDA');
-        UserBusinessMap::create(['user_id' => $actor->id, 'business_id' => $this->bizValladolid->id]);
+        $this->as('YUCATAN', 'MERIDA');
 
-        $this->getJson("/api/admin/businessData/{$this->bizValladolid->id}")->assertOk();
-        $this->getJson("/api/admin/businessAgreement/{$this->bizValladolid->id}")->assertOk();
-        $this->getJson("/api/admin/businessData/{$this->bizMerida->id}")->assertNotFound();
-        $this->putJson("/api/admin/businessData/{$this->dataValladolid->id}", ['bs_name' => 'X'])->assertForbidden();
+        $this->getJson("/api/admin/businessData/{$this->bizMerida->id}")->assertOk();
+        $this->getJson("/api/admin/businessAgreement/{$this->bizMerida->id}")->assertOk();
+        $this->getJson("/api/admin/businessData/{$this->bizValladolid->id}")->assertNotFound();
+        $this->putJson("/api/admin/businessData/{$this->dataMerida->id}", ['bs_name' => 'X'])->assertForbidden();
     }
 
     /** @test */
@@ -299,12 +297,11 @@ class BusinessDataAuthorizationTest extends TestCase
     }
 
     /** @test */
-    public function search_for_yucatan_returns_mapped_only(): void
+    public function search_for_yucatan_returns_own_campus_only(): void
     {
-        $actor = $this->as('YUCATAN', 'MERIDA');
-        UserBusinessMap::create(['user_id' => $actor->id, 'business_id' => $this->bizValladolid->id]);
+        $this->as('YUCATAN', 'MERIDA');
 
-        $this->assertSame(['Acme Valladolid'], $this->searchNames());
+        $this->assertSame(['Acme Merida'], $this->searchNames());
     }
 
     /** @test */

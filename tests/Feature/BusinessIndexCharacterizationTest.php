@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Models\UserBusinessMap;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -118,20 +117,22 @@ class BusinessIndexCharacterizationTest extends TestCase
     }
 
     /** @test */
-    public function yucatan_sees_only_mapped_businesses_regardless_of_campus(): void
+    public function yucatan_sees_own_campus_only(): void
     {
         $staff = $this->makeUser('ADMIN', 'MERIDA', 'YUCATAN');
-        UserBusinessMap::create(['user_id' => $staff->id, 'business_id' => $this->bizValladolid->id]);
 
-        $this->assertSame($this->ids($this->bizValladolid), $this->listedIdsFor($staff));
+        $this->assertSame($this->ids($this->bizMerida), $this->listedIdsFor($staff));
     }
 
     /** @test */
-    public function yucatan_without_mappings_sees_nothing(): void
+    public function non_global_staff_with_empty_or_null_campus_sees_nothing(): void
     {
-        $staff = $this->makeUser('ADMIN', 'MERIDA', 'YUCATAN');
+        foreach (['', null] as $campus) {
+            $staff = $this->makeUser('ADMIN', 'MERIDA', 'ROOT_CAMPUS');
+            $staff->campus = $campus; // in memory: the campus column is an enum, '' cannot be stored
 
-        $this->assertSame([], $this->listedIdsFor($staff));
+            $this->assertSame([], $this->listedIdsFor($staff));
+        }
     }
 
     /** @test */
