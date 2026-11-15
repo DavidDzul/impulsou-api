@@ -95,17 +95,25 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::match(['put', 'patch'], '{id}', [RoleController::class, 'update'])->whereNumber('id');
     });
 
-    Route::prefix('vacantPositions')->group(function () {
-        Route::post('{id}/storeVacant', [VacantPositionController::class, 'storeVacant']);
-        Route::put('{id}/updateVacant', [VacantPositionController::class, 'updateVacant']);
-        Route::post('{id}/storePractice', [VacantPositionController::class, 'storePractice']);
-        Route::put('{id}/updatePractice', [VacantPositionController::class, 'updatePractice']);
-        Route::post('{id}/storeVacantJr', [VacantPositionController::class, 'storeVacantJr']);
-        Route::put('{id}/updateVacantJr', [VacantPositionController::class, 'updateVacantJr']);
-        Route::put('{id}/status', [VacantPositionController::class, 'updateStatus']);
-        Route::put('{id}/reset', [VacantPositionController::class, 'resetStatus']);
+    // Vacancies: explicit routes, numeric ids. The owner business scope runs after the gate (see VacantPosition::scopeVisibleTo).
+    Route::prefix('vacantPositions')->where(['id' => '[0-9]+'])->group(function () {
+        Route::middleware('ps_permission:PS_READ_VACANT')->group(function () {
+            Route::get('/', [VacantPositionController::class, 'index']);
+            Route::get('{id}', [VacantPositionController::class, 'show']);
+        });
+        Route::middleware('ps_permission:PS_CREATE_VACANT')->group(function () {
+            Route::post('{id}/storeVacant', [VacantPositionController::class, 'storeVacant']);
+            Route::post('{id}/storePractice', [VacantPositionController::class, 'storePractice']);
+            Route::post('{id}/storeVacantJr', [VacantPositionController::class, 'storeVacantJr']);
+        });
+        Route::middleware('ps_permission:PS_EDIT_VACANT')->group(function () {
+            Route::put('{id}/updateVacant', [VacantPositionController::class, 'updateVacant']);
+            Route::put('{id}/updatePractice', [VacantPositionController::class, 'updatePractice']);
+            Route::put('{id}/updateVacantJr', [VacantPositionController::class, 'updateVacantJr']);
+            Route::put('{id}/status', [VacantPositionController::class, 'updateStatus']);
+            Route::put('{id}/reset', [VacantPositionController::class, 'resetStatus']);
+        });
     });
-    Route::apiResource('vacantPositions', VacantPositionController::class);
 
 
     Route::apiResource('applications', JobApplicationController::class);

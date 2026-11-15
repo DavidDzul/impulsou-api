@@ -44,52 +44,18 @@ class VacantPositionController extends Controller
 
 
     /**
-     * Store a newly created resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
-     */
-    public function store(Request $request)
-    {
-        //
-    }
-
-    /**
      * Display the specified resource.
      *
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $vacant = VacantPosition::findOrFail($id);
+        $vacant = $this->visibleVacancy($request, $id);
 
         return response()->json([
             'vacant' => $vacant
         ]);
-    }
-
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function update(Request $request, $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function destroy($id)
-    {
-        //
     }
 
     public function storeVacant(Request $request, $id)
@@ -140,8 +106,9 @@ class VacantPositionController extends Controller
     public function updateVacant(Request $request, $id)
     {
 
-        $vacant = VacantPosition::findOrFail($id);
+        $vacant = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updateVacantRules());
+        unset($data['user_id']); // the owner of a vacancy is immutable
 
         $vacant->update($data);
         $vacant->load(['business:id,user_id,bs_name']);
@@ -200,8 +167,9 @@ class VacantPositionController extends Controller
     public function updatePractice(Request $request, $id)
     {
 
-        $practice = VacantPosition::findOrFail($id);
+        $practice = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updatePracticeRules());
+        unset($data['user_id']);
 
         $practice->update($data);
         $practice->load(['business:id,user_id,bs_name']);
@@ -260,8 +228,9 @@ class VacantPositionController extends Controller
     public function updateVacantJr(Request $request, $id)
     {
 
-        $vacant = VacantPosition::findOrFail($id);
+        $vacant = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updateJrRules());
+        unset($data['user_id']);
 
         $vacant->update($data);
         $vacant->load(['business:id,user_id,bs_name']);
@@ -275,16 +244,9 @@ class VacantPositionController extends Controller
 
     public function updateStatus(Request $request, $id)
     {
-        $vacant = VacantPosition::find($id);
+        $vacant = $this->visibleVacancy($request, $id);
         $data = $request->validate(VacantPosition::updateStatusRules());
         $data['status'] = false;
-
-        if (!$vacant) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'La vacante no ha sido encontrada.',
-            ], 404);
-        }
 
         $vacant->update($data);
 
@@ -300,14 +262,7 @@ class VacantPositionController extends Controller
 
     public function resetStatus(Request $request, $id)
     {
-        $vacant = VacantPosition::find($id);
-
-        if (!$vacant) {
-            return response()->json([
-                'res' => false,
-                'msg' => 'La vacante no ha sido encontrada.',
-            ], 404);
-        }
+        $vacant = $this->visibleVacancy($request, $id);
 
         $vacant->update([
             'status' => true,
@@ -324,7 +279,19 @@ class VacantPositionController extends Controller
         ], 200);
     }
 
-    /** The owner of a new vacancy must be a BUSINESS user visible to the actor, even for ROOT. 404, never findOrFail (the Handler maps it to 400). */
+    /**
+     * 404 (never findOrFail: the Handler maps ModelNotFoundException to 400) for a missing vacancy
+     * or one whose owner business is not visible to the actor.
+     */
+    private function visibleVacancy(Request $request, $id): VacantPosition
+    {
+        $vacant = VacantPosition::visibleTo($request->user())->find($id);
+        abort_if(!$vacant, 404);
+
+        return $vacant;
+    }
+
+    /** The owner of a new vacancy must be a BUSINESS user visible to the actor, even for ROOT. */
     private function visibleOwner(Request $request, $id): User
     {
         $owner = User::businessVisibleTo($request->user())->find($id);
