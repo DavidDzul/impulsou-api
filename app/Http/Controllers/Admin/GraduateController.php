@@ -102,6 +102,7 @@ class GraduateController extends Controller
         $user = User::personsVisibleTo($request->user())->find($id);
         abort_if(!$user, 404);
         $data = $request->validate(User::updateRulesUser($user->id));
+        $request->user()->assertCanAssignCampus($data['campus'] ?? null);
 
         try {
             UserTypeChangeGuard::assertAllowed($user, $data);

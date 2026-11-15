@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -341,6 +342,19 @@ class User extends Authenticatable
         }
 
         return $query->where('campus', $staff->campus);
+    }
+
+    /**
+     * Persons update: a non-global actor (not ROOT/ROOT_ADMINISTRATION) may only keep a person on
+     * their own campus. Rejected with 422 instead of silently discarded, so a tampered request is visible.
+     */
+    public function assertCanAssignCampus(?string $campus): void
+    {
+        if ($campus === null || $this->isRoot() || $campus === $this->campus) {
+            return;
+        }
+
+        throw ValidationException::withMessages(['campus' => 'No puedes asignar una sede distinta a la tuya.']);
     }
 
     /** Campus a staff member must write on business records; null means free choice. */
