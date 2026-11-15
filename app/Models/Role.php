@@ -39,30 +39,25 @@ class Role extends SpatieRole
         });
     }
 
-    /** Role types the ROOT-only RoleController may list and edit. */
-    public const MANAGEABLE_TYPES = ['USER', 'ADMIN'];
+    /**
+     * Role types the ROOT-only RoleController may list and edit: business plan
+     * tiers only. Staff (ADMIN) and ADMINISTRATION roles are out of scope.
+     */
+    public const MANAGEABLE_TYPES = ['USER'];
 
-    /** Roles that can never be edited through RoleController. */
+    /**
+     * Defense in depth: ROOT is type ADMIN (so already 404), but legacy local
+     * DBs seeded before type alignment label it USER. It must never be edited here.
+     */
     public const PROTECTED_ROLES = ['ROOT'];
 
     /**
-     * Validation rules for updating a role through RoleController.
-     *
-     * Every `permissions_ids.*` must exist with the SAME type as the role.
-     * USER (tier) roles keep the vacancy-limit contract; ADMIN (staff) roles
-     * only take `permissions_ids` (required, so an empty payload cannot wipe them).
+     * Validation rules for updating a business plan (USER) role through
+     * RoleController: vacancy limits plus USER-type permissions only. Any
+     * `permissions_ids.*` that is missing or not type USER rejects the request.
      */
-    public static function createOrUpdateRules(string $roleType)
+    public static function createOrUpdateRules()
     {
-        $permissionRule = [Rule::exists('permissions', 'id')->where('type', $roleType)];
-
-        if ($roleType === 'ADMIN') {
-            return [
-                'permissions_ids'   => 'present|array',
-                'permissions_ids.*' => $permissionRule,
-            ];
-        }
-
         return [
             'unlimited_jobs'          => 'boolean',
             'num_job_vacancies' => 'required|integer|min:0',
@@ -73,7 +68,7 @@ class Role extends SpatieRole
             'unlimited_visualizations'          => 'boolean',
             'num_visualizations' => 'required|integer|min:0',
             'permissions_ids'    => 'array',
-            'permissions_ids.*'  => $permissionRule,
+            'permissions_ids.*'  => [Rule::exists('permissions', 'id')->where('type', 'USER')],
         ];
     }
 

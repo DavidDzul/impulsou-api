@@ -12,8 +12,9 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
- * RoleController lock-down: ROOT only (ps_root), USER + ADMIN role types,
- * same-type permissions, ROOT role protected. 404 -> 403 -> 422 ordering.
+ * RoleController lock-down: ROOT only (ps_root), business plan roles (type USER)
+ * ONLY. Staff (ADMIN, incl. ROOT) and ADMINISTRATION roles are 404 and never
+ * listed. Permissions must be type USER. 403 (gate) -> 404 -> 422 ordering.
  */
 class RoleControllerSecurityTest extends TestCase
 {
@@ -84,31 +85,32 @@ class RoleControllerSecurityTest extends TestCase
         $this->assertSame($expected, $this->names($this->getJson('/api/admin/roles?type=USER')->assertOk()->json()));
     }
 
-    public function test_root_lists_staff_roles_with_type_admin_including_root(): void
-    {
-        $this->actor('ROOT');
-        $expected = collect(self::STAFF_ROLES)->sort()->values()->all();
-
-        $this->assertSame($expected, $this->names($this->getJson('/api/admin/roles?type=ADMIN')->assertOk()->json()));
-    }
-
-    public function test_invalid_or_administration_type_falls_back_to_tiers_and_never_lists_administration(): void
+    public function test_type_admin_is_ignored_and_staff_roles_are_never_listed(): void
     {
         $this->actor('ROOT');
         $expected = collect(self::TIERS)->sort()->values()->all();
 
-        foreach (['ADMINISTRATION', 'foo'] as $type) {
+        $names = $this->names($this->getJson('/api/admin/roles?type=ADMIN')->assertOk()->json());
+
+        $this->assertSame($expected, $names);
+        foreach (self::STAFF_ROLES as $staff) {
+            $this->assertNotContains($staff, $names);
+        }
+    }
+
+    public function test_any_type_value_falls_back_to_tiers_and_never_lists_administration(): void
+    {
+        $this->actor('ROOT');
+        $expected = collect(self::TIERS)->sort()->values()->all();
+
+        foreach (['ADMIN', 'ADMINISTRATION', 'foo'] as $type) {
             $names = $this->names($this->getJson("/api/admin/roles?type={$type}")->assertOk()->json());
             $this->assertSame($expected, $names);
             $this->assertNotContains('ROOT_ADMINISTRATION', $names);
         }
-        $this->assertNotContains(
-            'ROOT_ADMINISTRATION',
-            $this->names($this->getJson('/api/admin/roles?type=ADMIN')->json())
-        );
     }
 
-    public function test_permissions_listing_is_filtered_by_type(): void
+    public function test_permissions_listing_only_returns_user_permissions(): void
     {
         $this->actor('ROOT');
 
@@ -119,9 +121,8 @@ class RoleControllerSecurityTest extends TestCase
         $this->assertEqualsCanonicalizing(['CANDIDATES_VIEW', 'CREATE_VACANT_JR'], $fallback);
 
         $admin = collect($this->getJson('/api/admin/roles/permissions?type=ADMIN')->assertOk()->json('permissions'))->pluck('name');
-        $this->assertTrue($admin->contains('PS_VIEW_ALL_CAMPUSES'));
-        $this->assertTrue($admin->contains('PS_ROLES'));
-        $this->assertSame($admin->count(), $admin->filter(fn ($n) => str_starts_with($n, 'PS_'))->count());
+        $this->assertEqualsCanonicalizing(['CANDIDATES_VIEW', 'CREATE_VACANT_JR'], $admin->all());
+        $this->assertSame(0, $admin->filter(fn ($n) => str_starts_with($n, 'PS_') || str_starts_with($n, 'ADM_'))->count());
     }
 
     public function test_only_root_role_passes_the_gate_on_all_three_routes(): void
@@ -206,52 +207,31 @@ class RoleControllerSecurityTest extends TestCase
         $this->assertSame(1, Role::where('name', 'ROOT')->count());
     }
 
-    // ---- staff update ----
+    // ---- staff and root roles are out of scope ----
 
-    public function test_root_syncs_staff_role_permissions_without_creating_configuration(): void
-    {
-        $this->actor('ROOT');
-        $id = $this->roleId('ROOT_CAMPUS');
-        $ids = [$this->permId('PS_READ_USERS'), $this->permId('PS_VIEW_ALL_CAMPUSES')];
-
-        $this->putJson("/api/admin/roles/{$id}", [
-            'permissions_ids' => $ids,
-            'num_job_vacancies' => 99,
-            'name' => 'RENAMED',
-        ])->assertOk()->assertJsonPath('data.name', 'ROOT_CAMPUS');
-
-        $this->assertSame(['PS_READ_USERS', 'PS_VIEW_ALL_CAMPUSES'], $this->permNames('ROOT_CAMPUS'));
-        $this->assertDatabaseMissing('role_configuration', ['role_id' => $id]);
-    }
-
-    public function test_staff_update_rejects_other_type_permissions_unchanged(): void
+    public function test_staff_role_update_is_404_and_unchanged(): void
     {
         $this->actor('ROOT');
         $id = $this->roleId('ROOT_CAMPUS');
         $before = $this->permNames('ROOT_CAMPUS');
 
-        foreach (['CANDIDATES_VIEW', 'ADM_READ_USERS'] as $name) {
-            $this->putJson("/api/admin/roles/{$id}", ['permissions_ids' => [$this->permId($name)]])->assertStatus(422);
-        }
-        $this->putJson("/api/admin/roles/{$id}", ['permissions_ids' => [999999]])->assertStatus(422);
-        $this->putJson("/api/admin/roles/{$id}", ['num_job_vacancies' => 1])->assertStatus(422);
+        $this->putJson("/api/admin/roles/{$id}", ['permissions_ids' => [$this->permId('PS_READ_USERS')]])->assertNotFound();
+        $this->putJson("/api/admin/roles/{$id}", $this->tierPayload([]))->assertNotFound();
+        $this->putJson("/api/admin/roles/{$id}", ['permissions_ids' => [999999]])->assertNotFound();
 
         $this->assertSame($before, $this->permNames('ROOT_CAMPUS'));
+        $this->assertDatabaseMissing('role_configuration', ['role_id' => $id]);
     }
 
-    // ---- protection and ordering ----
-
-    public function test_root_role_cannot_be_edited(): void
+    public function test_every_staff_role_including_root_is_404_on_update(): void
     {
         $this->actor('ROOT');
-        $root = $this->roleId('ROOT');
-        $before = $this->permNames('ROOT');
 
-        $this->putJson("/api/admin/roles/{$root}", ['permissions_ids' => []])->assertForbidden();
-        $this->putJson("/api/admin/roles/{$root}", $this->tierPayload([]))->assertForbidden();
-        $this->putJson("/api/admin/roles/{$root}", ['permissions_ids' => [999999]])->assertForbidden();
-
-        $this->assertSame($before, $this->permNames('ROOT'));
+        foreach (self::STAFF_ROLES as $name) {
+            $before = $this->permNames($name);
+            $this->putJson('/api/admin/roles/'.$this->roleId($name), ['permissions_ids' => []])->assertNotFound();
+            $this->assertSame($before, $this->permNames($name));
+        }
     }
 
     public function test_administration_and_missing_roles_are_404_even_with_invalid_payload(): void
