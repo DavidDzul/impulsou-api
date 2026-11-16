@@ -153,6 +153,29 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Rules for creating a staff (psicol-panel) administrator. Run AFTER the controller guards.
+     * role_id must be an assignable web ADMIN role (never ROOT/YUCATAN; no ADMINISTRATION, USER or sanctum roles).
+     */
+    public static function createRulesStaffAdministrator()
+    {
+        return [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => 'required|string|min:8|confirmed',
+            'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
+            'role_id' => [
+                'required',
+                'integer',
+                Rule::exists('roles', 'id')
+                    ->where('type', 'ADMIN')
+                    ->where('guard_name', 'web')
+                    ->whereNotIn('name', Role::STAFF_NON_ASSIGNABLE),
+            ],
+        ];
+    }
+
     public static function createRulesBusiness()
     {
         return [
