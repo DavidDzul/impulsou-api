@@ -106,6 +106,10 @@ class RoleSeeder extends Seeder
             ['type' => 'ADMIN', 'module' => 'Empresas', 'description' => 'Ver empresas de todas las sedes (solo personal de Mérida)']
         )->syncRoles([$rootRole]);
 
+        // Gate of the psicol-panel "Administradores" module (administradores-psicol). ROOT only and never
+        // grantable to staff roles. No module/description copy: the PS_* catalog lives in App\Support\PsPermissionCatalog.
+        Permission::updateOrCreate(['name' => 'PS_MANAGE_ADMINS'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+
         /** PANEL ADMINISTRATION (administration-panel) */
         // updateOrCreate here mirrors the ROOT_ADMINISTRATION role above: this grant must be
         // safe to re-run without creating duplicate permission rows or duplicate role_has_permissions
