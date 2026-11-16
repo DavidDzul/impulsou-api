@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\PsPermissionCatalog;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -134,5 +135,158 @@ class StaffRoleControllerTest extends TestCase
 
         $this->assertSame('Otros', $modules->last()['module']);
         $this->assertSame('PS_UNKNOWN_EXTRA', $modules->last()['permissions'][0]['name']);
+    }
+
+    // ---- Write endpoints (PR2b) ----
+
+    public function test_write_endpoints_reject_guests_and_non_root_actors(): void
+    {
+        $role = Role::forceCreate(['name' => 'TARGET_ROLE', 'type' => 'ADMIN', 'guard_name' => 'web']);
+        $url = self::INDEX . '/' . $role->id . '/permissions';
+
+        $this->postJson(self::INDEX, ['name' => 'NEW_ROLE'])->assertStatus(401);
+        $this->putJson($url, ['permissions_ids' => []])->assertStatus(401);
+
+        foreach (['ROOT_JOB', 'ROOT_CAMPUS', 'ADMIN_STUDENT', 'ROOT_ADMINISTRATION'] as $actor) {
+            $this->actor($actor);
+            $this->postJson(self::INDEX, ['name' => 'NEW_ROLE'])->assertStatus(403);
+            $this->putJson($url, ['permissions_ids' => []])->assertStatus(403);
+        }
+        $this->assertDatabaseMissing('roles', ['name' => 'NEW_ROLE']);
+    }
+
+    public function test_root_creates_a_staff_role(): void
+    {
+        $this->actor('ROOT');
+
+        $response = $this->postJson(self::INDEX, ['name' => 'SOPORTE_2'])
+            ->assertStatus(201)
+            ->assertJsonPath('res', true)
+            ->assertJsonPath('role.name', 'SOPORTE_2')
+            ->assertJsonPath('role.type', 'ADMIN')
+            ->assertJsonPath('role.permissions_ids', [])
+            ->assertJsonPath('role.users_count', 0);
+
+        $this->assertEqualsCanonicalizing(
+            ['id', 'name', 'type', 'permissions_ids', 'users_count'],
+            array_keys($response->json('role'))
+        );
+        $this->assertDatabaseHas('roles', ['name' => 'SOPORTE_2', 'type' => 'ADMIN', 'guard_name' => 'web']);
+    }
+
+    public function test_create_rejects_reserved_duplicate_and_badly_formatted_names(): void
+    {
+        $this->actor('ROOT');
+        $before = Role::count();
+
+        $invalid = [
+            'ROOT', 'root', 'Root', 'ROOT_JOB', 'ROOT_ADMINISTRATION', 'YUCATAN',
+            'BASIC', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND',
+            'ROOT_CAMPUS', 'root_campus', 'gold', // duplicates (case-insensitive)
+            'lower_case', 'AB', '1ABC', 'WITH SPACE', 'BAD-DASH', str_repeat('A', 51), '', null,
+        ];
+        foreach ($invalid as $name) {
+            $this->postJson(self::INDEX, ['name' => $name])->assertStatus(422);
+        }
+        $this->postJson(self::INDEX, [])->assertStatus(422);
+
+        $this->assertSame($before, Role::count());
+    }
+
+    public function test_create_rejects_a_case_variant_of_an_existing_role(): void
+    {
+        $this->actor('ROOT');
+        $this->postJson(self::INDEX, ['name' => 'SOPORTE_2'])->assertStatus(201);
+        $this->postJson(self::INDEX, ['name' => 'SOPORTE_2'])->assertStatus(422);
+
+        Role::forceCreate(['name' => 'Mixed_Case', 'type' => 'ADMIN', 'guard_name' => 'web']);
+        $this->postJson(self::INDEX, ['name' => 'MIXED_CASE'])->assertStatus(422);
+    }
+
+    public function test_root_syncs_permissions_of_a_staff_role_and_empty_array_clears_them(): void
+    {
+        $this->actor('ROOT');
+        $role = Role::forceCreate(['name' => 'TARGET_ROLE', 'type' => 'ADMIN', 'guard_name' => 'web']);
+        $ids = PsPermissionCatalog::grantableQuery()->limit(3)->pluck('id')->all();
+        $url = self::INDEX . '/' . $role->id . '/permissions';
+
+        $this->putJson($url, ['permissions_ids' => $ids])
+            ->assertOk()
+            ->assertJsonPath('res', true)
+            ->assertJsonPath('role.id', $role->id);
+        $this->assertEqualsCanonicalizing($ids, $role->fresh()->permissions()->pluck('permissions.id')->all());
+
+        $replacement = PsPermissionCatalog::grantableQuery()->whereNotIn('id', $ids)->limit(1)->pluck('id')->all();
+        $response = $this->putJson($url, ['permissions_ids' => array_merge($replacement, $replacement)])->assertOk();
+        $this->assertSame($replacement, $response->json('role.permissions_ids'));
+        $this->assertSame($replacement, $role->fresh()->permissions()->pluck('permissions.id')->all());
+
+        $this->putJson($url, ['permissions_ids' => []])->assertOk()->assertJsonPath('role.permissions_ids', []);
+        $this->assertSame(0, $role->fresh()->permissions()->count());
+    }
+
+    public function test_sync_with_non_grantable_ids_is_all_or_nothing(): void
+    {
+        $this->actor('ROOT');
+        $role = Role::forceCreate(['name' => 'TARGET_ROLE', 'type' => 'ADMIN', 'guard_name' => 'web']);
+        $kept = PsPermissionCatalog::grantableQuery()->limit(2)->pluck('id')->all();
+        $role->syncPermissions($kept);
+        $valid = PsPermissionCatalog::grantableQuery()->whereNotIn('id', $kept)->value('id');
+        $sanctum = Permission::forceCreate(['name' => 'PS_SANCTUM_ROW', 'type' => 'ADMIN', 'guard_name' => 'sanctum']);
+        $url = self::INDEX . '/' . $role->id . '/permissions';
+
+        $bad = [
+            Permission::where('name', 'PS_MANAGE_ADMINS')->value('id'),
+            Permission::where('name', 'like', 'ADM%')->value('id'),
+            Permission::where('type', 'USER')->value('id'),
+            $sanctum->id,
+            999999,
+            'abc',
+        ];
+        foreach ($bad as $badId) {
+            $this->assertNotNull($badId);
+            $this->putJson($url, ['permissions_ids' => [$valid, $badId]])->assertStatus(422);
+            $this->assertEqualsCanonicalizing($kept, $role->fresh()->permissions()->pluck('permissions.id')->all());
+        }
+    }
+
+    public function test_sync_requires_the_permissions_ids_key(): void
+    {
+        $this->actor('ROOT');
+        $role = Role::forceCreate(['name' => 'TARGET_ROLE', 'type' => 'ADMIN', 'guard_name' => 'web']);
+        $role->syncPermissions(PsPermissionCatalog::grantableQuery()->limit(2)->pluck('id')->all());
+
+        $this->putJson(self::INDEX . '/' . $role->id . '/permissions', [])->assertStatus(422);
+        $this->assertSame(2, $role->fresh()->permissions()->count());
+    }
+
+    public function test_sync_on_out_of_scope_roles_is_404_even_with_an_invalid_payload(): void
+    {
+        $this->actor('ROOT');
+        $sanctumRole = Role::forceCreate(['name' => 'AuxiliarX', 'type' => 'ADMIN', 'guard_name' => 'sanctum']);
+        $ids = [
+            Role::where('name', 'ROOT')->value('id'), Role::where('name', 'YUCATAN')->value('id'),
+            Role::where('name', 'ROOT_ADMINISTRATION')->value('id'), Role::where('name', 'GOLD')->value('id'),
+            $sanctumRole->id, 999999,
+        ];
+        $rootBefore = Role::where('name', 'ROOT')->firstOrFail()->permissions()->count();
+
+        foreach ($ids as $id) {
+            $this->assertNotNull($id);
+            $this->putJson(self::INDEX . "/$id/permissions", ['permissions_ids' => []])->assertStatus(404);
+            $this->putJson(self::INDEX . "/$id/permissions", [])->assertStatus(404);
+        }
+        $this->assertSame($rootBefore, Role::where('name', 'ROOT')->firstOrFail()->permissions()->count());
+    }
+
+    public function test_staff_roles_cannot_be_renamed_or_deleted(): void
+    {
+        $this->actor('ROOT');
+        $role = Role::forceCreate(['name' => 'TARGET_ROLE', 'type' => 'ADMIN', 'guard_name' => 'web']);
+
+        // No such routes exist: 404 (no route) or 405 (method not allowed) are both acceptable.
+        $this->assertContains($this->putJson(self::INDEX . '/' . $role->id, ['name' => 'OTHER_NAME'])->status(), [404, 405]);
+        $this->assertContains($this->deleteJson(self::INDEX . '/' . $role->id)->status(), [404, 405]);
+        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'TARGET_ROLE']);
     }
 }

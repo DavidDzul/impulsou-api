@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\PsPermissionCatalog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Spatie\Permission\Models\Role as SpatieRole;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -110,6 +111,48 @@ class Role extends SpatieRole
                     }
                 },
                 Rule::unique('roles', 'name')->where('guard_name', 'web'),
+            ],
+        ];
+    }
+
+    /**
+     * Validation rules for creating a staff (type ADMIN) role from psicol-panel. Uppercase
+     * identifier, not reserved, unique among web roles ignoring case (UPPER() works on
+     * SQLite and MySQL). Type and guard are hardcoded by the controller, never accepted.
+     */
+    public static function createStaffRules()
+    {
+        return [
+            'name' => [
+                'required',
+                'string',
+                'regex:/^[A-Z][A-Z0-9_]{2,49}$/',
+                function ($attribute, $value, $fail) {
+                    $name = strtoupper((string) $value);
+                    if (in_array($name, self::RESERVED_NAMES, true)) {
+                        $fail('Este nombre de rol está reservado.');
+                        return;
+                    }
+                    $exists = self::where('guard_name', 'web')->whereRaw('UPPER(name) = ?', [$name])->exists();
+                    if ($exists) {
+                        $fail('Ya existe un rol con este nombre.');
+                    }
+                },
+            ],
+        ];
+    }
+
+    /**
+     * Validation rules for syncing a staff role's PS_* permissions. Every id must be grantable
+     * (PsPermissionCatalog::grantableQuery); one invalid id rejects the whole request.
+     */
+    public static function syncStaffPermissionsRules()
+    {
+        return [
+            'permissions_ids'   => 'present|array',
+            'permissions_ids.*' => [
+                'integer',
+                Rule::in(PsPermissionCatalog::grantableQuery()->pluck('id')->all()),
             ],
         ];
     }

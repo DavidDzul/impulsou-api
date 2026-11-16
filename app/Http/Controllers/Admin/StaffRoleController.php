@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\PsPermissionCatalog;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Staff (type ADMIN, guard web) roles managed from psicol-panel's "Administradores" page.
@@ -46,5 +48,51 @@ class StaffRoleController extends Controller
     public function permissions()
     {
         return response()->json(['res' => true, 'modules' => PsPermissionCatalog::grouped()]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate(Role::createStaffRules());
+
+        // Type and guard are never client-controlled.
+        $role = Role::forceCreate(['name' => $data['name'], 'type' => 'ADMIN', 'guard_name' => 'web']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return response()->json(['res' => true, 'role' => $this->present($role, 0)], 201);
+    }
+
+    public function updatePermissions(Request $request, $id)
+    {
+        // Scope first (404), validation after: never leak existence through a 422.
+        $role = Role::find($id);
+        abort_if(
+            $role === null
+                || $role->type !== 'ADMIN'
+                || $role->guard_name !== 'web'
+                || in_array($role->name, Role::STAFF_NON_ASSIGNABLE, true),
+            404,
+            'Rol no encontrado.'
+        );
+
+        $data = $request->validate(Role::syncStaffPermissionsRules());
+
+        $role->syncPermissions(array_values(array_unique($data['permissions_ids'])));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return response()->json(['res' => true, 'role' => $this->present($role->fresh('permissions'))]);
+    }
+
+    private function present(Role $role, ?int $usersCount = null): array
+    {
+        return [
+            'id' => $role->id,
+            'name' => $role->name,
+            'type' => $role->type,
+            'permissions_ids' => $role->permissions->pluck('id')->values()->all(),
+            'users_count' => $usersCount ?? DB::table(config('permission.table_names.model_has_roles'))
+                ->where('model_type', (new User())->getMorphClass())
+                ->where('role_id', $role->id)
+                ->count(),
+        ];
     }
 }

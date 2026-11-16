@@ -101,6 +101,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     Route::prefix('staff-roles')->middleware('ps_permission:PS_MANAGE_ADMINS')->group(function () {
         Route::get('/', [StaffRoleController::class, 'index']);
         Route::get('permissions', [StaffRoleController::class, 'permissions']);
+        Route::post('/', [StaffRoleController::class, 'store']);
+        Route::put('{id}/permissions', [StaffRoleController::class, 'updatePermissions'])->whereNumber('id');
     });
 
     // Vacancies: explicit routes, numeric ids. The owner business scope runs after the gate (see VacantPosition::scopeVisibleTo).
