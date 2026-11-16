@@ -11,11 +11,19 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    /** bcrypt hash of a throwaway string; only used to equalize login timing. */
+    private const DUMMY_HASH = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+
     public function login(UserAccess $request)
     {
         $user = User::where('email', $request->email)
             ->where('active', true)
             ->first();
+
+        if (!$user) {
+            // Constant-ish timing: spend a hash check so absent/inactive accounts are not distinguishable.
+            Hash::check((string) $request->password, self::DUMMY_HASH);
+        }
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([

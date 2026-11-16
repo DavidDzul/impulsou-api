@@ -83,6 +83,8 @@ class Kernel extends HttpKernel
         // PS_* gate with ROOT bypass (PS_* only) and ROOT-role-only gate.
         'ps_permission' => \App\Http\Middleware\CheckPsPermission::class,
         'ps_root' => \App\Http\Middleware\RequireRootRole::class,
+        // Rejects deactivated accounts (401) on every authenticated admin request.
+        'ensure_active' => \App\Http\Middleware\EnsureUserIsActive::class,
 
     ];
 }

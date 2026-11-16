@@ -61,7 +61,12 @@ class RouteServiceProvider extends ServiceProvider
      */
     protected function configureRateLimiting()
     {
-        RateLimiter::for('api', function (Request $request) {
+        // Per account + IP: slows password guessing on one account without locking out others.
+        RateLimiter::for('admin-login', function (Request $request) {
+            return Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')) . '|' . $request->ip());
+        });
+
+        RateLimiter::for('api',function (Request $request) {
             return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
         });
     }

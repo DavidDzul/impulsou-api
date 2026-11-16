@@ -35,16 +35,16 @@ use App\Http\Controllers\Admin\StaffRoleController;
 use App\Http\Controllers\Admin\TelmexCoverageController;
 
 Route::controller(AuthController::class)->group(function () {
-    Route::post('login', 'login');
+    Route::post('login', 'login')->middleware('throttle:admin-login');
 });
 
-Route::middleware('auth:sanctum')->get('/admin', function (Request $request) {
+Route::middleware(['auth:sanctum', 'ensure_active'])->get('/admin', function (Request $request) {
     return $request->user()->load('roles');
 });
 
-Route::middleware('auth:sanctum')->get('/permissions', [AuthController::class, 'getPermissions']);
+Route::middleware(['auth:sanctum', 'ensure_active'])->get('/permissions', [AuthController::class, 'getPermissions']);
 
-Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
+Route::middleware(['auth:sanctum', 'ensure_active', 'user_type:ADMIN'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('updateProfile', [AuthController::class, 'updateProfile']);
     Route::get('search', [BusinessController::class, 'searchBusinesses'])
@@ -98,8 +98,8 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::match(['put', 'patch'], '{id}', [RoleController::class, 'update'])->whereNumber('id');
     });
 
-    // Staff roles (type ADMIN): ROOT-only management gate, never grantable. Static routes before any {id}.
-    Route::prefix('staff-roles')->middleware('ps_permission:PS_MANAGE_ADMINS')->group(function () {
+    // Staff roles (type ADMIN): ROOT role required (ps_root) plus PS_MANAGE_ADMINS, never grantable. Static routes before any {id}.
+    Route::prefix('staff-roles')->middleware(['ps_root', 'ps_permission:PS_MANAGE_ADMINS'])->group(function () {
         Route::get('/', [StaffRoleController::class, 'index']);
         Route::get('permissions', [StaffRoleController::class, 'permissions']);
         Route::post('/', [StaffRoleController::class, 'store']);
@@ -107,7 +107,7 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
     });
 
     // Staff administrators (ADMIN users): same ROOT-only gate. Guards run before validation.
-    Route::prefix('staff-administrators')->middleware('ps_permission:PS_MANAGE_ADMINS')->group(function () {
+    Route::prefix('staff-administrators')->middleware(['ps_root', 'ps_permission:PS_MANAGE_ADMINS'])->group(function () {
         Route::get('/', [StaffAdministratorController::class, 'index']);
         Route::post('/', [StaffAdministratorController::class, 'store']);
         Route::get('{id}', [StaffAdministratorController::class, 'show'])->whereNumber('id');
