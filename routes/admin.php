@@ -111,6 +111,9 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('/', [StaffAdministratorController::class, 'index']);
         Route::post('/', [StaffAdministratorController::class, 'store']);
         Route::get('{id}', [StaffAdministratorController::class, 'show'])->whereNumber('id');
+        Route::put('{id}/role', [StaffAdministratorController::class, 'updateRole'])->whereNumber('id');
+        Route::patch('{id}/active', [StaffAdministratorController::class, 'updateActive'])->whereNumber('id');
+        Route::put('{id}/password', [StaffAdministratorController::class, 'updatePassword'])->whereNumber('id');
     });
 
     // Vacancies: explicit routes, numeric ids. The owner business scope runs after the gate (see VacantPosition::scopeVisibleTo).

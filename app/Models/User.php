@@ -165,14 +165,29 @@ class User extends Authenticatable
             'email' => 'required|string|email|max:255|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
-            'role_id' => [
-                'required',
-                'integer',
-                Rule::exists('roles', 'id')
-                    ->where('type', 'ADMIN')
-                    ->where('guard_name', 'web')
-                    ->whereNotIn('name', Role::STAFF_NON_ASSIGNABLE),
-            ],
+            'role_id' => self::staffAssignableRoleRule(),
+        ];
+    }
+
+    public static function changeRoleRulesStaffAdministrator()
+    {
+        return ['role_id' => self::staffAssignableRoleRule()];
+    }
+
+    public static function resetPasswordRulesStaffAdministrator()
+    {
+        return ['password' => 'required|string|min:8|confirmed'];
+    }
+
+    private static function staffAssignableRoleRule(): array
+    {
+        return [
+            'required',
+            'integer',
+            Rule::exists('roles', 'id')
+                ->where('type', 'ADMIN')
+                ->where('guard_name', 'web')
+                ->whereNotIn('name', Role::STAFF_NON_ASSIGNABLE),
         ];
     }
 

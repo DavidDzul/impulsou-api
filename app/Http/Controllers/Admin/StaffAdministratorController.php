@@ -70,6 +70,63 @@ class StaffAdministratorController extends Controller
         ], 201);
     }
 
+    public function updateRole(Request $request, $id)
+    {
+        $actor = $request->user();
+        $target = $this->guardedTarget($actor, $id);
+        $data = $request->validate(User::changeRoleRulesStaffAdministrator());
+
+        DB::transaction(function () use ($target, $data) {
+            $target->syncRoles([Role::find($data['role_id'])]);
+            $target->tokens()->delete();
+        });
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return response()->json(['res' => true, 'administrator' => $this->present($target->load('roles'), $actor)]);
+    }
+
+    public function updateActive(Request $request, $id)
+    {
+        $actor = $request->user();
+        $target = $this->guardedTarget($actor, $id);
+        $data = $request->validate(['active' => 'required|boolean']);
+
+        DB::transaction(function () use ($target, $data) {
+            $target->forceFill(['active' => (bool) $data['active']])->save();
+            if (!$data['active']) {
+                $target->tokens()->delete();
+            }
+        });
+
+        return response()->json(['res' => true, 'administrator' => $this->present($target->load('roles'), $actor)]);
+    }
+
+    public function updatePassword(Request $request, $id)
+    {
+        $target = $this->guardedTarget($request->user(), $id);
+        $data = $request->validate(User::resetPasswordRulesStaffAdministrator());
+
+        DB::transaction(function () use ($target, $data) {
+            $target->forceFill(['password' => Hash::make($data['password'])])->save();
+            $target->tokens()->delete();
+        });
+
+        return response()->json(['res' => true, 'msg' => 'Contraseña actualizada. Las sesiones del usuario fueron cerradas.']);
+    }
+
+    /**
+     * Write guards, in order: self 403 (no lookup) -> staff scope 404 -> ROOT target 403.
+     */
+    private function guardedTarget(User $actor, $id): User
+    {
+        abort_if((int) $id === (int) $actor->id, 403, 'No puedes modificar tu propia cuenta.');
+        $target = $this->staffScope()->find($id);
+        abort_if($target === null, 404, 'Administrador no encontrado.');
+        abort_if($target->hasRole('ROOT'), 403, 'Las cuentas ROOT no se pueden modificar.');
+
+        return $target;
+    }
+
     /**
      * ADMIN users without an ADMINISTRATION-type role that either hold a web ADMIN role or hold no role at all.
      */
