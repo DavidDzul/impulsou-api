@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\ScholarshipRefrendController;
 use App\Http\Controllers\Admin\ScholarshipSemesterGradeController;
 use App\Http\Controllers\Admin\ScholarshipSettingController;
 use App\Http\Controllers\Admin\ScholarshipWithholdingController;
+use App\Http\Controllers\Admin\StaffRoleController;
 use App\Http\Controllers\Admin\TelmexCoverageController;
 
 Route::controller(AuthController::class)->group(function () {
@@ -94,6 +95,12 @@ Route::middleware(['auth:sanctum', 'user_type:ADMIN'])->group(function () {
         Route::get('/', [RoleController::class, 'index']);
         Route::get('permissions', [RoleController::class, 'getAllPermissions']);
         Route::match(['put', 'patch'], '{id}', [RoleController::class, 'update'])->whereNumber('id');
+    });
+
+    // Staff roles (type ADMIN): ROOT-only management gate, never grantable. Static routes before any {id}.
+    Route::prefix('staff-roles')->middleware('ps_permission:PS_MANAGE_ADMINS')->group(function () {
+        Route::get('/', [StaffRoleController::class, 'index']);
+        Route::get('permissions', [StaffRoleController::class, 'permissions']);
     });
 
     // Vacancies: explicit routes, numeric ids. The owner business scope runs after the gate (see VacantPosition::scopeVisibleTo).

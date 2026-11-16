@@ -78,6 +78,9 @@ class Role extends SpatieRole
         return $this->hasOne(RoleConfiguration::class, 'role_id');
     }
 
+    /** Staff roles that can never be listed, edited or assigned from the staff management endpoints. */
+    public const STAFF_NON_ASSIGNABLE = ['ROOT', 'YUCATAN'];
+
     /** Role names that an administration role may never take (compared case-insensitively). */
     public const RESERVED_NAMES = [
         'ROOT', 'ROOT_JOB', 'ROOT_ADMINISTRATION', 'YUCATAN',
