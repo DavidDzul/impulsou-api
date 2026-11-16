@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\PsPermissionCatalog;
+use App\Support\UniqueViolation;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -55,7 +58,15 @@ class StaffRoleController extends Controller
         $data = $request->validate(Role::createStaffRules());
 
         // Type and guard are never client-controlled.
-        $role = Role::forceCreate(['name' => $data['name'], 'type' => 'ADMIN', 'guard_name' => 'web']);
+        try {
+            $role = Role::forceCreate(['name' => $data['name'], 'type' => 'ADMIN', 'guard_name' => 'web']);
+        } catch (QueryException $e) {
+            // Concurrent create of the same name slipped past the validation closure.
+            if (!UniqueViolation::matches($e)) {
+                throw $e;
+            }
+            throw ValidationException::withMessages(['name' => 'Ya existe un rol con este nombre.']);
+        }
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return response()->json(['res' => true, 'role' => $this->present($role, 0)], 201);

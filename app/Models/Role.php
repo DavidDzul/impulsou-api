@@ -151,6 +151,7 @@ class Role extends SpatieRole
         return [
             'permissions_ids'   => 'present|array',
             'permissions_ids.*' => [
+                'bail',
                 'integer',
                 Rule::in(PsPermissionCatalog::grantableQuery()->pluck('id')->all()),
             ],

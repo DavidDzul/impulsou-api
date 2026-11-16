@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\UniqueViolation;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -47,21 +50,29 @@ class StaffAdministratorController extends Controller
         $data = $request->validate(User::createRulesStaffAdministrator());
         $actor->assertCanAssignCampus($data['campus']);
 
-        $user = DB::transaction(function () use ($data) {
-            $user = User::create([
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'email' => $data['email'],
-                'password' => Hash::make($data['password']),
-                'user_type' => 'ADMIN',
-                'active' => true,
-                'phone' => '',
-                'campus' => $data['campus'],
-            ]);
-            $user->syncRoles([Role::find($data['role_id'])]);
+        try {
+            $user = DB::transaction(function () use ($data) {
+                $user = User::create([
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'],
+                    'email' => $data['email'],
+                    'password' => Hash::make($data['password']),
+                    'user_type' => 'ADMIN',
+                    'active' => true,
+                    'phone' => '',
+                    'campus' => $data['campus'],
+                ]);
+                $user->syncRoles([Role::find($data['role_id'])]);
 
-            return $user;
-        });
+                return $user;
+            });
+        } catch (QueryException $e) {
+            // Concurrent create of the same email slipped past the unique rule.
+            if (!UniqueViolation::matches($e)) {
+                throw $e;
+            }
+            throw ValidationException::withMessages(['email' => 'Este correo ya está registrado.']);
+        }
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return response()->json([

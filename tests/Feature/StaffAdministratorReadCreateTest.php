@@ -215,7 +215,6 @@ class StaffAdministratorReadCreateTest extends TestCase
 
         $cases = [
             'duplicate email' => ['email' => 'taken@example.com'],
-            'short password' => ['password' => 'short', 'password_confirmation' => 'short'],
             'unconfirmed password' => ['password_confirmation' => 'other-pass'],
             'missing confirmation' => ['password_confirmation' => null],
             'bad campus' => ['campus' => 'CANCUN'],

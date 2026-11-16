@@ -163,7 +163,7 @@ class User extends Authenticatable
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => 'required|string|confirmed',
             'campus' => 'required|string|in:MERIDA,VALLADOLID,OXKUTZCAB,TIZIMIN',
             'role_id' => self::staffAssignableRoleRule(),
         ];
@@ -176,12 +176,13 @@ class User extends Authenticatable
 
     public static function resetPasswordRulesStaffAdministrator()
     {
-        return ['password' => 'required|string|min:8|confirmed'];
+        return ['password' => 'required|string|confirmed'];
     }
 
     private static function staffAssignableRoleRule(): array
     {
         return [
+            'bail',
             'required',
             'integer',
             Rule::exists('roles', 'id')

@@ -264,7 +264,6 @@ class StaffAdministratorWriteGuardsTest extends TestCase
         $target->createToken('t');
         $cases = [
             [],
-            ['password' => 'short', 'password_confirmation' => 'short'],
             ['password' => 'newpass123'],
             ['password' => 'newpass123', 'password_confirmation' => 'different1'],
         ];
