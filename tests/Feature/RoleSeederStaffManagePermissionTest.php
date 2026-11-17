@@ -40,4 +40,21 @@ class RoleSeederStaffManagePermissionTest extends TestCase
         $this->assertSame(['ROOT'], $permission->roles()->pluck('name')->all());
         $this->assertSame(0, DB::table('model_has_permissions')->where('permission_id', $permission->id)->count());
     }
+
+    /** @test */
+    public function moved_pages_are_seeded_under_their_domain_module(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $expected = [
+            'PS_ROLES' => 'Vinculación laboral',
+            'PS_GRAPHICS' => 'Vinculación laboral',
+            'PS_NOTICES' => 'Asistencias',
+            'PS_GENERATIONS' => 'Configuración',
+        ];
+
+        foreach ($expected as $name => $module) {
+            $this->assertSame($module, Permission::where('name', $name)->where('guard_name', 'web')->value('module'), $name);
+        }
+    }
 }

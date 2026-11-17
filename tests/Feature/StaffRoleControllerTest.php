@@ -131,7 +131,10 @@ class StaffRoleControllerTest extends TestCase
             $this->assertEqualsCanonicalizing(['id', 'name', 'description', 'kind', 'menu_group'], array_keys($item));
         }
         $this->assertSame('menu-group', $items->firstWhere('name', 'PS_GROUP_CONFIG')['kind']);
-        $this->assertSame('PS_GROUP_CONFIG', $items->firstWhere('name', 'PS_ROLES')['menu_group']);
+        $this->assertSame('PS_GROUP_JOBS', $items->firstWhere('name', 'PS_ROLES')['menu_group']);
+        $this->assertSame('PS_GROUP_JOBS', $items->firstWhere('name', 'PS_GRAPHICS')['menu_group']);
+        $this->assertSame('PS_GROUP_ATTENDANCE', $items->firstWhere('name', 'PS_NOTICES')['menu_group']);
+        $this->assertSame('PS_GROUP_CONFIG', $items->firstWhere('name', 'PS_GENERATIONS')['menu_group']);
 
         $this->assertSame('Otros', $modules->last()['module']);
         $this->assertSame('PS_UNKNOWN_EXTRA', $modules->last()['permissions'][0]['name']);

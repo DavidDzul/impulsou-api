@@ -83,7 +83,7 @@ class RoleSeeder extends Seeder
         Permission::updateOrCreate(['name' => 'PS_EDIT_APPLICATION'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Editar postulaciones'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
         Permission::updateOrCreate(['name' => 'PS_GROUP_CONFIG'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Mostrar el menú Configuración'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole, $rootJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_GRAPHICS'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a áreas e informes'])->syncRoles([$rootRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GRAPHICS'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Entrar a áreas e informes'])->syncRoles([$rootRole, $rootJobRole]);
 
         Permission::updateOrCreate(['name' => 'PS_GROUP_ATTENDANCE'], ['type' => 'ADMIN', 'module' => 'Asistencias', 'description' => 'Mostrar el menú Asistencias'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
         Permission::updateOrCreate(['name' => 'PS_CHECK'], ['type' => 'ADMIN', 'module' => 'Asistencias', 'description' => 'Entrar al checador'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
@@ -91,8 +91,8 @@ class RoleSeeder extends Seeder
 
         Permission::updateOrCreate(['name' => 'PS_GENERATIONS'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a generaciones'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
         // Configurable gate of /roles (business plans only): ROOT always passes; ROOT_JOB holds it as in staging.
-        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a roles de planes de empresa'])->syncRoles([$rootRole, $rootJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_NOTICES'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a avisos'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
+        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Entrar a roles de planes de empresa'])->syncRoles([$rootRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_NOTICES'], ['type' => 'ADMIN', 'module' => 'Asistencias', 'description' => 'Entrar a avisos'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
 
         Permission::updateOrCreate(['name' => 'PS_GROUP_SCHOLARSHIPS'], ['type' => 'ADMIN', 'module' => 'Becas', 'description' => 'Mostrar el menú Becas'])->syncRoles([$rootRole]);
         Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_ATENCION'], ['type' => 'ADMIN', 'module' => 'Becas', 'description' => 'Entrar a la verificación de refrendos'])->syncRoles([$rootRole]);

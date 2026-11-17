@@ -76,6 +76,16 @@ class PsPermissionCatalogTest extends TestCase
     }
 
     /** @test */
+    public function roles_data_and_notices_live_under_their_domain_groups(): void
+    {
+        $this->assertSame('PS_GROUP_JOBS', PsPermissionCatalog::metaFor('PS_ROLES')['menu_group']);
+        $this->assertSame('PS_GROUP_JOBS', PsPermissionCatalog::metaFor('PS_GRAPHICS')['menu_group']);
+        $this->assertSame('PS_GROUP_ATTENDANCE', PsPermissionCatalog::metaFor('PS_NOTICES')['menu_group']);
+        $this->assertSame('PS_GROUP_CONFIG', PsPermissionCatalog::metaFor('PS_GENERATIONS')['menu_group']);
+        $this->assertSame('PS_GROUP_CONFIG', PsPermissionCatalog::metaFor('PS_MANAGE_ADMINS')['menu_group']);
+    }
+
+    /** @test */
     public function kind_is_derived_from_the_name(): void
     {
         $this->assertSame('menu-group', PsPermissionCatalog::kindFor('PS_GROUP_CONFIG'));
