@@ -56,47 +56,47 @@ class RoleSeeder extends Seeder
         Permission::updateOrCreate(['name' => 'CREATE_VACANT_JR'], ['type' => 'USER'])->syncRoles([$diamondRole]);
 
         /** PANEL ADMINISTRATIVO */
-        Permission::updateOrCreate(['name' => 'PS_GROUP_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $adminStudentRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_READ_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_CREATE_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_EDIT_USERS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_USERS'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Mostrar el menú Usuarios'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $adminStudentRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_USERS'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Entrar a becarios y egresados'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_USERS'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Ver la lista de becarios'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_USERS'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Registrar becarios'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_USERS'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Editar becarios'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_READ_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_CREATE_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_EDIT_GRADUATES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GRADUATES'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Entrar a egresados'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_GRADUATES'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Ver la lista de egresados'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_GRADUATES'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Registrar egresados'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_GRADUATES'], ['type' => 'ADMIN', 'module' => 'Usuarios', 'description' => 'Editar egresados'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_READ_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_CREATE_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_EDIT_BUSINESS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_BUSINESS'], ['type' => 'ADMIN', 'module' => 'Empresas', 'description' => 'Entrar a empresas'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_BUSINESS'], ['type' => 'ADMIN', 'module' => 'Empresas', 'description' => 'Ver la lista de empresas'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_BUSINESS'], ['type' => 'ADMIN', 'module' => 'Empresas', 'description' => 'Registrar empresas'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_BUSINESS'], ['type' => 'ADMIN', 'module' => 'Empresas', 'description' => 'Editar empresas'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_GROUP_JOBS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_READ_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_CREATE_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_EDIT_VACANT'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_JOBS'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Mostrar el menú Vinculación laboral'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_VACANT'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Entrar a vacantes'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_VACANT'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Ver la lista de vacantes'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_CREATE_VACANT'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Crear vacantes'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_VACANT'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Editar vacantes'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_APPLICATION'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_READ_APPLICATION'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_EDIT_APPLICATION'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_APPLICATION'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Entrar a postulaciones'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_READ_APPLICATION'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Ver la lista de postulaciones'])->syncRoles([$rootRole, $rootCampusRole, $yucatanRole, $rootJobRole, $adminJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_EDIT_APPLICATION'], ['type' => 'ADMIN', 'module' => 'Vinculación laboral', 'description' => 'Editar postulaciones'])->syncRoles([$rootRole, $rootCampusRole, $rootJobRole, $adminJobRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_GROUP_CONFIG'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole, $rootJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_GRAPHICS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_CONFIG'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Mostrar el menú Configuración'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_GRAPHICS'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a áreas e informes'])->syncRoles([$rootRole, $rootJobRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_GROUP_ATTENDANCE'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_CHECK'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
-        Permission::updateOrCreate(['name' => 'PS_CLASSES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_ATTENDANCE'], ['type' => 'ADMIN', 'module' => 'Asistencias', 'description' => 'Mostrar el menú Asistencias'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CHECK'], ['type' => 'ADMIN', 'module' => 'Asistencias', 'description' => 'Entrar al checador'])->syncRoles([$rootRole, $rootCampusRole, $attendanceRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_CLASSES'], ['type' => 'ADMIN', 'module' => 'Asistencias', 'description' => 'Entrar a las sesiones de formación'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_GENERATIONS'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
+        Permission::updateOrCreate(['name' => 'PS_GENERATIONS'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a generaciones'])->syncRoles([$rootRole, $rootCampusRole, $adminStudentRole]);
         // Configurable gate of /roles (business plans only): ROOT always passes; ROOT_JOB holds it as in staging.
-        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $rootJobRole]);
-        Permission::updateOrCreate(['name' => 'PS_NOTICES'], ['type' => 'ADMIN'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
+        Permission::updateOrCreate(['name' => 'PS_ROLES'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a roles de planes de empresa'])->syncRoles([$rootRole, $rootJobRole]);
+        Permission::updateOrCreate(['name' => 'PS_NOTICES'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Entrar a avisos'])->syncRoles([$rootRole, $adminStudentRole, $rootCampusRole]);
 
-        Permission::updateOrCreate(['name' => 'PS_GROUP_SCHOLARSHIPS'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
-        Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_ATENCION'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
-        Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_GROUP_SCHOLARSHIPS'], ['type' => 'ADMIN', 'module' => 'Becas', 'description' => 'Mostrar el menú Becas'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_ATENCION'], ['type' => 'ADMIN', 'module' => 'Becas', 'description' => 'Entrar a la verificación de refrendos'])->syncRoles([$rootRole]);
+        Permission::updateOrCreate(['name' => 'PS_SCHOLARSHIPS_PEDAGOGIA'], ['type' => 'ADMIN', 'module' => 'Becas', 'description' => 'Entrar a la aprobación de refrendos'])->syncRoles([$rootRole]);
 
         // Effective only for MERIDA staff (User::hasGlobalBusinessVisibility). Type ADMIN mirrors
         // the staging PS_* permissions. Default grant: ROOT only. ROOT_JOB is intentionally not
@@ -107,8 +107,8 @@ class RoleSeeder extends Seeder
         )->syncRoles([$rootRole]);
 
         // Gate of the psicol-panel "Administradores" module (administradores-psicol). ROOT only and never
-        // grantable to staff roles. No module/description copy: the PS_* catalog lives in App\Support\PsPermissionCatalog.
-        Permission::updateOrCreate(['name' => 'PS_MANAGE_ADMINS'], ['type' => 'ADMIN'])->syncRoles([$rootRole]);
+        // grantable to staff roles. Its module/description copy lives in the DB like every PS_* (administradores-psicol).
+        Permission::updateOrCreate(['name' => 'PS_MANAGE_ADMINS'], ['type' => 'ADMIN', 'module' => 'Configuración', 'description' => 'Administrar administradores y roles del personal (solo ROOT)'])->syncRoles([$rootRole]);
 
         /** PANEL ADMINISTRATION (administration-panel) */
         // updateOrCreate here mirrors the ROOT_ADMINISTRATION role above: this grant must be

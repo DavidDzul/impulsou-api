@@ -10,14 +10,14 @@ use Tests\TestCase;
 
 /**
  * administradores-psicol PR1: PS_MANAGE_ADMINS gates the staff admin/role management
- * endpoints. ROOT only, never grantable, no module/description copy (the catalog lives in PHP).
+ * endpoints. ROOT only, never grantable. Its module/description copy lives in the DB like every PS_*.
  */
 class RoleSeederStaffManagePermissionTest extends TestCase
 {
     use RefreshDatabase;
 
     /** @test */
-    public function ps_manage_admins_is_seeded_as_admin_web_permission_without_copy(): void
+    public function ps_manage_admins_is_seeded_as_admin_web_permission_with_copy(): void
     {
         $this->seed(RoleSeeder::class);
 
@@ -26,8 +26,8 @@ class RoleSeederStaffManagePermissionTest extends TestCase
         $this->assertNotNull($permission);
         $this->assertSame('ADMIN', $permission->type);
         $this->assertSame('web', $permission->guard_name);
-        $this->assertNull($permission->module);
-        $this->assertNull($permission->description);
+        $this->assertSame('Configuración', $permission->module);
+        $this->assertSame('Administrar administradores y roles del personal (solo ROOT)', $permission->description);
     }
 
     /** @test */

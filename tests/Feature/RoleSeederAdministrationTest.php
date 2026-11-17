@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -250,27 +249,33 @@ class RoleSeederAdministrationTest extends TestCase
     }
 
     /**
-     * Covers spec "Non-ADM seeder calls remain untouched" — PS_* and
-     * client-tier (BASIC-DIAMOND) permissions must never receive copy.
+     * administradores-psicol (PR4c): PS_* permissions carry their module and Spanish
+     * description in the DB, like the ADM_* ones. The client-tier permissions keep no copy.
      *
      * @test
      */
-    public function ps_and_client_tier_permissions_have_no_description_or_module(): void
+    public function every_ps_permission_has_module_and_description_and_client_tier_has_none(): void
     {
         $this->seed(RoleSeeder::class);
 
-        $uncopiedPermissionCount = Permission::where(function ($query) {
-            $query->where('name', 'like', 'PS_%')
-                ->orWhereIn('name', ['CANDIDATES_VIEW', 'CREATE_VACANT_JR']);
-        })
-            // New permission (empresas-autorizacion-api) is seeded with copy on purpose.
-            ->where('name', '!=', User::PERMISSION_VIEW_ALL_CAMPUSES)
+        $psWithoutCopy = Permission::where('name', 'like', 'PS_%')
+            ->where(function ($query) {
+                $query->whereNull('description')->orWhereNull('module')
+                    ->orWhere('description', '')->orWhere('module', '');
+            })
+            ->pluck('name')
+            ->all();
+
+        $this->assertSame([], $psWithoutCopy, 'PS_* permissions must be seeded with module and description.');
+        $this->assertSame(34, Permission::where('name', 'like', 'PS_%')->count());
+
+        $clientTierWithCopy = Permission::whereIn('name', ['CANDIDATES_VIEW', 'CREATE_VACANT_JR'])
             ->where(function ($query) {
                 $query->whereNotNull('description')->orWhereNotNull('module');
             })
             ->count();
 
-        $this->assertSame(0, $uncopiedPermissionCount, 'PS_* and client-tier permissions must keep null description/module.');
+        $this->assertSame(0, $clientTierWithCopy, 'Client-tier permissions must keep null description/module.');
     }
 
     /**

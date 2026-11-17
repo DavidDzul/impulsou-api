@@ -6,14 +6,18 @@ use Illuminate\Database\Eloquent\Builder;
 use Spatie\Permission\Models\Permission;
 
 /**
- * Single source of truth for the copy (module, Spanish description, kind) of the psicol-panel
- * PS_* permissions. It is NOT persisted: RoleSeederAdministrationTest pins PS_* rows to NULL
- * module/description, and a PHP map cannot drift from the seeder (a unit test pins coverage).
+ * Catalog of the psicol-panel PS_* permissions grantable to staff roles.
  *
- * "kind" tells the UI how a permission behaves in the sidebar:
- *  - menu-group: shows a whole menu section
- *  - page: shows one menu entry (child of `menu_group`)
- *  - action: a capability inside a page, no menu entry
+ * The copy (module, Spanish description) lives in the database (permissions.module /
+ * permissions.description), like the ADM_* permissions: a new permission only needs a row with
+ * type ADMIN, guard web, module and description. Missing copy falls back to module "Otros" and
+ * description = name. The only data kept in code is the page -> menu group map (used by the
+ * lockout warning of the panel).
+ *
+ * "kind" is derived from the name and tells the UI how a permission behaves in the sidebar:
+ *  - menu-group (PS_GROUP_*): shows a whole menu section
+ *  - action (PS_READ_* / PS_CREATE_* / PS_EDIT_* / PS_VIEW_*): a capability inside a page, no menu entry
+ *  - page (anything else): shows one menu entry (child of `menu_group`)
  */
 class PsPermissionCatalog
 {
@@ -28,47 +32,25 @@ class PsPermissionCatalog
 
     public const UNKNOWN_MODULE = 'Otros';
 
-    /** Order of this map is the display order of modules and of permissions inside them. */
-    private const MAP = [
-        'PS_GROUP_ATTENDANCE' => ['Asistencias', 'Mostrar el menú Asistencias', self::KIND_MENU_GROUP, null],
-        'PS_CHECK' => ['Asistencias', 'Entrar al checador', self::KIND_PAGE, 'PS_GROUP_ATTENDANCE'],
-        'PS_CLASSES' => ['Asistencias', 'Entrar a las sesiones de formación', self::KIND_PAGE, 'PS_GROUP_ATTENDANCE'],
+    /** Display order of the known modules; unknown modules follow, "Otros" is always last. */
+    private const MODULE_ORDER = ['Asistencias', 'Usuarios', 'Empresas', 'Vinculación laboral', 'Becas', 'Configuración'];
 
-        'PS_GROUP_USERS' => ['Usuarios', 'Mostrar el menú Usuarios', self::KIND_MENU_GROUP, null],
-        'PS_USERS' => ['Usuarios', 'Entrar a becarios y egresados', self::KIND_PAGE, 'PS_GROUP_USERS'],
-        'PS_READ_USERS' => ['Usuarios', 'Ver la lista de becarios', self::KIND_ACTION, null],
-        'PS_CREATE_USERS' => ['Usuarios', 'Registrar becarios', self::KIND_ACTION, null],
-        'PS_EDIT_USERS' => ['Usuarios', 'Editar becarios', self::KIND_ACTION, null],
-        'PS_GRADUATES' => ['Usuarios', 'Entrar a egresados', self::KIND_PAGE, 'PS_GROUP_USERS'],
-        'PS_READ_GRADUATES' => ['Usuarios', 'Ver la lista de egresados', self::KIND_ACTION, null],
-        'PS_CREATE_GRADUATES' => ['Usuarios', 'Registrar egresados', self::KIND_ACTION, null],
-        'PS_EDIT_GRADUATES' => ['Usuarios', 'Editar egresados', self::KIND_ACTION, null],
-
-        'PS_BUSINESS' => ['Empresas', 'Entrar a empresas', self::KIND_PAGE, 'PS_GROUP_USERS'],
-        'PS_READ_BUSINESS' => ['Empresas', 'Ver la lista de empresas', self::KIND_ACTION, null],
-        'PS_CREATE_BUSINESS' => ['Empresas', 'Registrar empresas', self::KIND_ACTION, null],
-        'PS_EDIT_BUSINESS' => ['Empresas', 'Editar empresas', self::KIND_ACTION, null],
-        'PS_VIEW_ALL_CAMPUSES' => ['Empresas', 'Ver empresas de todas las sedes (solo personal de Mérida)', self::KIND_ACTION, null],
-
-        'PS_GROUP_JOBS' => ['Vinculación laboral', 'Mostrar el menú Vinculación laboral', self::KIND_MENU_GROUP, null],
-        'PS_VACANT' => ['Vinculación laboral', 'Entrar a vacantes', self::KIND_PAGE, 'PS_GROUP_JOBS'],
-        'PS_READ_VACANT' => ['Vinculación laboral', 'Ver la lista de vacantes', self::KIND_ACTION, null],
-        'PS_CREATE_VACANT' => ['Vinculación laboral', 'Crear vacantes', self::KIND_ACTION, null],
-        'PS_EDIT_VACANT' => ['Vinculación laboral', 'Editar vacantes', self::KIND_ACTION, null],
-        'PS_APPLICATION' => ['Vinculación laboral', 'Entrar a postulaciones', self::KIND_PAGE, 'PS_GROUP_JOBS'],
-        'PS_READ_APPLICATION' => ['Vinculación laboral', 'Ver la lista de postulaciones', self::KIND_ACTION, null],
-        'PS_EDIT_APPLICATION' => ['Vinculación laboral', 'Editar postulaciones', self::KIND_ACTION, null],
-
-        'PS_GROUP_SCHOLARSHIPS' => ['Becas', 'Mostrar el menú Becas', self::KIND_MENU_GROUP, null],
-        'PS_SCHOLARSHIPS_ATENCION' => ['Becas', 'Entrar a la verificación de refrendos', self::KIND_PAGE, 'PS_GROUP_SCHOLARSHIPS'],
-        'PS_SCHOLARSHIPS_PEDAGOGIA' => ['Becas', 'Entrar a la aprobación de refrendos', self::KIND_PAGE, 'PS_GROUP_SCHOLARSHIPS'],
-
-        'PS_GROUP_CONFIG' => ['Configuración', 'Mostrar el menú Configuración', self::KIND_MENU_GROUP, null],
-        'PS_GENERATIONS' => ['Configuración', 'Entrar a generaciones', self::KIND_PAGE, 'PS_GROUP_CONFIG'],
-        'PS_ROLES' => ['Configuración', 'Entrar a roles de planes de empresa', self::KIND_PAGE, 'PS_GROUP_CONFIG'],
-        'PS_GRAPHICS' => ['Configuración', 'Entrar a áreas e informes', self::KIND_PAGE, 'PS_GROUP_CONFIG'],
-        'PS_NOTICES' => ['Configuración', 'Entrar a avisos', self::KIND_PAGE, 'PS_GROUP_CONFIG'],
-        self::MANAGE_ADMINS => ['Configuración', 'Administrar administradores y roles del personal (solo ROOT)', self::KIND_PAGE, 'PS_GROUP_CONFIG'],
+    /** Menu entry (page) -> menu group it hangs from. Unknown pages have no group. */
+    private const PAGE_MENU_GROUP = [
+        'PS_CHECK' => 'PS_GROUP_ATTENDANCE',
+        'PS_CLASSES' => 'PS_GROUP_ATTENDANCE',
+        'PS_USERS' => 'PS_GROUP_USERS',
+        'PS_GRADUATES' => 'PS_GROUP_USERS',
+        'PS_BUSINESS' => 'PS_GROUP_USERS',
+        'PS_VACANT' => 'PS_GROUP_JOBS',
+        'PS_APPLICATION' => 'PS_GROUP_JOBS',
+        'PS_SCHOLARSHIPS_ATENCION' => 'PS_GROUP_SCHOLARSHIPS',
+        'PS_SCHOLARSHIPS_PEDAGOGIA' => 'PS_GROUP_SCHOLARSHIPS',
+        'PS_GENERATIONS' => 'PS_GROUP_CONFIG',
+        'PS_ROLES' => 'PS_GROUP_CONFIG',
+        'PS_GRAPHICS' => 'PS_GROUP_CONFIG',
+        'PS_NOTICES' => 'PS_GROUP_CONFIG',
+        self::MANAGE_ADMINS => 'PS_GROUP_CONFIG',
     ];
 
     /**
@@ -89,43 +71,52 @@ class PsPermissionCatalog
     /** @return string[] */
     public static function mappedNames(): array
     {
-        return array_keys(self::MAP);
+        return array_keys(self::PAGE_MENU_GROUP);
     }
 
-    /**
-     * @return array{module: string, description: string, kind: string, menu_group: ?string}
-     */
-    public static function metaFor(string $name): array
+    public static function kindFor(string $name): string
     {
-        if (!isset(self::MAP[$name])) {
-            return [
-                'module' => self::UNKNOWN_MODULE,
-                'description' => $name,
-                'kind' => self::KIND_ACTION,
-                'menu_group' => null,
-            ];
+        if (str_starts_with($name, 'PS_GROUP_')) {
+            return self::KIND_MENU_GROUP;
         }
 
-        [$module, $description, $kind, $menuGroup] = self::MAP[$name];
+        foreach (['PS_READ_', 'PS_CREATE_', 'PS_EDIT_', 'PS_VIEW_'] as $prefix) {
+            if (str_starts_with($name, $prefix)) {
+                return self::KIND_ACTION;
+            }
+        }
 
-        return ['module' => $module, 'description' => $description, 'kind' => $kind, 'menu_group' => $menuGroup];
+        return self::KIND_PAGE;
     }
 
     /**
-     * Grantable permissions grouped by module, in map order, unknown ones in "Otros" last.
+     * @param  ?string  $module  permissions.module of the row
+     * @param  ?string  $description  permissions.description of the row
+     * @return array{module: string, description: string, kind: string, menu_group: ?string}
+     */
+    public static function metaFor(string $name, ?string $module = null, ?string $description = null): array
+    {
+        return [
+            'module' => ($module === null || $module === '') ? self::UNKNOWN_MODULE : $module,
+            'description' => ($description === null || $description === '') ? $name : $description,
+            'kind' => self::kindFor($name),
+            'menu_group' => self::PAGE_MENU_GROUP[$name] ?? null,
+        ];
+    }
+
+    /**
+     * Grantable permissions grouped by module: known modules in MODULE_ORDER, unknown ones after
+     * (first-seen order), "Otros" last. Inside a module the menu-group comes first, then row (id) order.
      *
      * @return array<int, array{module: string, permissions: array<int, array<string, mixed>>}>
      */
     public static function grouped(): array
     {
-        $position = array_flip(self::mappedNames());
-        $permissions = self::grantableQuery()->get(['id', 'name'])
-            ->sortBy(fn ($p) => $position[$p->name] ?? PHP_INT_MAX)
-            ->values();
+        $permissions = self::grantableQuery()->orderBy('id')->get(['id', 'name', 'module', 'description']);
 
         $modules = [];
         foreach ($permissions as $permission) {
-            $meta = self::metaFor($permission->name);
+            $meta = self::metaFor($permission->name, $permission->module, $permission->description);
             $modules[$meta['module']][] = [
                 'id' => $permission->id,
                 'name' => $permission->name,
@@ -137,12 +128,28 @@ class PsPermissionCatalog
 
         $result = [];
         foreach ($modules as $module => $items) {
-            $result[] = ['module' => $module, 'permissions' => $items];
+            $result[] = ['module' => (string) $module, 'permissions' => $items];
         }
 
-        // usort is stable on PHP 8: only "Otros" moves, to the end.
-        usort($result, fn ($a, $b) => ($a['module'] === self::UNKNOWN_MODULE) <=> ($b['module'] === self::UNKNOWN_MODULE));
+        // Inside a module the menu-group permission goes first (usort is stable on PHP 8).
+        foreach ($result as &$group) {
+            usort($group['permissions'], fn ($a, $b) => ($b['kind'] === self::KIND_MENU_GROUP) <=> ($a['kind'] === self::KIND_MENU_GROUP));
+        }
+        unset($group);
+
+        usort($result, fn ($a, $b) => self::moduleRank($a['module']) <=> self::moduleRank($b['module']));
 
         return $result;
+    }
+
+    private static function moduleRank(string $module): int
+    {
+        if ($module === self::UNKNOWN_MODULE) {
+            return PHP_INT_MAX;
+        }
+
+        $index = array_search($module, self::MODULE_ORDER, true);
+
+        return $index === false ? count(self::MODULE_ORDER) : $index;
     }
 }

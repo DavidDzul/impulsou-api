@@ -9,9 +9,10 @@ use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 /**
- * administradores-psicol PR1: the PHP catalog must describe EVERY PS_* the seeder creates, so a
- * new PS_* permission without copy fails here instead of reaching the staff role editor as a
- * bare name.
+ * administradores-psicol: the catalog reads module/description from the DB row (like ADM_*), derives
+ * the kind from the name and keeps only the page -> menu group map in code. The seeder must give
+ * EVERY PS_* its copy, so a permission without copy fails here instead of reaching the staff role
+ * editor as a bare name.
  */
 class PsPermissionCatalogTest extends TestCase
 {
@@ -30,51 +31,60 @@ class PsPermissionCatalogTest extends TestCase
     }
 
     /** @test */
-    public function every_seeded_ps_permission_has_a_catalog_entry_with_spanish_copy_and_valid_kind(): void
+    public function every_seeded_ps_permission_has_db_copy_and_valid_kind(): void
     {
-        $seeded = $this->seededPsNames();
+        $seeded = Permission::where('name', 'like', 'PS_%')->get();
         $this->assertNotEmpty($seeded);
 
-        foreach ($seeded as $name) {
-            $this->assertContains($name, PsPermissionCatalog::mappedNames(), "$name has no PsPermissionCatalog entry.");
+        foreach ($seeded as $row) {
+            $meta = PsPermissionCatalog::metaFor($row->name, $row->module, $row->description);
 
-            $meta = PsPermissionCatalog::metaFor($name);
-            $this->assertNotSame('', trim($meta['module']), "$name has an empty module.");
-            $this->assertNotSame(PsPermissionCatalog::UNKNOWN_MODULE, $meta['module'], "$name falls in the unknown module.");
-            $this->assertNotSame('', trim($meta['description']), "$name has an empty description.");
-            $this->assertNotSame($name, $meta['description'], "$name description is just its name.");
-            $this->assertContains($meta['kind'], PsPermissionCatalog::KINDS, "$name has an invalid kind.");
+            $this->assertNotSame(PsPermissionCatalog::UNKNOWN_MODULE, $meta['module'], "{$row->name} has no module in the DB.");
+            $this->assertSame($row->module, $meta['module']);
+            $this->assertSame($row->description, $meta['description']);
+            $this->assertNotSame($row->name, $meta['description'], "{$row->name} description is just its name.");
+            $this->assertContains($meta['kind'], PsPermissionCatalog::KINDS, "{$row->name} has an invalid kind.");
         }
     }
 
     /** @test */
-    public function every_catalog_entry_matches_a_seeded_permission(): void
+    public function every_mapped_page_is_seeded_and_points_to_a_seeded_menu_group(): void
     {
-        $this->assertEqualsCanonicalizing($this->seededPsNames(), PsPermissionCatalog::mappedNames());
+        $seeded = $this->seededPsNames();
+
+        foreach (PsPermissionCatalog::mappedNames() as $name) {
+            $this->assertContains($name, $seeded, "$name is mapped but not seeded.");
+            $meta = PsPermissionCatalog::metaFor($name);
+            $this->assertSame(PsPermissionCatalog::KIND_PAGE, $meta['kind'], "$name must be a page.");
+            $this->assertContains($meta['menu_group'], $seeded);
+            $this->assertSame(PsPermissionCatalog::KIND_MENU_GROUP, PsPermissionCatalog::kindFor($meta['menu_group']));
+        }
     }
 
     /** @test */
-    public function group_permissions_are_menu_groups_and_pages_point_to_an_existing_menu_group(): void
+    public function every_seeded_page_has_a_menu_group_and_other_kinds_have_none(): void
     {
-        foreach (PsPermissionCatalog::mappedNames() as $name) {
+        foreach ($this->seededPsNames() as $name) {
             $meta = PsPermissionCatalog::metaFor($name);
-
-            if (str_starts_with($name, 'PS_GROUP_')) {
-                $this->assertSame(PsPermissionCatalog::KIND_MENU_GROUP, $meta['kind'], $name);
-                $this->assertNull($meta['menu_group'], $name);
-            } else {
-                $this->assertNotSame(PsPermissionCatalog::KIND_MENU_GROUP, $meta['kind'], $name);
-            }
 
             if ($meta['kind'] === PsPermissionCatalog::KIND_PAGE) {
                 $this->assertNotNull($meta['menu_group'], "$name is a page without menu_group.");
-                $this->assertSame(
-                    PsPermissionCatalog::KIND_MENU_GROUP,
-                    PsPermissionCatalog::metaFor($meta['menu_group'])['kind'],
-                    "$name menu_group is not a menu-group permission."
-                );
+            } else {
+                $this->assertNull($meta['menu_group'], "$name is not a page but has a menu_group.");
             }
         }
+    }
+
+    /** @test */
+    public function kind_is_derived_from_the_name(): void
+    {
+        $this->assertSame('menu-group', PsPermissionCatalog::kindFor('PS_GROUP_CONFIG'));
+        $this->assertSame('action', PsPermissionCatalog::kindFor('PS_READ_USERS'));
+        $this->assertSame('action', PsPermissionCatalog::kindFor('PS_CREATE_BUSINESS'));
+        $this->assertSame('action', PsPermissionCatalog::kindFor('PS_EDIT_VACANT'));
+        $this->assertSame('action', PsPermissionCatalog::kindFor('PS_VIEW_ALL_CAMPUSES'));
+        $this->assertSame('page', PsPermissionCatalog::kindFor('PS_USERS'));
+        $this->assertSame('page', PsPermissionCatalog::kindFor('PS_BRAND_NEW'));
     }
 
     /** @test */
@@ -116,19 +126,57 @@ class PsPermissionCatalogTest extends TestCase
     }
 
     /** @test */
-    public function unknown_ps_permission_in_the_database_lands_in_otros_as_an_action_with_its_name(): void
+    public function null_copy_in_the_database_falls_back_to_otros_and_the_name(): void
     {
         Permission::create(['name' => 'PS_BRAND_NEW', 'type' => 'ADMIN', 'guard_name' => 'web']);
 
         $meta = PsPermissionCatalog::metaFor('PS_BRAND_NEW');
         $this->assertSame('Otros', $meta['module']);
         $this->assertSame('PS_BRAND_NEW', $meta['description']);
-        $this->assertSame('action', $meta['kind']);
+        $this->assertSame('page', $meta['kind']);
+        $this->assertNull($meta['menu_group']);
 
         $modules = PsPermissionCatalog::grouped();
         $last = end($modules);
         $this->assertSame('Otros', $last['module']);
         $this->assertSame(['PS_BRAND_NEW'], array_column($last['permissions'], 'name'));
+        $this->assertSame('PS_BRAND_NEW', $last['permissions'][0]['description']);
+    }
+
+    /** @test */
+    public function a_new_ps_permission_inserted_only_in_the_database_appears_with_its_copy_and_derived_kind(): void
+    {
+        Permission::create([
+            'name' => 'PS_READ_REPORTS',
+            'type' => 'ADMIN',
+            'guard_name' => 'web',
+            'module' => 'Reportes',
+            'description' => 'Ver los reportes',
+        ]);
+
+        $group = collect(PsPermissionCatalog::grouped())->firstWhere('module', 'Reportes');
+
+        $this->assertNotNull($group, 'The new module must show up without code changes.');
+        $this->assertCount(1, $group['permissions']);
+        $item = $group['permissions'][0];
+        $this->assertSame('PS_READ_REPORTS', $item['name']);
+        $this->assertSame('Ver los reportes', $item['description']);
+        $this->assertSame('action', $item['kind']);
+        $this->assertNull($item['menu_group']);
+    }
+
+    /** @test */
+    public function modules_keep_a_stable_order_known_first_unknown_after_and_otros_last(): void
+    {
+        Permission::create(['name' => 'PS_ZZZ', 'type' => 'ADMIN', 'guard_name' => 'web', 'module' => 'Reportes', 'description' => 'Zzz']);
+        Permission::create(['name' => 'PS_NOCOPY', 'type' => 'ADMIN', 'guard_name' => 'web']);
+
+        $order = array_column(PsPermissionCatalog::grouped(), 'module');
+
+        $this->assertSame(
+            ['Asistencias', 'Usuarios', 'Empresas', 'Vinculación laboral', 'Becas', 'Configuración', 'Reportes', 'Otros'],
+            $order
+        );
     }
 
     /** @test */
@@ -149,14 +197,14 @@ class PsPermissionCatalogTest extends TestCase
     }
 
     /** @test */
-    public function the_catalog_copy_overrides_the_database_copy_of_ps_view_all_campuses(): void
+    public function the_database_copy_is_what_the_catalog_returns(): void
     {
-        Permission::where('name', 'PS_VIEW_ALL_CAMPUSES')->update(['module' => 'Zzz', 'description' => 'Texto viejo']);
+        Permission::where('name', 'PS_VIEW_ALL_CAMPUSES')->update(['module' => 'Zzz', 'description' => 'Texto nuevo']);
 
-        $item = collect(PsPermissionCatalog::grouped())->pluck('permissions')->flatten(1)
-            ->firstWhere('name', 'PS_VIEW_ALL_CAMPUSES');
+        $groups = collect(PsPermissionCatalog::grouped());
+        $item = $groups->pluck('permissions')->flatten(1)->firstWhere('name', 'PS_VIEW_ALL_CAMPUSES');
 
-        $this->assertNotSame('Texto viejo', $item['description']);
-        $this->assertSame(PsPermissionCatalog::metaFor('PS_VIEW_ALL_CAMPUSES')['description'], $item['description']);
+        $this->assertSame('Texto nuevo', $item['description']);
+        $this->assertContains('Zzz', $groups->pluck('module')->all());
     }
 }
