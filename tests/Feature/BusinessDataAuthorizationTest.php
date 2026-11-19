@@ -246,6 +246,25 @@ class BusinessDataAuthorizationTest extends TestCase
     }
 
     /** @test */
+    public function search_results_are_ordered_by_name(): void
+    {
+        // Inserted out of alphabetical order so insertion order differs from bs_name order.
+        foreach (['Acme Zeta', 'Acme Alfa', 'Acme Mike'] as $name) {
+            $owner = $this->make('BUSINESS', 'VALLADOLID', 'BASIC');
+            $this->businessData($owner, $name);
+        }
+        $this->as('ROOT', 'VALLADOLID');
+
+        $names = collect($this->getJson('/api/admin/search?search=Acme')->assertOk()->json('businesses'))
+            ->pluck('bs_name')->all();
+
+        $sorted = $names;
+        sort($sorted);
+        $this->assertGreaterThan(1, count($names));
+        $this->assertSame($sorted, $names);
+    }
+
+    /** @test */
     public function search_returns_only_in_scope_business_for_vacancy_only_permission(): void
     {
         Role::create(['name' => 'VACANT_ONLY', 'guard_name' => 'web'])->givePermissionTo('PS_CREATE_VACANT');

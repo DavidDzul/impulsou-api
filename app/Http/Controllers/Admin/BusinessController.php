@@ -176,6 +176,7 @@ class BusinessController extends Controller
         $businesses = BusinessData::whereIn('user_id', User::businessVisibleTo($request->user())->select('id'))
             ->where('bs_name', 'LIKE', "%{$search}%")
             ->select('id', 'bs_name', 'user_id')
+            ->orderBy('bs_name')
             ->limit(10)
             ->get();
         return response()->json(['businesses' => $businesses]);
