@@ -134,7 +134,7 @@ class VacantPositionController extends Controller
         $data = $request->validate(VacantPosition::createPracticeRules());
         $data['status'] = true;
 
-        if (!$role && !$role->configuration) {
+        if (!$role || !$role->configuration) {
             return response()->json([
                 'res' => false,
                 'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'
@@ -195,7 +195,7 @@ class VacantPositionController extends Controller
         $data = $request->validate(VacantPosition::createJrRules());
         $data['status'] = true;
 
-        if (!$role && !$role->configuration) {
+        if (!$role || !$role->configuration) {
             return response()->json([
                 'res' => false,
                 'msg' => 'Error con el rol asignado. Contacta a soporte para solucionar el problema.'

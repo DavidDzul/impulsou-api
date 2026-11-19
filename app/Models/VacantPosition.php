@@ -135,7 +135,7 @@ class VacantPosition extends Model
             "software_description" => "nullable|string|max:255",
             "skills" => "required|string|max:255",
             "observations" => "nullable|string",
-            "general_knowledge" => "nnullable|boolean",
+            "general_knowledge" => "nullable|boolean",
             "knowledge_description" => "nullable|string",
 
             "overtime_pay" => "nullable|boolean",
@@ -194,7 +194,7 @@ class VacantPosition extends Model
             "software_description" => "nullable|string|max:255",
             "skills" => "sometimes|string|max:255",
             "observations" => "nullable|string",
-            "general_knowledge" => "nnullable|boolean",
+            "general_knowledge" => "nullable|boolean",
             "knowledge_description" => "nullable|string",
 
             "overtime_pay" => "nullable|boolean",
